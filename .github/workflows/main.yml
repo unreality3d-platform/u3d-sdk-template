@@ -1,0 +1,114 @@
+﻿name: Build and Deploy Unity Project 🚀
+
+on: 
+  push:
+    branches: 
+      - main
+      - master
+  pull_request:
+    branches: 
+      - main
+      - master
+
+# Environment variables for Unity Personal License (username/password method)
+env:
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+jobs:
+  build:
+    name: Build Unity WebGL Project ✨
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Checkout repository with LFS support
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # Cache Unity Library to speed up builds
+      - name: Cache Unity Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+            Library-
+
+      # Build Unity project for WebGL
+      - name: Build Unity Project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_EMAIL: ${{ env.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
+        with:
+          targetPlatform: WebGL
+          customParameters: -quit -batchmode -logFile -
+          allowDirtyBuild: true
+
+      # Process Unity template with our custom processor
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Extract content ID from repository name for deployment
+      - name: Extract Content ID
+        id: content_id
+        run: |
+          REPO_NAME="${{ github.repository }}"
+          CONTENT_ID="${REPO_NAME##*/}"
+          echo "CONTENT_ID=${CONTENT_ID}" >> $GITHUB_OUTPUT
+          echo "Content ID: ${CONTENT_ID}"
+
+      # Process template files (if template processor exists)
+      - name: Process Unity Template
+        run: |
+          if [ -f "unity-template-processor.js" ]; then
+            echo "Processing Unity template with content ID: ${{ steps.content_id.outputs.CONTENT_ID }}"
+            node unity-template-processor.js \
+              --contentId "${{ steps.content_id.outputs.CONTENT_ID }}" \
+              --productName "${{ github.repository }}" \
+              --buildOutputPath "./build/WebGL/WebGL"
+          else
+            echo "No template processor found, using build output directly"
+            # Ensure index.html exists for Firebase deployment
+            if [ ! -f "build/WebGL/WebGL/index.html" ]; then
+              echo "Warning: No index.html found in build output"
+              ls -la build/WebGL/WebGL/ || echo "Build directory not found"
+            fi
+          fi
+
+      # Upload build artifacts for debugging
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Unity-WebGL-Build
+          path: build/WebGL/WebGL
+          retention-days: 7
+
+      # Deploy to Firebase Hosting
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D }}
+          projectId: unreality3d
+          entryPoint: './build/WebGL/WebGL'
+          expires: 30d
+          
+      # Output deployment URL
+      - name: Output Deployment Information
+        run: |
+          echo "🎉 Deployment completed!"
+          echo "📱 Content ID: ${{ steps.content_id.outputs.CONTENT_ID }}"
+          echo "🌐 Your live URL will be available at:"
+          echo "https://unreality3d.web.app/"
+          echo ""
+          echo "📋 Next steps for creators:"
+          echo "1. Wait for build to complete (usually 5-10 minutes)"
+          echo "2. Visit the URL above to see your live content"
+          echo "3. Share the URL with others to experience your creation"
