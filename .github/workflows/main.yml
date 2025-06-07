@@ -91,13 +91,14 @@ jobs:
           path: build/WebGL/WebGL
           retention-days: 7
 
-      # Deploy to Firebase Hosting (FIXED VERSION)
+      # Deploy to Firebase Hosting 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
           projectId: unreality3d2025
+          channelId: live
           entryPoint: '.'
           expires: 30d
           
