@@ -110,12 +110,12 @@ jobs:
             fi
           fi
 
-      # Create repository-specific Firebase configuration
-      - name: Create Repository Firebase Config
+      # Create standard Firebase configuration for preview channel
+      - name: Create Firebase Config
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           
-          # Create firebase.json for this repository
+          # Create standard firebase.json (preview channels use standard structure)
           cat > firebase.json << EOF
           {
             "hosting": {
@@ -159,10 +159,6 @@ jobs:
                     {
                       "key": "Content-Type",
                       "value": "application/wasm"
-                    },
-                    {
-                      "key": "Cross-Origin-Resource-Policy",
-                      "value": "cross-origin"
                     }
                   ]
                 },
@@ -172,10 +168,6 @@ jobs:
                     {
                       "key": "Content-Type",
                       "value": "application/octet-stream"
-                    },
-                    {
-                      "key": "Cross-Origin-Resource-Policy",
-                      "value": "cross-origin"
                     }
                   ]
                 },
@@ -185,10 +177,6 @@ jobs:
                     {
                       "key": "Content-Type",
                       "value": "application/javascript"
-                    },
-                    {
-                      "key": "Cross-Origin-Resource-Policy",
-                      "value": "cross-origin"
                     }
                   ]
                 }
@@ -197,7 +185,7 @@ jobs:
           }
           EOF
           
-          echo "Created firebase.json with public directory: ${REPO_NAME}"
+          echo "Created firebase.json for preview channel deployment"
 
       # Upload build artifacts for debugging
       - name: Upload Build Artifacts
@@ -207,29 +195,31 @@ jobs:
           path: ${{ steps.repo_info.outputs.REPO_NAME }}
           retention-days: 7
 
-      # Deploy to Firebase Hosting with repository-specific path
+      # Deploy to Firebase Hosting with repository-specific channel
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
           projectId: unreality3d2025
-          # CRITICAL: Remove channelId to allow custom routing
-          # channelId: live  # <- This line removed to enable subdirectory deployment
+          # CRITICAL: Use repository name as unique channelId
+          channelId: ${{ steps.repo_info.outputs.REPO_NAME }}
           entryPoint: '.'
           expires: 30d
           
-      # Output deployment URL with repository-specific path
+      # Output deployment URL with repository-specific preview channel
       - name: Output Deployment Information
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           echo "🎉 Deployment completed!"
           echo "📱 Repository: ${REPO_NAME}"
-          echo "🌐 Your unique URL:"
-          echo "https://unreality3d2025.web.app/${REPO_NAME}/"
+          echo "🌐 Your unique preview URL:"
+          echo "https://unreality3d2025--${REPO_NAME}-xyzabc123.web.app/"
           echo ""
           echo "📋 Next steps for creators:"
           echo "1. Wait for build to complete (usually 10-20 minutes)"
-          echo "2. Visit your unique URL above to see your live content"
+          echo "2. Visit your unique preview URL above to see your live content"
           echo "3. Share your URL with others to experience your creation"
-          echo "4. Each repository gets its own permanent URL - no conflicts!"
+          echo "4. Each repository gets its own permanent preview URL - no conflicts!"
+          echo ""
+          echo "🔗 URL Pattern: https://unreality3d2025--[repo-name]-[random-hash].web.app/"
