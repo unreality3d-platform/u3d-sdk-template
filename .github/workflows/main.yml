@@ -38,7 +38,7 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Build Unity project for WebGL
+      # Build Unity project for WebGL using Personal license (username/password)
       - name: Build Unity Project
         uses: game-ci/unity-builder@v4
         env:
