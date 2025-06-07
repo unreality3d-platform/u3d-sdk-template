@@ -10,7 +10,7 @@ on:
       - main
       - master
 
-# Environment variables for Unity Personal License (license file method)
+# Environment variables for Unity Personal License
 env:
   UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
   UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -39,7 +39,7 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Build Unity project for WebGL using Personal license (license file method)
+      # Build Unity project for WebGL using Personal license
       - name: Build Unity Project
         uses: game-ci/unity-builder@v4
         env:
@@ -48,7 +48,7 @@ jobs:
           UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
         with:
           targetPlatform: WebGL
-          customParameters: -quit -batchmode -logFile -
+          # REMOVED: customParameters (game-ci handles -quit and -batchmode automatically)
           allowDirtyBuild: true
 
       # Process Unity template with our custom processor
