@@ -30,7 +30,7 @@ jobs:
 
       # Cache Unity Library to speed up builds
       - name: Cache Unity Library
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: Library
           key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
@@ -84,7 +84,7 @@ jobs:
 
       # Upload build artifacts for debugging
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Unity-WebGL-Build
           path: build/WebGL/WebGL
