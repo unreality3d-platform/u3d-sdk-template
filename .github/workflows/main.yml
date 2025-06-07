@@ -48,7 +48,6 @@ jobs:
           UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
         with:
           targetPlatform: WebGL
-          # REMOVED: customParameters (game-ci handles -quit and -batchmode automatically)
           allowDirtyBuild: true
 
       # Process Unity template with our custom processor
@@ -92,7 +91,7 @@ jobs:
           path: build/WebGL/WebGL
           retention-days: 7
 
-      # Deploy to Firebase Hosting
+      # Deploy to Firebase Hosting (FIXED VERSION)
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -108,7 +107,7 @@ jobs:
           echo "🎉 Deployment completed!"
           echo "📱 Content ID: ${{ steps.content_id.outputs.CONTENT_ID }}"
           echo "🌐 Your live URL will be available at:"
-          echo "https://unreality3d.web.app/"
+          echo "https://unreality3d2025.web.app/"
           echo ""
           echo "📋 Next steps for creators:"
           echo "1. Wait for build to complete (usually 10-20 minutes)"
