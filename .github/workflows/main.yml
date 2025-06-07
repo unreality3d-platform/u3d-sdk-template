@@ -99,7 +99,7 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D }}
           projectId: unreality3d2025
-          entryPoint: './build/WebGL/WebGL'
+          entryPoint: '.'
           expires: 30d
           
       # Output deployment URL
