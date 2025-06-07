@@ -197,6 +197,7 @@ jobs:
 
       # Deploy to Firebase Hosting with repository-specific channel
       - name: Deploy to Firebase Hosting
+        id: deploy
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -211,15 +212,26 @@ jobs:
       - name: Output Deployment Information
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
-          echo "🎉 Deployment completed!"
+          PREVIEW_URL="${{ steps.deploy.outputs.details_url }}"
+          
+          echo "🎉 Deployment completed successfully!"
           echo "📱 Repository: ${REPO_NAME}"
-          echo "🌐 Your unique preview URL:"
-          echo "https://unreality3d2025--${REPO_NAME}-xyzabc123.web.app/"
+          echo "🌐 Your Unity WebGL Preview URL:"
+          echo "$PREVIEW_URL"
           echo ""
           echo "📋 Next steps for creators:"
-          echo "1. Wait for build to complete (usually 10-20 minutes)"
-          echo "2. Visit your unique preview URL above to see your live content"
-          echo "3. Share your URL with others to experience your creation"
-          echo "4. Each repository gets its own permanent preview URL - no conflicts!"
+          echo "1. Click the URL above to test your Unity WebGL content"
+          echo "2. Use WASD to move, mouse to look around"
+          echo "3. Share the URL with others to experience your creation"
+          echo "4. Preview expires in 30 days (auto-extends with new deployments)"
           echo ""
-          echo "🔗 URL Pattern: https://unreality3d2025--[repo-name]-[random-hash].web.app/"
+          echo "🔄 To update: Push changes to this repository to redeploy automatically"
+          
+          # Also output to GitHub step summary for easy access
+          echo "## 🚀 Unity WebGL Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🎮 Unity WebGL URL:** [$PREVIEW_URL]($PREVIEW_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**📱 Repository:** $REPO_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**⏰ Expires:** 30 days (auto-extends with deployments)" >> $GITHUB_STEP_SUMMARY
+          echo "**🎯 Controls:** WASD to move, mouse to look" >> $GITHUB_STEP_SUMMARY
