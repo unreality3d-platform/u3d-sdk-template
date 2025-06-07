@@ -111,6 +111,6 @@ jobs:
           echo "https://unreality3d.web.app/"
           echo ""
           echo "📋 Next steps for creators:"
-          echo "1. Wait for build to complete (usually 5-10 minutes)"
+          echo "1. Wait for build to complete (usually 10-20 minutes)"
           echo "2. Visit the URL above to see your live content"
           echo "3. Share the URL with others to experience your creation"
