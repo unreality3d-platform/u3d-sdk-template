@@ -56,61 +56,180 @@ jobs:
         with:
           node-version: '20'
 
-      # Extract content ID from repository name for deployment
-      - name: Extract Content ID
-        id: content_id
+      # Extract repository name for unique routing
+      - name: Extract Repository Name
+        id: repo_info
         run: |
-          REPO_NAME="${{ github.repository }}"
-          CONTENT_ID="${REPO_NAME##*/}"
-          echo "CONTENT_ID=${CONTENT_ID}" >> $GITHUB_OUTPUT
-          echo "Content ID: ${CONTENT_ID}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_OUTPUT
+          echo "Repository name: ${REPO_NAME}"
+          echo "Will deploy to: https://unreality3d2025.web.app/${REPO_NAME}/"
+
+      # Create repository-specific directory structure
+      - name: Prepare Repository Directory
+        run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          echo "Creating directory structure for repository: ${REPO_NAME}"
+          
+          # Create the repository-specific directory
+          mkdir -p "${REPO_NAME}"
+          
+          # Copy Unity build to repository directory
+          if [ -d "build/WebGL/WebGL" ]; then
+            cp -r build/WebGL/WebGL/* "${REPO_NAME}/"
+            echo "Unity build copied to ${REPO_NAME}/"
+          else
+            echo "Unity build directory not found"
+            ls -la build/ || echo "Build directory structure:"
+            find build -type d 2>/dev/null || echo "Build directory not found"
+          fi
 
       # Process template files (if template processor exists)
       - name: Process Unity Template
         run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          
           if [ -f "unity-template-processor.js" ]; then
-            echo "Processing Unity template with content ID: ${{ steps.content_id.outputs.CONTENT_ID }}"
+            echo "Processing Unity template with repository name: ${REPO_NAME}"
             node unity-template-processor.js \
-              --contentId "${{ steps.content_id.outputs.CONTENT_ID }}" \
-              --productName "${{ github.repository }}" \
-              --buildOutputPath "./build/WebGL/WebGL"
+              --contentId "${REPO_NAME}" \
+              --productName "${REPO_NAME}" \
+              --buildOutputPath "./${REPO_NAME}/Build"
+            
+            # Move processed index.html to repository directory
+            if [ -f "index.html" ]; then
+              mv index.html "${REPO_NAME}/index.html"
+              echo "Processed template moved to ${REPO_NAME}/index.html"
+            fi
           else
             echo "No template processor found, using build output directly"
-            # Ensure index.html exists for Firebase deployment
-            if [ ! -f "build/WebGL/WebGL/index.html" ]; then
-              echo "Warning: No index.html found in build output"
-              ls -la build/WebGL/WebGL/ || echo "Build directory not found"
+            # Ensure index.html exists in repository directory
+            if [ ! -f "${REPO_NAME}/index.html" ]; then
+              echo "Warning: No index.html found in ${REPO_NAME}/"
+              ls -la "${REPO_NAME}/" || echo "Repository directory not found"
             fi
           fi
+
+      # Create repository-specific Firebase configuration
+      - name: Create Repository Firebase Config
+        run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          
+          # Create firebase.json for this repository
+          cat > firebase.json << EOF
+          {
+            "hosting": {
+              "public": "${REPO_NAME}",
+              "ignore": [
+                "firebase.json",
+                "**/.*",
+                "**/node_modules/**"
+              ],
+              "rewrites": [
+                {
+                  "source": "**",
+                  "destination": "/index.html"
+                }
+              ],
+              "headers": [
+                {
+                  "source": "**/Build/**",
+                  "headers": [
+                    {
+                      "key": "Cross-Origin-Embedder-Policy",
+                      "value": "require-corp"
+                    },
+                    {
+                      "key": "Cross-Origin-Opener-Policy", 
+                      "value": "same-origin"
+                    },
+                    {
+                      "key": "Cross-Origin-Resource-Policy",
+                      "value": "cross-origin"
+                    },
+                    {
+                      "key": "Cache-Control",
+                      "value": "public, max-age=31536000"
+                    }
+                  ]
+                },
+                {
+                  "source": "**/*.wasm",
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/wasm"
+                    },
+                    {
+                      "key": "Cross-Origin-Resource-Policy",
+                      "value": "cross-origin"
+                    }
+                  ]
+                },
+                {
+                  "source": "**/*.data",
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/octet-stream"
+                    },
+                    {
+                      "key": "Cross-Origin-Resource-Policy",
+                      "value": "cross-origin"
+                    }
+                  ]
+                },
+                {
+                  "source": "**/*.js",
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/javascript"
+                    },
+                    {
+                      "key": "Cross-Origin-Resource-Policy",
+                      "value": "cross-origin"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          
+          echo "Created firebase.json with public directory: ${REPO_NAME}"
 
       # Upload build artifacts for debugging
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Unity-WebGL-Build
-          path: build/WebGL/WebGL
+          name: Unity-WebGL-Build-${{ steps.repo_info.outputs.REPO_NAME }}
+          path: ${{ steps.repo_info.outputs.REPO_NAME }}
           retention-days: 7
 
-      # Deploy to Firebase Hosting 
+      # Deploy to Firebase Hosting with repository-specific path
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
           projectId: unreality3d2025
-          channelId: live
+          # CRITICAL: Remove channelId to allow custom routing
+          # channelId: live  # <- This line removed to enable subdirectory deployment
           entryPoint: '.'
           expires: 30d
           
-      # Output deployment URL
+      # Output deployment URL with repository-specific path
       - name: Output Deployment Information
         run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           echo "🎉 Deployment completed!"
-          echo "📱 Content ID: ${{ steps.content_id.outputs.CONTENT_ID }}"
-          echo "🌐 Your live URL will be available at:"
-          echo "https://unreality3d2025.web.app/"
+          echo "📱 Repository: ${REPO_NAME}"
+          echo "🌐 Your unique URL:"
+          echo "https://unreality3d2025.web.app/${REPO_NAME}/"
           echo ""
           echo "📋 Next steps for creators:"
-          echo "1. Wait for build to complete (usually 20-30 minutes)"
-          echo "2. Visit the URL above to see your live content"
-          echo "3. Share the URL with others to experience your creation"
+          echo "1. Wait for build to complete (usually 10-20 minutes)"
+          echo "2. Visit your unique URL above to see your live content"
+          echo "3. Share your URL with others to experience your creation"
+          echo "4. Each repository gets its own permanent URL - no conflicts!"
