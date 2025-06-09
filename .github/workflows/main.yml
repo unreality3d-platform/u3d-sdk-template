@@ -63,7 +63,29 @@ jobs:
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_OUTPUT
           echo "Repository name: ${REPO_NAME}"
-          echo "Will deploy to: https://unreality3d.web.app/${REPO_NAME}/"
+
+      # Determine deployment environment - CREATORS ALWAYS GET PRODUCTION
+      - name: Determine Environment  
+        id: env_info
+        run: |
+          # Check if this is YOUR development repository
+          if [[ "${{ github.repository }}" == "unreality3d-platform/u3d-sdk-template" ]] && [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            # Only YOUR template repo can deploy to development on non-main branches
+            echo "ENVIRONMENT=development" >> $GITHUB_OUTPUT
+            echo "PROJECT_ID=unreality3d2025" >> $GITHUB_OUTPUT
+            echo "SERVICE_ACCOUNT_SECRET=FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025" >> $GITHUB_OUTPUT
+            echo "BASE_URL=unreality3d2025.web.app" >> $GITHUB_OUTPUT
+          else
+            # All creator repositories and main branch always go to production
+            echo "ENVIRONMENT=production" >> $GITHUB_OUTPUT
+            echo "PROJECT_ID=unreality3d" >> $GITHUB_OUTPUT
+            echo "SERVICE_ACCOUNT_SECRET=FIREBASE_SERVICE_ACCOUNT_UNREALITY3D" >> $GITHUB_OUTPUT
+            echo "BASE_URL=unreality3d.web.app" >> $GITHUB_OUTPUT
+          fi
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Deploying to: ${{ steps.env_info.outputs.ENVIRONMENT }}"
+          echo "Will deploy to: https://${{ steps.env_info.outputs.BASE_URL }}/${{ steps.repo_info.outputs.REPO_NAME }}/"
 
       # Create repository-specific directory structure
       - name: Prepare Repository Directory
@@ -195,26 +217,29 @@ jobs:
           path: ${{ steps.repo_info.outputs.REPO_NAME }}
           retention-days: 7
 
-      # Deploy to Firebase Hosting with repository-specific channel
+      # Deploy to Firebase Hosting with environment-aware configuration
       - name: Deploy to Firebase Hosting
         id: deploy
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
-          projectId: unreality3d
-          # CRITICAL: Use repository name as unique channelId
+          firebaseServiceAccount: ${{ secrets[steps.env_info.outputs.SERVICE_ACCOUNT_SECRET] }}
+          projectId: ${{ steps.env_info.outputs.PROJECT_ID }}
           channelId: ${{ steps.repo_info.outputs.REPO_NAME }}
           entryPoint: '.'
           expires: 30d
           
-      # Output deployment URL with repository-specific preview channel
+      # Output deployment URL with environment-specific information
       - name: Output Deployment Information
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          ENVIRONMENT="${{ steps.env_info.outputs.ENVIRONMENT }}"
+          PROJECT_ID="${{ steps.env_info.outputs.PROJECT_ID }}"
           PREVIEW_URL="${{ steps.deploy.outputs.details_url }}"
           
           echo "🎉 Deployment completed successfully!"
+          echo "🌍 Environment: ${ENVIRONMENT}"
+          echo "📦 Project: ${PROJECT_ID}"
           echo "📱 Repository: ${REPO_NAME}"
           echo "🌐 Your Unity WebGL Preview URL:"
           echo "$PREVIEW_URL"
@@ -232,6 +257,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**🎮 Unity WebGL URL:** [$PREVIEW_URL]($PREVIEW_URL)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🌍 Environment:** $ENVIRONMENT" >> $GITHUB_STEP_SUMMARY
+          echo "**📦 Project:** $PROJECT_ID" >> $GITHUB_STEP_SUMMARY
           echo "**📱 Repository:** $REPO_NAME" >> $GITHUB_STEP_SUMMARY
           echo "**⏰ Expires:** 30 days (auto-extends with deployments)" >> $GITHUB_STEP_SUMMARY
           echo "**🎯 Controls:** WASD to move, mouse to look" >> $GITHUB_STEP_SUMMARY
