@@ -63,7 +63,7 @@ jobs:
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_OUTPUT
           echo "Repository name: ${REPO_NAME}"
-          echo "Will deploy to: https://unreality3d2025.web.app/${REPO_NAME}/"
+          echo "Will deploy to: https://unreality3d.web.app/${REPO_NAME}/"
 
       # Create repository-specific directory structure
       - name: Prepare Repository Directory
@@ -202,7 +202,7 @@ jobs:
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
-          projectId: unreality3d2025
+          projectId: unreality3d
           # CRITICAL: Use repository name as unique channelId
           channelId: ${{ steps.repo_info.outputs.REPO_NAME }}
           entryPoint: '.'
