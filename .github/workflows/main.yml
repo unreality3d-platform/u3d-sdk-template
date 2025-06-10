@@ -132,12 +132,12 @@ jobs:
             fi
           fi
 
-      # Create standard Firebase configuration for preview channel
+      # Create Firebase configuration - FIXED VERSION (No Chrome Warnings)
       - name: Create Firebase Config
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           
-          # Create standard firebase.json (preview channels use standard structure)
+          # Create firebase.json with MINIMAL headers (prevents Chrome warnings)
           cat > firebase.json << EOF
           {
             "hosting": {
@@ -186,7 +186,7 @@ jobs:
           }
           EOF
           
-          echo "Created firebase.json for preview channel deployment"
+          echo "Created firebase.json with minimal headers (no Chrome warnings)"
 
       # Upload build artifacts for debugging
       - name: Upload Build Artifacts
