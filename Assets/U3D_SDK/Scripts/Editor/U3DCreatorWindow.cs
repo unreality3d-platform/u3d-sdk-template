@@ -20,7 +20,7 @@ namespace U3D.Editor
         public static void ShowWindow()
         {
             var window = GetWindow<U3DCreatorWindow>("U3D Creator Dashboard");
-            window.minSize = new Vector2(320, 500);
+            window.minSize = new Vector2(320, 560);
             window.Show();
         }
 
@@ -39,6 +39,7 @@ namespace U3D.Editor
         {
             InitializeTabs();
             LoadLogo();
+            InitializeStyles();
         }
 
         void LoadLogo()
@@ -79,25 +80,36 @@ namespace U3D.Editor
                 wordWrap = true
             };
 
-            tabButtonStyle = new GUIStyle(EditorStyles.miniButton)
+            // Use the same base style as your existing buttons
+            tabButtonStyle = new GUIStyle("Button")
             {
                 fontSize = 12,
                 fixedHeight = 35,
                 normal = {
-                    textColor = Color.white,
-                    background = MakeTex(1, 1, new Color(0.3f, 0.3f, 0.3f))
-                },
+            textColor = Color.white
+        },
                 hover = {
-                    background = MakeTex(1, 1, new Color(0.4f, 0.4f, 0.4f))
-                }
+            textColor = Color.white
+        },
+                onNormal = {
+            textColor = Color.white
+        }
             };
 
-            activeTabButtonStyle = new GUIStyle(tabButtonStyle)
+            activeTabButtonStyle = new GUIStyle("Button")
             {
+                fontSize = 12,
+                fixedHeight = 35,
                 normal = {
-                    textColor = Color.white,
-                    background = MakeTex(1, 1, new Color(0.4f, 0.5f, 0.9f))
-                }
+            textColor = Color.white
+        },
+                hover = {
+            textColor = Color.white
+        },
+                onNormal = {
+            textColor = Color.white
+        },
+                fontStyle = FontStyle.Bold
             };
 
             stylesInitialized = true;
@@ -105,60 +117,37 @@ namespace U3D.Editor
 
         void OnGUI()
         {
-            InitializeStyles();
-            DrawLogoFirst();
-            DrawRestOfHeader();
+            DrawHeader();
             DrawTabNavigation();
             DrawCurrentTab();
         }
 
-        void DrawLogoFirst()
-        {
-            if (logoTexture != null)
-            {
-                float windowWidth = position.width;
-                float logoSize = Mathf.Min(512f, windowWidth * 0.8f);
-
-                // Draw at absolute top of window content area
-                Rect logoRect = new Rect((windowWidth - logoSize) * 0.5f, 0, logoSize, logoSize);
-                GUI.DrawTexture(logoRect, logoTexture, ScaleMode.ScaleToFit);
-
-                // Advance layout cursor past the logo
-                GUILayout.Space(logoSize);
-            }
-        }
-
-        void DrawRestOfHeader()
+        void DrawHeader()
         {
             float windowWidth = position.width;
 
-            // Responsive header text
-            string headerText;
-            float textHeight;
-
-            if (windowWidth < 550)
+            if (logoTexture != null)
             {
-                headerText = "Unity 6 powered publishing\n+\nmonetization made instant";
-                textHeight = 60f;
-            }
-            else
-            {
-                headerText = "Unity 6 powered publishing + monetization made instant";
-                textHeight = 20f;
-            }
+                float maxLogoWidth = windowWidth * 0.8f;
+                float maxLogoHeight = 180f;
 
-            EditorGUILayout.LabelField(headerText, headerStyle, GUILayout.Height(textHeight));
-            EditorGUILayout.Space(6);
+                float aspectRatio = (float)logoTexture.width / logoTexture.height;
+                float logoWidth = Mathf.Min(maxLogoWidth, maxLogoHeight * aspectRatio);
+                float logoHeight = logoWidth / aspectRatio;
 
-            // Environment label
-            var envColor = GUI.color;
-            GUI.color = new Color(0.2f, 0.8f, 0.2f);
-            EditorGUILayout.LabelField("✓ Connected to Production Environment", EditorStyles.centeredGreyMiniLabel);
-            GUI.color = envColor;
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+
+                Rect logoRect = GUILayoutUtility.GetRect(logoWidth, logoHeight,
+                    GUILayout.ExpandWidth(false), GUILayout.ExpandHeight(false));
+                GUI.DrawTexture(logoRect, logoTexture, ScaleMode.ScaleToFit);
+
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+            }
 
             EditorGUILayout.Space(8);
         }
-
 
         void DrawTabNavigation()
         {
@@ -166,7 +155,6 @@ namespace U3D.Editor
 
             for (int i = 0; i < tabs.Count; i++)
             {
-                var tabStyle = selectedTab == i ? activeTabButtonStyle : tabButtonStyle;
                 var tabName = tabs[i].TabName;
 
                 if (tabs[i].IsComplete)
@@ -174,10 +162,18 @@ namespace U3D.Editor
                     tabName = "✓ " + tabName;
                 }
 
-                if (GUILayout.Button(tabName, tabStyle))
+                bool isSelected = selectedTab == i;
+                bool newSelection = GUILayout.Toggle(isSelected, tabName,
+                    isSelected ? activeTabButtonStyle : tabButtonStyle);
+
+                if (newSelection && !isSelected)
                 {
                     selectedTab = i;
-                    GUI.FocusControl(null);
+                }
+
+                if (i < tabs.Count - 1)
+                {
+                    GUILayout.Space(1f);
                 }
             }
 
@@ -193,6 +189,25 @@ namespace U3D.Editor
                 tabs[selectedTab].DrawTab();
                 EditorGUILayout.EndScrollView();
             }
+        }
+
+        private Texture2D CreateRoundedTexture(Color color)
+        {
+            int size = 16;
+            Texture2D texture = new Texture2D(size, size);
+            Color[] pixels = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    pixels[y * size + x] = color;
+                }
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
         }
 
         private Texture2D MakeTex(int width, int height, Color col)

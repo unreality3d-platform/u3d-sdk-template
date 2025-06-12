@@ -8,16 +8,56 @@ namespace U3D.Editor
     public class ProjectToolsTab : ICreatorTab
     {
         public string TabName => "Project Tools";
-        public bool IsComplete => true;
+        public bool IsComplete => false;
 
         private List<IToolCategory> categories;
         private int selectedCategoryIndex = 0;
         private string searchText = "";
         private Vector2 categoryScrollPosition;
 
+        private GUIStyle subtabButtonStyle;
+        private GUIStyle activeSubtabButtonStyle;
+        private bool stylesInitialized = false;
+
         public void Initialize()
         {
             InitializeToolCategories();
+            InitializeStyles();
+        }
+
+        private void InitializeStyles()
+        {
+            if (stylesInitialized) return;
+
+            // Match ONLY the color settings from your main window
+            subtabButtonStyle = new GUIStyle(EditorStyles.miniButton)
+            {
+                normal = {
+                    textColor = Color.white
+                },
+                hover = {
+                    textColor = Color.white
+                },
+                onNormal = {
+                    textColor = Color.white
+                }
+            };
+
+            activeSubtabButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
+            {
+                normal = {
+                    textColor = Color.white
+                },
+                hover = {
+                    textColor = Color.white
+                },
+                onNormal = {
+                    textColor = Color.white
+                },
+                fontStyle = FontStyle.Bold
+            };
+
+            stylesInitialized = true;
         }
 
         private void InitializeToolCategories()
@@ -34,6 +74,8 @@ namespace U3D.Editor
 
         public void DrawTab()
         {
+            InitializeStyles();
+
             EditorGUILayout.Space(10);
 
             EditorGUILayout.BeginHorizontal();
@@ -50,11 +92,20 @@ namespace U3D.Editor
             EditorGUILayout.BeginHorizontal();
             for (int i = 0; i < categories.Count; i++)
             {
-                var buttonStyle = selectedCategoryIndex == i ? EditorStyles.miniButtonMid : EditorStyles.miniButton;
-                if (GUILayout.Button(categories[i].CategoryName, buttonStyle))
+                // Change from Button to Toggle to match main tabs
+                bool isSelected = selectedCategoryIndex == i;
+                bool newSelection = GUILayout.Toggle(isSelected, categories[i].CategoryName,
+                    isSelected ? activeSubtabButtonStyle : subtabButtonStyle);
+
+                if (newSelection && !isSelected)
                 {
                     selectedCategoryIndex = i;
                     searchText = "";
+                }
+
+                if (i < categories.Count - 1)
+                {
+                    GUILayout.Space(1f);
                 }
             }
             EditorGUILayout.EndHorizontal();
