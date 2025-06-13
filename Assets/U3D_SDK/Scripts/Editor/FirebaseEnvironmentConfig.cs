@@ -76,15 +76,15 @@ namespace U3D.Editor
             // SECURITY: Load from secure EditorPrefs (local Unity storage)
             // These are set by the setup process, not stored in source code
 
-            // Production configuration
-            var prodConfig = LoadConfigFromPrefs("PROD");
+            // Production configuration - use PRODUCTION (not PROD) to match SetEnvironmentConfig
+            var prodConfig = LoadConfigFromPrefs("PRODUCTION");
             if (prodConfig != null)
             {
                 _configs["production"] = prodConfig;
             }
 
-            // Development configuration  
-            var devConfig = LoadConfigFromPrefs("DEV");
+            // Development configuration - use DEVELOPMENT (not DEV) to match SetEnvironmentConfig
+            var devConfig = LoadConfigFromPrefs("DEVELOPMENT");
             if (devConfig != null)
             {
                 _configs["development"] = devConfig;
@@ -127,23 +127,16 @@ namespace U3D.Editor
         static string DetermineEnvironment()
         {
             // Environment detection logic
-            // Priority: 1) Editor setting, 2) Auto-detection based on Unreality3D account
-
             string manualEnvironment = EditorPrefs.GetString("U3D_Environment", "auto");
             if (manualEnvironment != "auto")
             {
                 return manualEnvironment;
             }
 
-            // Auto-detect based on user authentication
-            if (Unreality3DAuthenticator.IsLoggedIn)
-            {
-                // Creators always use production for consistent experience
-                return "production";
-            }
-
-            // Default to development for internal development
-            return _configs.ContainsKey("development") ? "development" : "production";
+            // FIXED: Creators always use production environment
+            // This prevents the chicken-and-egg problem where login fails because
+            // we use development environment before the user is logged in
+            return "production";
         }
 
         // SECURITY: Method to safely set configuration (called by setup process)

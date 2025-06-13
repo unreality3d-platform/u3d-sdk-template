@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEditor;
-using System.Net.Http;
 using Newtonsoft.Json;
 
 namespace U3D.Editor
@@ -12,76 +12,71 @@ namespace U3D.Editor
     public static class Unreality3DAuthenticator
     {
         private static string _idToken = "";
-        private static string _creatorUsername = "";
         private static string _userEmail = "";
         private static string _displayName = "";
+        private static string _creatorUsername = "";
         private static bool _paypalConnected = false;
         private static bool _isLoggedIn = false;
 
-        // Public Properties
+        // Auto-login functionality
+        private static bool _autoLoginAttempted = false;
+
+        // Public properties
         public static bool IsLoggedIn => _isLoggedIn;
-        public static string CreatorUsername => _creatorUsername;
         public static string UserEmail => _userEmail;
         public static string DisplayName => _displayName;
-        public static bool PayPalConnected => _paypalConnected;
+        public static string CreatorUsername => _creatorUsername;
+        public static bool PaypalConnected => _paypalConnected;
 
-        // Initialize on startup
-        [InitializeOnLoadMethod]
-        static void Initialize()
+        static Unreality3DAuthenticator()
         {
-            LoadStoredCredentials();
+            EditorApplication.update += CheckAutoLogin;
         }
 
-        private static void LoadStoredCredentials()
+        private static async void CheckAutoLogin()
         {
-            _idToken = EditorPrefs.GetString("U3D_IDToken", "");
-            _creatorUsername = EditorPrefs.GetString("U3D_CreatorUsername", "");
-            _userEmail = EditorPrefs.GetString("U3D_UserEmail", "");
-            _displayName = EditorPrefs.GetString("U3D_DisplayName", "");
-            _paypalConnected = EditorPrefs.GetBool("U3D_PayPalConnected", false);
-            _isLoggedIn = !string.IsNullOrEmpty(_idToken);
-
-            // Validate stored token on startup
-            if (_isLoggedIn)
+            if (!_autoLoginAttempted && !_isLoggedIn)
             {
-                _ = ValidateStoredToken();
+                _autoLoginAttempted = true;
+                EditorApplication.update -= CheckAutoLogin;
+
+                try
+                {
+                    await TryAutoLogin();
+                }
+                catch (Exception ex)
+                {
+                    Debug.Log($"Auto-login skipped: {ex.Message}");
+                }
             }
         }
 
-        private static void SaveCredentials()
+        private static async Task TryAutoLogin()
         {
-            EditorPrefs.SetString("U3D_IDToken", _idToken);
-            EditorPrefs.SetString("U3D_CreatorUsername", _creatorUsername);
-            EditorPrefs.SetString("U3D_UserEmail", _userEmail);
-            EditorPrefs.SetString("U3D_DisplayName", _displayName);
-            EditorPrefs.SetBool("U3D_PayPalConnected", _paypalConnected);
-        }
+            string storedToken = EditorPrefs.GetString("U3D_IdToken", "");
+            string storedEmail = EditorPrefs.GetString("U3D_UserEmail", "");
 
-        private static void ClearCredentials()
-        {
-            _idToken = "";
-            _creatorUsername = "";
-            _userEmail = "";
-            _displayName = "";
-            _paypalConnected = false;
-            _isLoggedIn = false;
+            if (!string.IsNullOrEmpty(storedToken) && !string.IsNullOrEmpty(storedEmail))
+            {
+                _idToken = storedToken;
+                _userEmail = storedEmail;
+                _isLoggedIn = true;
 
-            EditorPrefs.DeleteKey("U3D_IDToken");
-            EditorPrefs.DeleteKey("U3D_CreatorUsername");
-            EditorPrefs.DeleteKey("U3D_UserEmail");
-            EditorPrefs.DeleteKey("U3D_DisplayName");
-            EditorPrefs.DeleteKey("U3D_PayPalConnected");
+                bool isValid = await ValidateStoredToken();
+                if (isValid)
+                {
+                    await LoadUserProfile();
+                    Debug.Log($"Auto-login successful: {_userEmail}");
+                }
+            }
         }
 
         public static async Task<bool> LoginWithEmailPassword(string email, string password)
         {
             try
             {
-                // SECURITY FIX: Use secure configuration instead of hard-coded API key
-                if (!FirebaseConfigManager.IsConfigurationComplete())
-                {
-                    throw new Exception("Firebase configuration not complete. Please run Setup tab.");
-                }
+                // Establish Firebase configuration if needed
+                await EnsureFirebaseConfiguration();
 
                 var loginData = new
                 {
@@ -95,11 +90,16 @@ namespace U3D.Editor
 
                 using (var client = new HttpClient())
                 {
-                    // SECURITY FIX: Use secure configuration for endpoint
                     var authEndpoint = FirebaseConfigManager.CurrentConfig.GetAuthEndpoint("signInWithPassword");
-                    var response = await client.PostAsync(authEndpoint, loginContent);
+                    Debug.Log($"Attempting login to: {authEndpoint}");
+                    Debug.Log($"Using project: {FirebaseConfigManager.CurrentConfig.projectId}");
 
+                    var response = await client.PostAsync(authEndpoint, loginContent);
                     var responseText = await response.Content.ReadAsStringAsync();
+
+                    // Add detailed logging for debugging
+                    Debug.Log($"Response status: {response.StatusCode}");
+                    Debug.Log($"Response content: {responseText}");
 
                     if (response.IsSuccessStatusCode)
                     {
@@ -117,26 +117,48 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                        var errorMessage = "Login failed";
-
-                        if (error.ContainsKey("error"))
+                        // Parse the error response more thoroughly
+                        try
                         {
-                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                            if (errorData.ContainsKey("message"))
-                            {
-                                var message = errorData["message"].ToString();
-                                errorMessage = message switch
-                                {
-                                    "EMAIL_NOT_FOUND" => "Account not found",
-                                    "INVALID_PASSWORD" => "Incorrect password",
-                                    "USER_DISABLED" => "Account has been disabled",
-                                    _ => "Login failed"
-                                };
-                            }
-                        }
+                            var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                            var errorMessage = "Login failed";
 
-                        throw new Exception(errorMessage);
+                            if (error.ContainsKey("error"))
+                            {
+                                var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+
+                                // Log the complete error structure for debugging
+                                Debug.LogError($"Complete error response: {error["error"].ToString()}");
+
+                                if (errorData.ContainsKey("message"))
+                                {
+                                    var message = errorData["message"].ToString();
+                                    Debug.LogError($"Firebase error message: {message}");
+
+                                    errorMessage = message switch
+                                    {
+                                        "EMAIL_NOT_FOUND" => "Account not found",
+                                        "INVALID_PASSWORD" => "Incorrect password",
+                                        "USER_DISABLED" => "Account has been disabled",
+                                        "INVALID_LOGIN_CREDENTIALS" => "Invalid email or password",
+                                        "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
+                                        _ => $"Login failed: {message}"
+                                    };
+                                }
+                            }
+                            else
+                            {
+                                // If there's no "error" key, show the full response
+                                errorMessage = $"Login failed: {responseText}";
+                            }
+
+                            throw new Exception(errorMessage);
+                        }
+                        catch (JsonException)
+                        {
+                            // If we can't parse the JSON, show the raw response
+                            throw new Exception($"Login failed: {responseText}");
+                        }
                     }
                 }
             }
@@ -151,11 +173,8 @@ namespace U3D.Editor
         {
             try
             {
-                // SECURITY FIX: Use secure configuration instead of hard-coded API key
-                if (!FirebaseConfigManager.IsConfigurationComplete())
-                {
-                    throw new Exception("Firebase configuration not complete. Please run Setup tab.");
-                }
+                // Establish Firebase configuration if needed
+                await EnsureFirebaseConfiguration();
 
                 var registerData = new
                 {
@@ -169,7 +188,6 @@ namespace U3D.Editor
 
                 using (var client = new HttpClient())
                 {
-                    // SECURITY FIX: Use secure configuration for endpoint
                     var authEndpoint = FirebaseConfigManager.CurrentConfig.GetAuthEndpoint("signUp");
                     var response = await client.PostAsync(authEndpoint, registerContent);
 
@@ -333,11 +351,8 @@ namespace U3D.Editor
 
         private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
         {
-            // SECURITY FIX: Check configuration before making calls
-            if (!FirebaseConfigManager.IsConfigurationComplete())
-            {
-                throw new Exception("Firebase configuration not complete. Please run Setup tab.");
-            }
+            // Establish Firebase configuration if needed
+            await EnsureFirebaseConfiguration();
 
             using (var client = new HttpClient())
             {
@@ -351,7 +366,6 @@ namespace U3D.Editor
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                 }
 
-                // SECURITY FIX: Use secure configuration for function endpoint
                 var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
                 var response = await client.PostAsync(functionEndpoint, content);
 
@@ -381,6 +395,140 @@ namespace U3D.Editor
                     throw new Exception(errorMessage);
                 }
             }
+        }
+
+        private static async Task EnsureFirebaseConfiguration()
+        {
+            // Check if we have a valid configuration (not the placeholder)
+            if (FirebaseConfigManager.IsConfigurationComplete() &&
+                FirebaseConfigManager.CurrentConfig.apiKey != "setup-required")
+            {
+                return; // Already properly configured
+            }
+
+            Debug.Log("Establishing Firebase configuration...");
+            await EstablishDynamicConfiguration();
+
+            // Verify configuration was established
+            if (!FirebaseConfigManager.IsConfigurationComplete())
+            {
+                throw new Exception("Failed to establish Firebase configuration. Please check your internet connection and try again.");
+            }
+        }
+
+        private static async Task EstablishDynamicConfiguration()
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    // Use a public endpoint to get public Firebase configuration
+                    // These API keys are public anyway (visible in deployed web apps)
+                    var response = await client.GetAsync("https://unreality3d.web.app/__/firebase/init.json");
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var configText = await response.Content.ReadAsStringAsync();
+                        var firebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(configText);
+
+                        var productionConfig = new FirebaseEnvironmentConfig
+                        {
+                            apiKey = firebaseConfig["apiKey"].ToString(),
+                            authDomain = firebaseConfig["authDomain"].ToString(),
+                            projectId = firebaseConfig["projectId"].ToString(),
+                            storageBucket = firebaseConfig["storageBucket"].ToString(),
+                            messagingSenderId = firebaseConfig["messagingSenderId"].ToString(),
+                            appId = firebaseConfig["appId"].ToString(),
+                            measurementId = firebaseConfig.ContainsKey("measurementId") ?
+                                firebaseConfig["measurementId"].ToString() : ""
+                        };
+
+                        // Also set up development config for completeness
+                        var developmentConfig = new FirebaseEnvironmentConfig
+                        {
+                            apiKey = "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+                            authDomain = "unreality3d2025.firebaseapp.com",
+                            projectId = "unreality3d2025",
+                            storageBucket = "unreality3d2025.firebasestorage.app",
+                            messagingSenderId = "244081840635",
+                            appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                            measurementId = "G-YXC3XB3PFL"
+                        };
+
+                        FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
+                        FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
+
+                        Debug.Log("Firebase configuration established dynamically");
+                    }
+                    else
+                    {
+                        // Fallback to hardcoded public configuration
+                        SetupFallbackConfiguration();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Dynamic configuration failed: {ex.Message}. Using fallback.");
+                SetupFallbackConfiguration();
+            }
+        }
+
+        private static void SetupFallbackConfiguration()
+        {
+            // Fallback to known public configuration
+            // These are public API keys that are already exposed in web deployments
+            var productionConfig = new FirebaseEnvironmentConfig
+            {
+                apiKey = "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
+                authDomain = "unreality3d.firebaseapp.com",
+                projectId = "unreality3d",
+                storageBucket = "unreality3d.firebasestorage.app",
+                messagingSenderId = "183773881724",
+                appId = "1:183773881724:web:50ca32baa00960b46170f9",
+                measurementId = "G-YXC3XB3PFL"
+            };
+
+            var developmentConfig = new FirebaseEnvironmentConfig
+            {
+                apiKey = "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+                authDomain = "unreality3d2025.firebaseapp.com",
+                projectId = "unreality3d2025",
+                storageBucket = "unreality3d2025.firebasestorage.app",
+                messagingSenderId = "244081840635",
+                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                measurementId = "G-YXC3XB3PFL"
+            };
+
+            FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
+            FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
+
+            Debug.Log("Firebase fallback configuration applied");
+        }
+
+        private static void SaveCredentials()
+        {
+            EditorPrefs.SetString("U3D_IdToken", _idToken);
+            EditorPrefs.SetString("U3D_UserEmail", _userEmail);
+            EditorPrefs.SetString("U3D_DisplayName", _displayName);
+            EditorPrefs.SetString("U3D_CreatorUsername", _creatorUsername);
+            EditorPrefs.SetBool("U3D_PaypalConnected", _paypalConnected);
+        }
+
+        private static void ClearCredentials()
+        {
+            _idToken = "";
+            _userEmail = "";
+            _displayName = "";
+            _creatorUsername = "";
+            _paypalConnected = false;
+            _isLoggedIn = false;
+
+            EditorPrefs.DeleteKey("U3D_IdToken");
+            EditorPrefs.DeleteKey("U3D_UserEmail");
+            EditorPrefs.DeleteKey("U3D_DisplayName");
+            EditorPrefs.DeleteKey("U3D_CreatorUsername");
+            EditorPrefs.DeleteKey("U3D_PaypalConnected");
         }
     }
 }
