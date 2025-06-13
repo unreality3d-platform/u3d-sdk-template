@@ -9,6 +9,7 @@ namespace U3D.Editor
     {
         public string TabName => "Check & Fix";
         public bool IsComplete { get; private set; }
+        public System.Action<int> OnRequestTabSwitch { get; set; }
 
         private List<IValidationCategory> validationCategories;
         private int selectedCategoryIndex = 0;

@@ -7,6 +7,7 @@ namespace U3D.Editor
     {
         public string TabName => "Publish";
         public bool IsComplete { get; private set; }
+        public System.Action<int> OnRequestTabSwitch { get; set; }
 
         private PublishStep currentStep = PublishStep.Ready;
         private string publishUrl = "";
@@ -35,6 +36,22 @@ namespace U3D.Editor
                 projectSaved = true;
                 deploymentComplete = true;
             }
+        }
+
+        private void ResetPublishState()
+        {
+            // Clear all publish-related EditorPrefs
+            EditorPrefs.DeleteKey("U3D_PublishedURL");
+
+            // Reset internal state
+            publishUrl = "";
+            githubConnected = false;
+            projectSaved = false;
+            deploymentComplete = false;
+            currentStep = PublishStep.Ready;
+            IsComplete = false;
+
+            Debug.Log("Publish state reset - ready to publish again");
         }
 
         public void DrawTab()
@@ -204,6 +221,19 @@ namespace U3D.Editor
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(10);
+
+            if (GUILayout.Button("Reset for New Publish", GUILayout.Height(30)))
+            {
+                if (EditorUtility.DisplayDialog("Reset Publish State",
+                    "This will reset the publish tab so you can test publishing again. Continue?",
+                    "Yes, Reset", "Cancel"))
+                {
+                    ResetPublishState();
+                }
+            }
+
+            EditorGUILayout.Space(10);
+
             EditorGUILayout.LabelField("Share this URL with friends to let them experience your creation!", EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.EndVertical();

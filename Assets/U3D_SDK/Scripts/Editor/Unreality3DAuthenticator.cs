@@ -1,345 +1,370 @@
 ﻿using System;
-using System.Collections;
-using System.Net.Http;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEditor;
+using System.Net.Http;
 using Newtonsoft.Json;
 
 namespace U3D.Editor
 {
     public static class Unreality3DAuthenticator
     {
-        private const string AUTH_TOKEN_KEY = "U3D_AuthToken";
-        private const string USER_PROFILE_KEY = "U3D_UserProfile";
-        private const string FIREBASE_FUNCTIONS_BASE = "https://us-central1-unreality3d.cloudfunctions.net";
+        private static string _idToken = "";
+        private static string _creatorUsername = "";
+        private static string _userEmail = "";
+        private static string _displayName = "";
+        private static bool _paypalConnected = false;
+        private static bool _isLoggedIn = false;
 
-        private static HttpClient httpClient;
-        private static Unreality3DUserProfile cachedProfile;
+        // Public Properties
+        public static bool IsLoggedIn => _isLoggedIn;
+        public static string CreatorUsername => _creatorUsername;
+        public static string UserEmail => _userEmail;
+        public static string DisplayName => _displayName;
+        public static bool PayPalConnected => _paypalConnected;
 
-        public static bool IsAuthenticated => !string.IsNullOrEmpty(GetStoredAuthToken());
-        public static string CreatorUsername => cachedProfile?.creatorUsername ?? "";
-        public static string UserEmail => cachedProfile?.email ?? "";
-
-        static Unreality3DAuthenticator()
+        // Initialize on startup
+        [InitializeOnLoadMethod]
+        static void Initialize()
         {
-            httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
-            LoadCachedProfile();
+            LoadStoredCredentials();
         }
 
-        public static async Task<AuthResult> AuthenticateWithEmailAsync(string email, string password)
+        private static void LoadStoredCredentials()
+        {
+            _idToken = EditorPrefs.GetString("U3D_IDToken", "");
+            _creatorUsername = EditorPrefs.GetString("U3D_CreatorUsername", "");
+            _userEmail = EditorPrefs.GetString("U3D_UserEmail", "");
+            _displayName = EditorPrefs.GetString("U3D_DisplayName", "");
+            _paypalConnected = EditorPrefs.GetBool("U3D_PayPalConnected", false);
+            _isLoggedIn = !string.IsNullOrEmpty(_idToken);
+
+            // Validate stored token on startup
+            if (_isLoggedIn)
+            {
+                _ = ValidateStoredToken();
+            }
+        }
+
+        private static void SaveCredentials()
+        {
+            EditorPrefs.SetString("U3D_IDToken", _idToken);
+            EditorPrefs.SetString("U3D_CreatorUsername", _creatorUsername);
+            EditorPrefs.SetString("U3D_UserEmail", _userEmail);
+            EditorPrefs.SetString("U3D_DisplayName", _displayName);
+            EditorPrefs.SetBool("U3D_PayPalConnected", _paypalConnected);
+        }
+
+        private static void ClearCredentials()
+        {
+            _idToken = "";
+            _creatorUsername = "";
+            _userEmail = "";
+            _displayName = "";
+            _paypalConnected = false;
+            _isLoggedIn = false;
+
+            EditorPrefs.DeleteKey("U3D_IDToken");
+            EditorPrefs.DeleteKey("U3D_CreatorUsername");
+            EditorPrefs.DeleteKey("U3D_UserEmail");
+            EditorPrefs.DeleteKey("U3D_DisplayName");
+            EditorPrefs.DeleteKey("U3D_PayPalConnected");
+        }
+
+        public static async Task<bool> LoginWithEmailPassword(string email, string password)
         {
             try
             {
-                var authRequest = new
+                var loginData = new
                 {
                     email = email,
                     password = password,
                     returnSecureToken = true
                 };
 
-                var json = JsonConvert.SerializeObject(authRequest);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var loginJson = JsonConvert.SerializeObject(loginData);
+                var loginContent = new StringContent(loginJson, Encoding.UTF8, "application/json");
 
-                // Firebase Auth REST API
-                var authUrl = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg";
-                var response = await httpClient.PostAsync(authUrl, content);
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
+                using (var client = new HttpClient())
                 {
-                    var error = JsonConvert.DeserializeObject<FirebaseAuthError>(responseText);
-                    return new AuthResult { Success = false, ErrorMessage = GetFriendlyErrorMessage(error.error.message) };
+                    // Use Firebase Auth REST API
+                    var response = await client.PostAsync(
+                        "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+                        loginContent);
+
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        _idToken = result["idToken"].ToString();
+                        _userEmail = result["email"].ToString();
+                        _isLoggedIn = true;
+
+                        // Load user profile
+                        await LoadUserProfile();
+                        SaveCredentials();
+
+                        Debug.Log($"Login successful: {_userEmail}");
+                        return true;
+                    }
+                    else
+                    {
+                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        var errorMessage = "Login failed";
+
+                        if (error.ContainsKey("error"))
+                        {
+                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                            if (errorData.ContainsKey("message"))
+                            {
+                                var message = errorData["message"].ToString();
+                                errorMessage = message switch
+                                {
+                                    "EMAIL_NOT_FOUND" => "Account not found",
+                                    "INVALID_PASSWORD" => "Incorrect password",
+                                    "USER_DISABLED" => "Account has been disabled",
+                                    _ => "Login failed"
+                                };
+                            }
+                        }
+
+                        throw new Exception(errorMessage);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Login error: {ex.Message}");
+                throw;
+            }
+        }
 
-                var authResponse = JsonConvert.DeserializeObject<FirebaseAuthResponse>(responseText);
-
-                // Get user profile from your Firebase Functions
-                var profileResult = await GetUserProfile(authResponse.idToken);
-                if (!profileResult.Success)
+        public static async Task<bool> RegisterWithEmailPassword(string email, string password)
+        {
+            try
+            {
+                var registerData = new
                 {
-                    return profileResult;
-                }
-
-                // Store authentication data
-                StoreAuthToken(authResponse.idToken);
-                cachedProfile = profileResult.Profile;
-                StoreCachedProfile(cachedProfile);
-
-                return new AuthResult
-                {
-                    Success = true,
-                    Profile = cachedProfile,
-                    Message = $"Welcome back, {cachedProfile.creatorUsername}!"
+                    email = email,
+                    password = password,
+                    returnSecureToken = true
                 };
+
+                var registerJson = JsonConvert.SerializeObject(registerData);
+                var registerContent = new StringContent(registerJson, Encoding.UTF8, "application/json");
+
+                using (var client = new HttpClient())
+                {
+                    // Use Firebase Auth REST API
+                    var response = await client.PostAsync(
+                        "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+                        registerContent);
+
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        _idToken = result["idToken"].ToString();
+                        _userEmail = result["email"].ToString();
+                        _isLoggedIn = true;
+
+                        // Create initial user profile
+                        await LoadUserProfile();
+                        SaveCredentials();
+
+                        Debug.Log($"Registration successful: {_userEmail}");
+                        return true;
+                    }
+                    else
+                    {
+                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        var errorMessage = "Registration failed";
+
+                        if (error.ContainsKey("error"))
+                        {
+                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                            if (errorData.ContainsKey("message"))
+                            {
+                                var message = errorData["message"].ToString();
+                                errorMessage = message switch
+                                {
+                                    "EMAIL_EXISTS" => "Account already exists",
+                                    "WEAK_PASSWORD" => "Password should be at least 6 characters",
+                                    "INVALID_EMAIL" => "Invalid email address",
+                                    _ => "Registration failed"
+                                };
+                            }
+                        }
+
+                        throw new Exception(errorMessage);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                return new AuthResult { Success = false, ErrorMessage = $"Authentication failed: {ex.Message}" };
+                Debug.LogError($"Registration error: {ex.Message}");
+                throw;
             }
         }
 
-        public static async Task<AuthResult> CheckUsernameAvailabilityAsync(string username)
-        {
-            if (string.IsNullOrWhiteSpace(username))
-            {
-                return new AuthResult { Success = false, ErrorMessage = "Please enter a username" };
-            }
-
-            if (!IsValidUsername(username))
-            {
-                return new AuthResult { Success = false, ErrorMessage = "Username contains invalid characters. Use only letters, numbers, and hyphens." };
-            }
-
-            try
-            {
-                var checkRequest = new { username = username.ToLower() };
-                var json = JsonConvert.SerializeObject(checkRequest);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var authToken = GetStoredAuthToken();
-                if (!string.IsNullOrEmpty(authToken))
-                {
-                    httpClient.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
-                }
-
-                var response = await httpClient.PostAsync($"{FIREBASE_FUNCTIONS_BASE}/checkUsernameAvailability", content);
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return new AuthResult { Success = false, ErrorMessage = "Unable to check username availability" };
-                }
-
-                var availabilityResponse = JsonConvert.DeserializeObject<UsernameAvailabilityResponse>(responseText);
-
-                if (!availabilityResponse.available)
-                {
-                    return new AuthResult { Success = false, ErrorMessage = $"'{username}' is already taken. Try: {string.Join(", ", availabilityResponse.suggestions)}" };
-                }
-
-                return new AuthResult { Success = true, Message = $"'{username}' is available!" };
-            }
-            catch (Exception ex)
-            {
-                return new AuthResult { Success = false, ErrorMessage = $"Username check failed: {ex.Message}" };
-            }
-        }
-
-        public static async Task<AuthResult> ReserveUsernameAsync(string username)
-        {
-            if (!IsAuthenticated)
-            {
-                return new AuthResult { Success = false, ErrorMessage = "Please log in first" };
-            }
-
-            try
-            {
-                var reserveRequest = new { username = username.ToLower() };
-                var json = JsonConvert.SerializeObject(reserveRequest);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var authToken = GetStoredAuthToken();
-                httpClient.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
-
-                var response = await httpClient.PostAsync($"{FIREBASE_FUNCTIONS_BASE}/reserveUsername", content);
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var error = JsonConvert.DeserializeObject<dynamic>(responseText);
-                    return new AuthResult { Success = false, ErrorMessage = error.error?.message ?? "Username reservation failed" };
-                }
-
-                // Update cached profile
-                if (cachedProfile != null)
-                {
-                    cachedProfile.creatorUsername = username.ToLower();
-                    StoreCachedProfile(cachedProfile);
-                }
-
-                return new AuthResult { Success = true, Message = $"Username '{username}' reserved successfully!" };
-            }
-            catch (Exception ex)
-            {
-                return new AuthResult { Success = false, ErrorMessage = $"Username reservation failed: {ex.Message}" };
-            }
-        }
-
-        private static async Task<AuthResult> GetUserProfile(string idToken)
+        public static async Task<bool> CheckUsernameAvailability(string username)
         {
             try
             {
-                httpClient.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", idToken);
-
-                var response = await httpClient.GetAsync($"{FIREBASE_FUNCTIONS_BASE}/getUserProfile");
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return new AuthResult { Success = false, ErrorMessage = "Failed to load user profile" };
-                }
-
-                var profile = JsonConvert.DeserializeObject<Unreality3DUserProfile>(responseText);
-                return new AuthResult { Success = true, Profile = profile };
+                var result = await CallFirebaseFunction("checkUsernameAvailability", new { username = username });
+                return result.ContainsKey("available") && (bool)result["available"];
             }
             catch (Exception ex)
             {
-                return new AuthResult { Success = false, ErrorMessage = $"Profile loading failed: {ex.Message}" };
-            }
-        }
-
-        private static bool IsValidUsername(string username)
-        {
-            if (string.IsNullOrWhiteSpace(username) || username.Length < 3 || username.Length > 20)
+                Debug.LogError($"Username check error: {ex.Message}");
                 return false;
-
-            // Only letters, numbers, and hyphens, can't start/end with hyphen
-            if (username.StartsWith("-") || username.EndsWith("-"))
-                return false;
-
-            foreach (char c in username)
-            {
-                if (!char.IsLetterOrDigit(c) && c != '-')
-                    return false;
             }
-
-            // Check against reserved words
-            var reserved = new[] { "www", "api", "admin", "root", "support", "help", "about", "blog", "shop", "store", "unreality3d" };
-            return !Array.Exists(reserved, r => r.Equals(username, StringComparison.OrdinalIgnoreCase));
         }
 
-        private static string GetFriendlyErrorMessage(string firebaseError)
+        public static async Task<string[]> GetUsernameSuggestions(string username)
         {
-            return firebaseError switch
+            try
             {
-                "EMAIL_NOT_FOUND" => "No account found with this email address.",
-                "INVALID_PASSWORD" => "Incorrect password. Please try again.",
-                "USER_DISABLED" => "This account has been disabled.",
-                "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
-                _ => "Login failed. Please check your credentials."
-            };
+                var result = await CallFirebaseFunction("checkUsernameAvailability", new { username = username });
+                if (result.ContainsKey("suggestions"))
+                {
+                    var suggestions = JsonConvert.DeserializeObject<string[]>(result["suggestions"].ToString());
+                    return suggestions ?? new string[0];
+                }
+                return new string[0];
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Username suggestions error: {ex.Message}");
+                return new string[0];
+            }
+        }
+
+        public static async Task<bool> ReserveUsername(string username)
+        {
+            try
+            {
+                var result = await CallFirebaseFunction("reserveUsername", new { username = username });
+
+                if (result.ContainsKey("success") && (bool)result["success"])
+                {
+                    _creatorUsername = username;
+                    SaveCredentials();
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Username reservation error: {ex.Message}");
+                throw;
+            }
         }
 
         public static void Logout()
         {
-            EditorPrefs.DeleteKey(AUTH_TOKEN_KEY);
-            EditorPrefs.DeleteKey(USER_PROFILE_KEY);
-            cachedProfile = null;
-
-            if (httpClient != null)
-            {
-                httpClient.DefaultRequestHeaders.Authorization = null;
-            }
+            ClearCredentials();
+            Debug.Log("Logged out successfully");
         }
 
-        private static void StoreAuthToken(string token)
+        private static async Task<bool> ValidateStoredToken()
         {
-            var encryptedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
-            EditorPrefs.SetString(AUTH_TOKEN_KEY, encryptedToken);
-        }
-
-        private static string GetStoredAuthToken()
-        {
-            var encryptedToken = EditorPrefs.GetString(AUTH_TOKEN_KEY, "");
-            if (string.IsNullOrEmpty(encryptedToken))
-                return "";
-
             try
             {
-                return Encoding.UTF8.GetString(Convert.FromBase64String(encryptedToken));
+                var result = await CallFirebaseFunction("getUserProfile", new { });
+                return result.ContainsKey("userId");
             }
-            catch
+            catch (Exception ex)
             {
-                EditorPrefs.DeleteKey(AUTH_TOKEN_KEY);
-                return "";
+                Debug.LogError($"Token validation failed: {ex.Message}");
+                ClearCredentials();
+                return false;
             }
         }
 
-        private static void StoreCachedProfile(Unreality3DUserProfile profile)
+        private static async Task LoadUserProfile()
         {
-            var json = JsonConvert.SerializeObject(profile);
-            EditorPrefs.SetString(USER_PROFILE_KEY, json);
-        }
-
-        private static void LoadCachedProfile()
-        {
-            var json = EditorPrefs.GetString(USER_PROFILE_KEY, "");
-            if (!string.IsNullOrEmpty(json))
+            try
             {
-                try
+                var result = await CallFirebaseFunction("getUserProfile", new { });
+
+                if (result.ContainsKey("creatorUsername"))
                 {
-                    cachedProfile = JsonConvert.DeserializeObject<Unreality3DUserProfile>(json);
+                    _creatorUsername = result["creatorUsername"].ToString();
                 }
-                catch
+
+                if (result.ContainsKey("email"))
                 {
-                    EditorPrefs.DeleteKey(USER_PROFILE_KEY);
+                    _userEmail = result["email"].ToString();
                 }
+
+                if (result.ContainsKey("displayName"))
+                {
+                    _displayName = result["displayName"].ToString();
+                }
+
+                if (result.ContainsKey("paypalConnected"))
+                {
+                    _paypalConnected = (bool)result["paypalConnected"];
+                }
+
+                Debug.Log($"Profile loaded: {_userEmail}, Username: {_creatorUsername}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Profile load failed: {ex.Message}");
+                // Don't throw - profile might not exist yet, which is fine
             }
         }
 
-        public static void OpenSignupPage()
+        private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
         {
-            Application.OpenURL("https://unreality3d.web.app/register");
+            using (var client = new HttpClient())
+            {
+                var requestData = new { data = data };
+                var json = JsonConvert.SerializeObject(requestData);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                // Add authentication header if logged in
+                if (!string.IsNullOrEmpty(_idToken))
+                {
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
+                }
+
+                var response = await client.PostAsync(
+                    $"https://{functionName}-peaofujdma-uc.a.run.app",
+                    content);
+
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    return result.ContainsKey("result") ?
+                        JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
+                        result;
+                }
+                else
+                {
+                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    var errorMessage = "Function call failed";
+
+                    if (error.ContainsKey("error"))
+                    {
+                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                        if (errorData.ContainsKey("message"))
+                        {
+                            errorMessage = errorData["message"].ToString();
+                        }
+                    }
+
+                    throw new Exception(errorMessage);
+                }
+            }
         }
-
-        public static void OpenLoginPage()
-        {
-            Application.OpenURL("https://unreality3d.web.app/login");
-        }
-    }
-
-    [Serializable]
-    public class Unreality3DUserProfile
-    {
-        public string userId;
-        public string email;
-        public string creatorUsername;
-        public string displayName;
-        public string userType; // visitor, creator, seller
-        public bool paypalConnected;
-    }
-
-    [Serializable]
-    public class FirebaseAuthResponse
-    {
-        public string idToken;
-        public string email;
-        public string refreshToken;
-        public string expiresIn;
-        public string localId;
-    }
-
-    [Serializable]
-    public class FirebaseAuthError
-    {
-        public FirebaseErrorDetails error;
-    }
-
-    [Serializable]
-    public class FirebaseErrorDetails
-    {
-        public string message;
-        public int code;
-    }
-
-    [Serializable]
-    public class UsernameAvailabilityResponse
-    {
-        public bool available;
-        public string[] suggestions;
-    }
-
-    public class AuthResult
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; }
-        public string ErrorMessage { get; set; }
-        public Unreality3DUserProfile Profile { get; set; }
     }
 }

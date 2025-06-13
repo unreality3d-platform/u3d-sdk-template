@@ -65,6 +65,18 @@ namespace U3D.Editor
             foreach (var tab in tabs)
             {
                 tab.Initialize();
+                // Add navigation callback
+                tab.OnRequestTabSwitch = SwitchToTab;
+            }
+        }
+
+        // Navigation method for tabs to request tab switches
+        private void SwitchToTab(int tabIndex)
+        {
+            if (tabIndex >= 0 && tabIndex < tabs.Count)
+            {
+                selectedTab = tabIndex;
+                Repaint(); // Refresh the window
             }
         }
 

@@ -9,6 +9,7 @@ namespace U3D.Editor
     {
         public string TabName => "Project Tools";
         public bool IsComplete => false;
+        public System.Action<int> OnRequestTabSwitch { get; set; }
 
         private List<IToolCategory> categories;
         private int selectedCategoryIndex = 0;
