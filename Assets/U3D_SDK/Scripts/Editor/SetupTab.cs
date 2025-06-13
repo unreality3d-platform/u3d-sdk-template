@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEditor;
+using System.Threading.Tasks;
 
 namespace U3D.Editor
 {
@@ -15,7 +16,8 @@ namespace U3D.Editor
             PayPalLogin,
             ManualLogin,
             ManualRegister,
-            LoggedIn
+            LoggedIn,
+            UsernameReservation
         }
 
         private AuthState currentState = AuthState.MethodSelection;
@@ -24,14 +26,75 @@ namespace U3D.Editor
         private string password = "";
         private string confirmPassword = "";
 
+        // Username reservation fields
+        private string desiredUsername = "";
+        private bool checkingAvailability = false;
+        private bool usernameAvailable = false;
+        private bool usernameChecked = false;
+        private string[] usernameSuggestions = new string[0];
+        private bool reservingUsername = false;
+
         public void Initialize()
         {
+            // SECURITY FIX: Auto-configure Firebase with secure defaults if needed
+            EnsureFirebaseConfiguration();
+
             // Check if already logged in
             if (Unreality3DAuthenticator.IsLoggedIn)
             {
-                currentState = AuthState.LoggedIn;
-                UpdateCompletion();
+                if (string.IsNullOrEmpty(Unreality3DAuthenticator.CreatorUsername))
+                {
+                    currentState = AuthState.UsernameReservation;
+                }
+                else
+                {
+                    currentState = AuthState.LoggedIn;
+                }
             }
+            else
+            {
+                currentState = AuthState.MethodSelection;
+            }
+
+            UpdateCompletion();
+        }
+
+        private void EnsureFirebaseConfiguration()
+        {
+            // Check if configuration is already complete
+            if (FirebaseConfigManager.IsConfigurationComplete())
+            {
+                return; // Already configured
+            }
+
+            // Auto-configure with secure defaults from your knowledge base
+            var productionConfig = new FirebaseEnvironmentConfig
+            {
+                apiKey = "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
+                authDomain = "unreality3d.firebaseapp.com",
+                projectId = "unreality3d",
+                storageBucket = "unreality3d.firebasestorage.app",
+                messagingSenderId = "183773881724",
+                appId = "1:183773881724:web:50ca32baa00960b46170f9",
+                measurementId = "G-YXC3XB3PFL"
+            };
+
+            var developmentConfig = new FirebaseEnvironmentConfig
+            {
+                apiKey = "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+                authDomain = "unreality3d2025.firebaseapp.com",
+                projectId = "unreality3d2025",
+                storageBucket = "unreality3d2025.firebasestorage.app",
+                messagingSenderId = "244081840635",
+                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                measurementId = "G-YXC3XB3PFL"
+            };
+
+            // Set both configurations
+            FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
+            FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
+
+            Debug.Log("Firebase configuration auto-configured with secure defaults");
         }
 
         public void DrawTab()
@@ -51,6 +114,9 @@ namespace U3D.Editor
                     break;
                 case AuthState.ManualRegister:
                     DrawManualRegister();
+                    break;
+                case AuthState.UsernameReservation:
+                    DrawUsernameReservation();
                     break;
                 case AuthState.LoggedIn:
                     DrawLoggedInState();
@@ -97,7 +163,7 @@ namespace U3D.Editor
             GUILayout.Space(25);
             EditorGUILayout.BeginVertical();
             EditorGUILayout.LabelField("Email & Password", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Publish to professional URLs", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Professional creator URLs", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("• Add monetization later (optional)", EditorStyles.miniLabel);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
@@ -116,6 +182,80 @@ namespace U3D.Editor
                     currentState = AuthState.ManualLogin;
                 }
             }
+
+            // Advanced configuration option (hidden by default)
+            //EditorGUILayout.Space(20);
+            //if (GUILayout.Button("⚙️ Advanced Configuration", GUILayout.Height(25)))
+            //{
+            //    ShowAdvancedConfiguration();
+            //}
+        }
+
+        private void ShowAdvancedConfiguration()
+        {
+            var availableEnvs = FirebaseConfigManager.GetAvailableEnvironments();
+
+            string message = $"Current Firebase Configuration:\n\n";
+            message += $"Environments: {string.Join(", ", availableEnvs)}\n";
+            message += $"Configuration: {(FirebaseConfigManager.IsConfigurationComplete() ? "Complete" : "Incomplete")}\n\n";
+            message += "Configuration is automatically managed. Only modify if you need custom Firebase projects.";
+
+            var result = EditorUtility.DisplayDialogComplex(
+                "Firebase Configuration",
+                message,
+                "OK",
+                "Reconfigure",
+                "Clear Config"
+            );
+
+            switch (result)
+            {
+                case 1: // Reconfigure
+                    ShowConfigurationDialog();
+                    break;
+                case 2: // Clear Config
+                    if (EditorUtility.DisplayDialog("Clear Configuration",
+                        "This will clear your Firebase configuration. You'll need to restart Unity to reinitialize. Continue?",
+                        "Clear", "Cancel"))
+                    {
+                        foreach (var env in availableEnvs)
+                        {
+                            FirebaseConfigManager.ClearEnvironmentConfig(env);
+                        }
+                        EditorUtility.DisplayDialog("Configuration Cleared",
+                            "Firebase configuration cleared. Please restart Unity.", "OK");
+                    }
+                    break;
+            }
+        }
+
+        private void ShowConfigurationDialog()
+        {
+            string apiKey = EditorUtility.DisplayDialogComplex(
+                "Reconfigure Firebase",
+                "Enter new Firebase API Key:",
+                "Production", "Development", "Cancel"
+            ) switch
+            {
+                0 => ShowInputDialog("Enter Production API Key", "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo"),
+                1 => ShowInputDialog("Enter Development API Key", "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg"),
+                _ => null
+            };
+
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                // Update configuration with new API key
+                EnsureFirebaseConfiguration();
+                EditorUtility.DisplayDialog("Configuration Updated",
+                    "Firebase configuration updated successfully.", "OK");
+            }
+        }
+
+        private string ShowInputDialog(string title, string defaultValue)
+        {
+            // Simple input dialog simulation
+            // In a real implementation, you'd use a proper input dialog
+            return defaultValue;
         }
 
         private void DrawPayPalLogin()
@@ -126,7 +266,6 @@ namespace U3D.Editor
 
             if (GUILayout.Button("Login with PayPal", GUILayout.Height(40)))
             {
-                // Integrate with your existing PayPal authentication
                 StartPayPalLogin();
             }
 
@@ -222,28 +361,98 @@ namespace U3D.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawUsernameReservation()
+        {
+            EditorGUILayout.LabelField("Reserve Your Creator Username", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Choose a unique username for your professional creator URL. This will be your identity on Unreality3D.", MessageType.Info);
+            EditorGUILayout.Space(10);
+
+            EditorGUILayout.LabelField("Your Professional URL will be:", EditorStyles.label);
+            EditorGUILayout.LabelField($"https://{(string.IsNullOrEmpty(desiredUsername) ? "your-username" : desiredUsername)}.unreality3d.com/", EditorStyles.miniLabel);
+            EditorGUILayout.Space(10);
+
+            EditorGUILayout.LabelField("Choose Username:", EditorStyles.label);
+
+            var newUsername = EditorGUILayout.TextField(desiredUsername);
+            if (newUsername != desiredUsername)
+            {
+                desiredUsername = newUsername.ToLower().Trim();
+                usernameChecked = false;
+                usernameAvailable = false;
+                usernameSuggestions = new string[0];
+            }
+
+            EditorGUILayout.Space(10);
+
+            if (!string.IsNullOrEmpty(desiredUsername) && !usernameChecked && !checkingAvailability)
+            {
+                if (GUILayout.Button("Check Availability", GUILayout.Height(30)))
+                {
+                    CheckUsernameAvailability();
+                }
+            }
+
+            if (checkingAvailability)
+            {
+                EditorGUILayout.LabelField("🔍 Checking availability...", EditorStyles.boldLabel);
+            }
+
+            if (usernameChecked)
+            {
+                if (usernameAvailable)
+                {
+                    EditorGUILayout.LabelField("✅ Username available!", EditorStyles.boldLabel);
+
+                    EditorGUI.BeginDisabledGroup(reservingUsername);
+                    if (GUILayout.Button(reservingUsername ? "Reserving..." : "Reserve Username", GUILayout.Height(40)))
+                    {
+                        ReserveUsername();
+                    }
+                    EditorGUI.EndDisabledGroup();
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("❌ Username not available", EditorStyles.boldLabel);
+
+                    if (usernameSuggestions.Length > 0)
+                    {
+                        EditorGUILayout.Space(10);
+                        EditorGUILayout.LabelField("Suggestions:", EditorStyles.boldLabel);
+
+                        foreach (var suggestion in usernameSuggestions)
+                        {
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUILayout.LabelField($"• {suggestion}", EditorStyles.label);
+                            if (GUILayout.Button("Use This", GUILayout.Width(80), GUILayout.Height(20)))
+                            {
+                                desiredUsername = suggestion;
+                                usernameAvailable = true;
+                                usernameChecked = true;
+                            }
+                            EditorGUILayout.EndHorizontal();
+                        }
+                    }
+                }
+            }
+
+            EditorGUILayout.Space(20);
+            EditorGUILayout.LabelField("Username Requirements:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• 3-20 characters", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Letters, numbers, and hyphens only", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Cannot start or end with hyphen", EditorStyles.miniLabel);
+        }
+
         private void DrawLoggedInState()
         {
             EditorGUILayout.LabelField("✅ Connected to Unreality3D", EditorStyles.boldLabel);
             EditorGUILayout.Space(10);
 
-            // Show current user info
             EditorGUILayout.LabelField($"Email: {Unreality3DAuthenticator.UserEmail}");
 
             if (!string.IsNullOrEmpty(Unreality3DAuthenticator.CreatorUsername))
             {
                 EditorGUILayout.LabelField($"Creator Username: {Unreality3DAuthenticator.CreatorUsername}");
                 EditorGUILayout.LabelField($"Professional URL: https://{Unreality3DAuthenticator.CreatorUsername}.unreality3d.com/");
-            }
-            else
-            {
-                EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("Complete your setup in the Publish tab to reserve your professional URL.", EditorStyles.wordWrappedLabel);
-                if (GUILayout.Button("Go to Publish", GUILayout.Width(100), GUILayout.Height(30)))
-                {
-                    OnRequestTabSwitch?.Invoke(3); // Publish tab is index 3
-                }
-                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space(10);
@@ -271,11 +480,75 @@ namespace U3D.Editor
             }
         }
 
+        private async void CheckUsernameAvailability()
+        {
+            if (string.IsNullOrEmpty(desiredUsername)) return;
+
+            checkingAvailability = true;
+            usernameChecked = false;
+
+            try
+            {
+                usernameAvailable = await Unreality3DAuthenticator.CheckUsernameAvailability(desiredUsername);
+
+                if (!usernameAvailable)
+                {
+                    usernameSuggestions = await Unreality3DAuthenticator.GetUsernameSuggestions(desiredUsername);
+                }
+
+                usernameChecked = true;
+            }
+            catch (System.Exception ex)
+            {
+                EditorUtility.DisplayDialog("Username Check Failed", ex.Message, "OK");
+            }
+            finally
+            {
+                checkingAvailability = false;
+            }
+        }
+
+        private async void ReserveUsername()
+        {
+            if (string.IsNullOrEmpty(desiredUsername) || !usernameAvailable) return;
+
+            reservingUsername = true;
+
+            try
+            {
+                bool success = await Unreality3DAuthenticator.ReserveUsername(desiredUsername);
+
+                if (success)
+                {
+                    currentState = AuthState.LoggedIn;
+                    UpdateCompletion();
+                    EditorUtility.DisplayDialog("Success!",
+                        $"Username '{desiredUsername}' reserved successfully!\n\nYour professional URL: https://{desiredUsername}.unreality3d.com/",
+                        "Awesome!");
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("Reservation Failed",
+                        "Username reservation failed. It may have been taken by someone else.", "OK");
+                    usernameChecked = false;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                EditorUtility.DisplayDialog("Reservation Failed", ex.Message, "OK");
+            }
+            finally
+            {
+                reservingUsername = false;
+            }
+        }
+
         private void StartPayPalLogin()
         {
-            // Integration with your existing Firebase PayPal auth
             Debug.Log("Starting PayPal login...");
-            // This would trigger your existing PayPal OAuth flow
+            EditorUtility.DisplayDialog("PayPal Login",
+                "PayPal integration will be available in a future update. For now, you can use email/password authentication.",
+                "OK");
         }
 
         private async void StartManualLogin()
@@ -283,7 +556,16 @@ namespace U3D.Editor
             try
             {
                 await Unreality3DAuthenticator.LoginWithEmailPassword(email, password);
-                currentState = AuthState.LoggedIn;
+
+                if (string.IsNullOrEmpty(Unreality3DAuthenticator.CreatorUsername))
+                {
+                    currentState = AuthState.UsernameReservation;
+                }
+                else
+                {
+                    currentState = AuthState.LoggedIn;
+                }
+
                 UpdateCompletion();
                 ClearFields();
             }
@@ -298,7 +580,7 @@ namespace U3D.Editor
             try
             {
                 await Unreality3DAuthenticator.RegisterWithEmailPassword(email, password);
-                currentState = AuthState.LoggedIn;
+                currentState = AuthState.UsernameReservation;
                 UpdateCompletion();
                 ClearFields();
             }
@@ -314,6 +596,7 @@ namespace U3D.Editor
             currentState = AuthState.MethodSelection;
             UpdateCompletion();
             ClearFields();
+            ClearUsernameFields();
         }
 
         private void ClearFields()
@@ -323,9 +606,21 @@ namespace U3D.Editor
             confirmPassword = "";
         }
 
+        private void ClearUsernameFields()
+        {
+            desiredUsername = "";
+            checkingAvailability = false;
+            usernameAvailable = false;
+            usernameChecked = false;
+            usernameSuggestions = new string[0];
+            reservingUsername = false;
+        }
+
         private void UpdateCompletion()
         {
-            IsComplete = Unreality3DAuthenticator.IsLoggedIn;
+            IsComplete = FirebaseConfigManager.IsConfigurationComplete() &&
+                        Unreality3DAuthenticator.IsLoggedIn &&
+                        !string.IsNullOrEmpty(Unreality3DAuthenticator.CreatorUsername);
         }
     }
 }

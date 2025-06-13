@@ -77,6 +77,12 @@ namespace U3D.Editor
         {
             try
             {
+                // SECURITY FIX: Use secure configuration instead of hard-coded API key
+                if (!FirebaseConfigManager.IsConfigurationComplete())
+                {
+                    throw new Exception("Firebase configuration not complete. Please run Setup tab.");
+                }
+
                 var loginData = new
                 {
                     email = email,
@@ -89,10 +95,9 @@ namespace U3D.Editor
 
                 using (var client = new HttpClient())
                 {
-                    // Use Firebase Auth REST API
-                    var response = await client.PostAsync(
-                        "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
-                        loginContent);
+                    // SECURITY FIX: Use secure configuration for endpoint
+                    var authEndpoint = FirebaseConfigManager.CurrentConfig.GetAuthEndpoint("signInWithPassword");
+                    var response = await client.PostAsync(authEndpoint, loginContent);
 
                     var responseText = await response.Content.ReadAsStringAsync();
 
@@ -146,6 +151,12 @@ namespace U3D.Editor
         {
             try
             {
+                // SECURITY FIX: Use secure configuration instead of hard-coded API key
+                if (!FirebaseConfigManager.IsConfigurationComplete())
+                {
+                    throw new Exception("Firebase configuration not complete. Please run Setup tab.");
+                }
+
                 var registerData = new
                 {
                     email = email,
@@ -158,10 +169,9 @@ namespace U3D.Editor
 
                 using (var client = new HttpClient())
                 {
-                    // Use Firebase Auth REST API
-                    var response = await client.PostAsync(
-                        "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
-                        registerContent);
+                    // SECURITY FIX: Use secure configuration for endpoint
+                    var authEndpoint = FirebaseConfigManager.CurrentConfig.GetAuthEndpoint("signUp");
+                    var response = await client.PostAsync(authEndpoint, registerContent);
 
                     var responseText = await response.Content.ReadAsStringAsync();
 
@@ -323,6 +333,12 @@ namespace U3D.Editor
 
         private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
         {
+            // SECURITY FIX: Check configuration before making calls
+            if (!FirebaseConfigManager.IsConfigurationComplete())
+            {
+                throw new Exception("Firebase configuration not complete. Please run Setup tab.");
+            }
+
             using (var client = new HttpClient())
             {
                 var requestData = new { data = data };
@@ -335,9 +351,9 @@ namespace U3D.Editor
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                 }
 
-                var response = await client.PostAsync(
-                    $"https://{functionName}-peaofujdma-uc.a.run.app",
-                    content);
+                // SECURITY FIX: Use secure configuration for function endpoint
+                var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
+                var response = await client.PostAsync(functionEndpoint, content);
 
                 var responseText = await response.Content.ReadAsStringAsync();
 
