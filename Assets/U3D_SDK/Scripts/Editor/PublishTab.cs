@@ -58,8 +58,8 @@ namespace U3D.Editor
         {
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.LabelField("Publish Your Experience", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Share your creation with the world! This will make your experience live on the internet.", MessageType.Info);
+            EditorGUILayout.LabelField("Publish Your Content", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Share your creation with the world! This will make your content live on the internet.", MessageType.Info);
             EditorGUILayout.Space(15);
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
@@ -99,11 +99,11 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Publishing Progress", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            DrawStep("Connect Online Storage",
+            DrawStep("Set Up Publishing",
                 githubConnected,
                 currentStep == PublishStep.ConnectingGitHub,
-                "✓ Ready to save your project online",
-                "🔗 Connecting to online storage...");
+                "✓ Ready to publish your project",
+                "🔗 Setting up publishing...");
 
             DrawStep("Save Your Project",
                 projectSaved,
@@ -114,7 +114,7 @@ namespace U3D.Editor
             DrawStep("Make It Live",
                 deploymentComplete,
                 currentStep == PublishStep.MakingLive,
-                "✓ Your experience is now live!",
+                "✓ Your content is now live!",
                 "🚀 Making it live on the internet...");
         }
 
@@ -161,9 +161,9 @@ namespace U3D.Editor
                 currentStep = PublishStep.Complete;
                 IsComplete = true;
 
-                var creatorName = EditorPrefs.GetString("U3D_CreatorName", "creator");
+                var creatorUsername = U3DAuthenticator.CreatorUsername ?? "your-username";
                 var projectName = Application.productName.ToLower().Replace(" ", "-");
-                publishUrl = $"https://{creatorName}.u3d.com/{projectName}/";
+                publishUrl = $"https://{creatorUsername}.unreality3d.com/{projectName}/";
                 EditorPrefs.SetString("U3D_PublishedURL", publishUrl);
 
             }
@@ -199,7 +199,7 @@ namespace U3D.Editor
             successStyle.normal.textColor = Color.green;
             successStyle.fontSize = 16;
 
-            EditorGUILayout.LabelField("🎉 Success! Your experience is live!", successStyle);
+            EditorGUILayout.LabelField("🎉 Success! Your content is live!", successStyle);
             EditorGUILayout.Space(10);
 
             EditorGUILayout.LabelField("Your URL:", EditorStyles.boldLabel);
@@ -234,7 +234,7 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.LabelField("Share this URL with friends to let them experience your creation!", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("Share this link with anyone to let them play your creation!", EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.EndVertical();
         }

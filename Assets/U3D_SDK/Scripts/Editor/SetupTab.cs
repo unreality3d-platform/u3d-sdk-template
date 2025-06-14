@@ -169,11 +169,11 @@ namespace U3D.Editor
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "PayPal authentication provides:\n" +
+                "PayPal login provides:\n" +
                 "• Instant monetization capabilities\n" +
-                "• Professional creator verification\n" +
-                "• Secure OAuth 2.0 authentication\n" +
-                "• Automatic seller tier access",
+                "• Secure account connection\n" +
+                "• Direct payment processing\n" +
+                "• Professional payment experience",
                 MessageType.Info);
 
             EditorGUILayout.Space(10);
@@ -202,8 +202,8 @@ namespace U3D.Editor
             if (remainingTime > 0)
             {
                 EditorGUILayout.HelpBox(
-                    "🔄 Waiting for PayPal authentication...\n\n" +
-                    "Please complete the authentication in your web browser.\n" +
+                    "🔄 Waiting for PayPal login...\n\n" +
+                    "Please complete the login in your web browser.\n" +
                     $"Time remaining: {Mathf.Ceil(remainingTime / 60)}:{(remainingTime % 60):00}",
                     MessageType.Info);
 
@@ -211,12 +211,12 @@ namespace U3D.Editor
                 EditorGUI.ProgressBar(
                     GUILayoutUtility.GetRect(18, 18, "TextField"),
                     (TIMEOUT_DURATION - remainingTime) / TIMEOUT_DURATION,
-                    "Authenticating..."
+                    "Connecting..."
                 );
 
                 EditorGUILayout.Space(10);
 
-                if (GUILayout.Button("Cancel Authentication"))
+                if (GUILayout.Button("Cancel Login"))
                 {
                     StopPayPalPolling();
                     currentState = AuthState.PayPalLogin;
@@ -226,7 +226,7 @@ namespace U3D.Editor
             {
                 EditorGUILayout.HelpBox(
                     "⏱️ Authentication timed out.\n\n" +
-                    "Please try again or use email/password authentication.",
+                    "Please try again or use email/password login.",
                     MessageType.Warning);
 
                 EditorGUILayout.Space(10);
@@ -365,10 +365,10 @@ namespace U3D.Editor
             if (!U3DAuthenticator.PayPalConnected)
             {
                 EditorGUILayout.HelpBox(
-                    "💡 Connect PayPal to enable monetization features:\n" +
-                    "• Sell content and experiences\n" +
-                    "• Upgrade to professional creator tier\n" +
-                    "• Access advanced platform features",
+                    "💡 Connect PayPal to enable monetization:\n" +
+                    "• Sell content (scenes, avatars, props, access)\n" +
+                    "• Receive payments directly to your account\n" +
+                    "• Keep 95% of your earnings",
                     MessageType.Info);
 
                 EditorGUILayout.Space(5);
