@@ -28,9 +28,18 @@ namespace U3D.Editor
         static void OpenOnStartup()
         {
             EditorApplication.delayCall += () => {
-                if (EditorPrefs.GetBool("U3D_ShowOnStartup", true))
+                // NEVER open during Play mode changes
+                if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+                // Check if this is the very first time
+                bool hasOpenedBefore = EditorPrefs.GetBool("U3D_HasOpenedBefore", false);
+                bool showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+
+                // Always show the first time, then respect user preference
+                if (!hasOpenedBefore || showOnStartup)
                 {
                     ShowWindow();
+                    EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
                 }
             };
         }
@@ -132,6 +141,28 @@ namespace U3D.Editor
             DrawHeader();
             DrawTabNavigation();
             DrawCurrentTab();
+
+            // Add startup preference control at bottom
+            DrawStartupPreference();
+        }
+
+        void DrawStartupPreference()
+        {
+            EditorGUILayout.Space(10);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            bool showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+            bool newShowOnStartup = EditorGUILayout.ToggleLeft("Show dashboard when Unity starts", showOnStartup, GUILayout.Width(250));
+
+            if (newShowOnStartup != showOnStartup)
+            {
+                EditorPrefs.SetBool("U3D_ShowOnStartup", newShowOnStartup);
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
         }
 
         void DrawHeader()

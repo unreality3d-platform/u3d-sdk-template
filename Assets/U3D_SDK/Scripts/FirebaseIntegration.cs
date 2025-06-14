@@ -13,7 +13,6 @@ public class FirebaseIntegration : MonoBehaviour
     public string contentId = "test-area-1";
     public float contentPrice = 5.99f;
 
-    // JavaScript function imports - these will be checked at runtime
     [DllImport("__Internal")]
     private static extern void UnityCallTestFunction();
 
@@ -25,57 +24,64 @@ public class FirebaseIntegration : MonoBehaviour
 
     void Start()
     {
-        // Set up button listeners
         if (testButton != null)
             testButton.onClick.AddListener(TestFirebaseConnection);
 
         if (paymentButton != null)
             paymentButton.onClick.AddListener(RequestPayment);
 
-        // Check content access on start
         CheckContentAccess();
     }
 
     public void TestFirebaseConnection()
     {
-        UpdateStatus("Testing Firebase connection...");
-
-        try
-        {
-            UnityCallTestFunction();
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Firebase function not available: " + e.Message);
-        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+            UpdateStatus("Testing Firebase connection...");
+            try
+            {
+                UnityCallTestFunction();
+            }
+            catch (System.Exception e)
+            {
+                UpdateStatus("Firebase function not available: " + e.Message);
+            }
+#else
+        UpdateStatus("Firebase testing requires WebGL build");
+#endif
     }
 
     public void CheckContentAccess()
     {
-        UpdateStatus("Checking content access...");
-
-        try
-        {
-            UnityCheckContentAccess(contentId);
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Access check failed: " + e.Message);
-        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+            UpdateStatus("Checking content access...");
+            try
+            {
+                UnityCheckContentAccess(contentId);
+            }
+            catch (System.Exception e)
+            {
+                UpdateStatus("Access check failed: " + e.Message);
+            }
+#else
+        UpdateStatus("Ready for WebGL build - Firebase integration active");
+#endif
     }
 
     public void RequestPayment()
     {
-        UpdateStatus("Processing payment request...");
-
-        try
-        {
-            UnityRequestPayment(contentId, contentPrice.ToString());
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Payment system not available: " + e.Message);
-        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+            UpdateStatus("Processing payment request...");
+            try
+            {
+                UnityRequestPayment(contentId, contentPrice.ToString());
+            }
+            catch (System.Exception e)
+            {
+                UpdateStatus("Payment system not available: " + e.Message);
+            }
+#else
+        UpdateStatus("PayPal integration requires WebGL build");
+#endif
     }
 
     public void UpdateStatus(string message)
@@ -88,41 +94,33 @@ public class FirebaseIntegration : MonoBehaviour
         Debug.Log($"Firebase Integration: {message}");
     }
 
-    // Called by JavaScript when test function completes
     public void OnTestComplete(string result)
     {
         UpdateStatus($"Test Result: {result}");
     }
 
-    // Called by JavaScript when access check completes
     public void OnAccessCheckComplete(string hasAccess)
     {
         if (hasAccess == "true")
         {
             UpdateStatus("Access granted - Welcome!");
-            if (paymentButton != null)
-                paymentButton.gameObject.SetActive(false);
         }
         else
         {
-            UpdateStatus($"Payment required: ${contentPrice}");
-            if (paymentButton != null)
-                paymentButton.gameObject.SetActive(true);
+            UpdateStatus("Payment required for access");
         }
     }
 
-    // Called by JavaScript when payment completes
     public void OnPaymentComplete(string success)
     {
         if (success == "true")
         {
-            UpdateStatus("Payment successful! Access granted.");
-            if (paymentButton != null)
-                paymentButton.gameObject.SetActive(false);
+            UpdateStatus("Payment successful - Access granted!");
+            CheckContentAccess();
         }
         else
         {
-            UpdateStatus("Payment failed. Please try again.");
+            UpdateStatus("Payment failed - Please try again");
         }
     }
 }
