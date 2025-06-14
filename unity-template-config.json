@@ -1,0 +1,11 @@
+{
+  "templatePath": "template.html",
+  "buildOutputPath": "Build",
+  "outputPath": "index.html",
+  "contentId": "your-content-id",
+  "companyName": "Your Creator Name",
+  "productName": "Your Unity Experience",
+  "productVersion": "1.0.0",
+  "width": 960,
+  "height": 600
+}
