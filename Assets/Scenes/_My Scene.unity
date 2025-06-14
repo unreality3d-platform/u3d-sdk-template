@@ -474,7 +474,7 @@ GameObject:
   m_Component:
   - component: {fileID: 688685680}
   m_Layer: 0
-  m_Name: CORE - DO NOT DELETE
+  m_Name: U3D CORE - DO NOT DELETE
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -509,7 +509,7 @@ GameObject:
   m_Component:
   - component: {fileID: 703688350}
   m_Layer: 0
-  m_Name: Environment Optional
+  m_Name: Environment - Optional
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
