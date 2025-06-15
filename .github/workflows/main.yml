@@ -97,10 +97,10 @@ jobs:
           mkdir -p "${REPO_NAME}"
           
           # Copy Unity build to repository directory
-            if [ -d "build/WebGL/WebGL" ]; then
-               # Copy the entire WebGL folder as the Build directory (no nesting)
-               cp -r build/WebGL/WebGL "${REPO_NAME}/Build"
-               echo "Unity build copied to ${REPO_NAME}/Build/" 
+          if [ -d "build/WebGL/WebGL" ]; then
+             # Copy the entire WebGL folder as the Build directory
+             cp -r build/WebGL/WebGL "${REPO_NAME}/Build"
+             echo "Unity build copied to ${REPO_NAME}/Build/" 
           else
             echo "Unity build directory not found"
             ls -la build/ || echo "Build directory structure:"
@@ -114,15 +114,26 @@ jobs:
           
           if [ -f "unity-template-processor.js" ]; then
             echo "Processing Unity template with repository name: ${REPO_NAME}"
+            
+            # Copy template processor and template to repository directory
+            cp unity-template-processor.js "${REPO_NAME}/"
+            cp template.html "${REPO_NAME}/"
+            
+            # Change to repository directory and run processor
+            cd "${REPO_NAME}"
+            
             node unity-template-processor.js \
               --contentId "${REPO_NAME}" \
-              --productName "${REPO_NAME}" \
-              --buildOutputPath "./${REPO_NAME}/Build"
+              --productName "${REPO_NAME}"
             
-            # Move processed index.html to repository directory
+            echo "Template processing completed - index.html generated"
+            
+            # Verify the processed file exists
             if [ -f "index.html" ]; then
-              mv index.html "${REPO_NAME}/index.html"
-              echo "Processed template moved to ${REPO_NAME}/index.html"
+              echo "✅ Processed index.html created successfully"
+            else
+              echo "❌ Template processing failed - no index.html generated"
+              exit 1
             fi
           else
             echo "No template processor found, using build output directly"
