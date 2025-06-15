@@ -97,10 +97,10 @@ jobs:
           mkdir -p "${REPO_NAME}"
           
           # Copy Unity build to repository directory
-          if [ -d "build/WebGL/WebGL" ]; then
-             mkdir -p "${REPO_NAME}/Build"
-             cp -r build/WebGL/WebGL/* "${REPO_NAME}/Build/"
-             echo "Unity build copied to ${REPO_NAME}/Build/"
+            if [ -d "build/WebGL/WebGL" ]; then
+               # Copy the entire WebGL folder as the Build directory (no nesting)
+               cp -r build/WebGL/WebGL "${REPO_NAME}/Build"
+               echo "Unity build copied to ${REPO_NAME}/Build/" 
           else
             echo "Unity build directory not found"
             ls -la build/ || echo "Build directory structure:"
