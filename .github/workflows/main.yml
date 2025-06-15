@@ -97,19 +97,19 @@ jobs:
           mkdir -p "${REPO_NAME}"
           
           # Copy Unity build to repository directory
-          if [ -d "build/WebGL/WebGL" ]; then
-             # Create Build directory and copy Unity files directly into it
-             mkdir -p "${REPO_NAME}/Build"
-             cp -r build/WebGL/WebGL/* "${REPO_NAME}/Build/"
+          if [ -d "build/WebGL/WebGL/Build" ]; then
+             # Copy Unity WebGL files from the Build subdirectory
+             cp -r build/WebGL/WebGL/Build "${REPO_NAME}/"
              echo "Unity build copied to ${REPO_NAME}/Build/" 
              
              # Debug: List what's actually in Build directory
              echo "📁 Contents of ${REPO_NAME}/Build/:"
              ls -la "${REPO_NAME}/Build/" || echo "Build directory listing failed"
           else
-            echo "Unity build directory not found"
-            ls -la build/ || echo "Build directory structure:"
-            find build -type d 2>/dev/null || echo "Build directory not found"
+            echo "Unity Build directory not found"
+            echo "📁 Available in build/WebGL/WebGL/:"
+            ls -la build/WebGL/WebGL/ || echo "WebGL directory listing failed"
+            find build -name "*.loader.js" -o -name "*.wasm" -o -name "*.data" 2>/dev/null || echo "No Unity files found"
           fi
 
       # Process template files (if template processor exists)
