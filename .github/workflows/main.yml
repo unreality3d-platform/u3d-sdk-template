@@ -98,9 +98,14 @@ jobs:
           
           # Copy Unity build to repository directory
           if [ -d "build/WebGL/WebGL" ]; then
-             # Copy the entire WebGL folder as the Build directory
-             cp -r build/WebGL/WebGL "${REPO_NAME}/Build"
+             # Create Build directory and copy Unity files directly into it
+             mkdir -p "${REPO_NAME}/Build"
+             cp -r build/WebGL/WebGL/* "${REPO_NAME}/Build/"
              echo "Unity build copied to ${REPO_NAME}/Build/" 
+             
+             # Debug: List what's actually in Build directory
+             echo "📁 Contents of ${REPO_NAME}/Build/:"
+             ls -la "${REPO_NAME}/Build/" || echo "Build directory listing failed"
           else
             echo "Unity build directory not found"
             ls -la build/ || echo "Build directory structure:"

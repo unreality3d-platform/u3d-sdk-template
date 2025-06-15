@@ -230,7 +230,7 @@
 
     <!-- Unity WebGL Container -->
     <div id="unity-container" class="unity-desktop">
-        <canvas id="unity-canvas" width={{{ WIDTH }}} height{{{ HEIGHT }}}></canvas>
+        <canvas id="unity-canvas" width="{{{ WIDTH }}}" height="{{{ HEIGHT }}}"></canvas>
         <div id="unity-loading-bar">
             <div id="unity-logo"></div>
             <div id="unity-progress-bar-empty">
@@ -246,16 +246,28 @@
     </div>
 
     <script>
-        // Firebase Configuration
-        const firebaseConfig = {
+        // Environment-aware Firebase Configuration
+        const isProduction = window.location.hostname.includes('unreality3d.web.app') ||
+            window.location.hostname.endsWith('.unreality3d.com');
+
+        const firebaseConfig = isProduction ? {
+            apiKey: "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
+            authDomain: "unreality3d.firebaseapp.com",
+            projectId: "unreality3d",
+            storageBucket: "unreality3d.firebasestorage.app",
+            messagingSenderId: "183773881724",
+            appId: "1:183773881724:web:50ca32baa00960b46170f9"
+        } : {
             apiKey: "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
             authDomain: "unreality3d2025.firebaseapp.com",
             projectId: "unreality3d2025",
             storageBucket: "unreality3d2025.firebasestorage.app",
             messagingSenderId: "244081840635",
-            appId: "1:244081840635:web:71c37efb6b172a706dbb5e",
-            measurementId: "G-YXC3XB3PFL"
+            appId: "1:244081840635:web:71c37efb6b172a706dbb5e"
         };
+
+        console.log('Environment detected:', isProduction ? 'Production' : 'Development');
+        console.log('Using Firebase project:', firebaseConfig.projectId);
 
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
