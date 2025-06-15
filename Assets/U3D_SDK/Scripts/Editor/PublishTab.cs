@@ -124,7 +124,7 @@ namespace U3D.Editor
 
             if (isComplete)
             {
-                EditorGUILayout.LabelField("✅", GUILayout.Width(25));
+                EditorGUILayout.LabelField("🟢", GUILayout.Width(25));
                 EditorGUILayout.LabelField(completeMessage, EditorStyles.boldLabel);
             }
             else if (isActive)
