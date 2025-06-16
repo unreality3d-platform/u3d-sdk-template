@@ -55,12 +55,12 @@ public class BuildReportLogger
         Debug.Log("\n=== ASSETS BY TYPE ===");
         var assetsByType = report.GetFiles()
             .GroupBy(f => System.IO.Path.GetExtension(f.path).ToLower())
-            .OrderByDescending(g => g.Sum(f => f.size))
+            .OrderByDescending(g => g.Sum(f => (long)f.size))
             .Take(15);
 
         foreach (var group in assetsByType)
         {
-            var totalSize = group.Sum(f => f.size);
+            var totalSize = (ulong)group.Sum(f => (long)f.size);
             var count = group.Count();
             var extension = string.IsNullOrEmpty(group.Key) ? "[no extension]" : group.Key;
             Debug.Log($"{FormatBytes(totalSize)} ({count} files) - {extension}");
