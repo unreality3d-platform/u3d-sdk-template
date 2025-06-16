@@ -125,6 +125,17 @@ jobs:
             cp unity-template-processor.js "${REPO_NAME}/"
             cp template.html "${REPO_NAME}/"
             
+            # Debug: Check directory contents before processing
+            echo "📁 Repository directory contents:"
+            ls -la "${REPO_NAME}/" || echo "Repository directory listing failed"
+            
+            if [ -d "${REPO_NAME}/Build" ]; then
+              echo "📁 Build directory contents:"
+              ls -la "${REPO_NAME}/Build/" || echo "Build directory listing failed"
+            else
+              echo "❌ No Build directory found in ${REPO_NAME}/"
+            fi
+            
             # Change to repository directory and run processor
             cd "${REPO_NAME}"
             
