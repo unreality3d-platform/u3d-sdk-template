@@ -1,0 +1,257 @@
+﻿name: Create Release and Unity Template Distribution
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.version.outputs.version }}
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Generate Version Number
+      id: version
+      run: |
+        # Generate version based on date and commit
+        DATE=$(date +'%Y.%m.%d')
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        VERSION="v${DATE}-${SHORT_SHA}"
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Generated version: ${VERSION}"
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        release_name: Unreality3D Unity Template ${{ steps.version.outputs.version }}
+        body: |
+          ## Unreality3D Unity Template - Latest Release
+          
+          ### 🚀 What's Included
+          - Complete Unity 6+ project template
+          - Firebase integration with PayPal monetization
+          - Multiplayer character controller
+          - Environment-aware deployment system
+          - Professional publishing workflow
+          
+          ### 📦 Download Options
+          - **Direct Download**: Use the ZIP file below
+          - **Clone Repository**: `git clone https://github.com/unreality3d-platform/u3d-sdk-template.git`
+          - **Fork for Publishing**: Fork this repository to start publishing immediately
+          
+          ### 🛠️ Quick Start
+          1. Download and extract the ZIP file
+          2. Open Unity Hub → Add → Select extracted folder
+          3. Open project in Unity 6+
+          4. Customize your content
+          5. Push to GitHub for automatic deployment
+          
+          ### 🌐 Live Demo
+          See the template in action: https://unreality3d--u3d-sdk-template-main.web.app/
+          
+          ---
+          
+          **Generated**: ${{ steps.version.outputs.version }}
+          **Commit**: ${{ github.sha }}
+        draft: false
+        prerelease: false
+
+  build-and-upload:
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: Clean Template for Distribution
+      run: |
+        echo "🧹 Cleaning template for distribution..."
+        
+        # Create distribution directory
+        mkdir -p unreality3d-unity-template
+        
+        # Copy essential directories
+        cp -r Assets unreality3d-unity-template/
+        cp -r ProjectSettings unreality3d-unity-template/
+        cp -r Packages unreality3d-unity-template/
+        
+        # Copy template processing files
+        cp template.html unreality3d-unity-template/
+        cp unity-template-processor.js unreality3d-unity-template/
+        cp unity-template-config.json unreality3d-unity-template/ 2>/dev/null || echo "Config file not found, skipping"
+        
+        # Copy GitHub workflow for creators
+        mkdir -p unreality3d-unity-template/.github/workflows
+        cp .github/workflows/main.yml unreality3d-unity-template/.github/workflows/
+        
+        # Copy essential root files
+        cp README.md unreality3d-unity-template/ 2>/dev/null || echo "# Unreality3D Unity Template" > unreality3d-unity-template/README.md
+        cp .gitignore unreality3d-unity-template/ 2>/dev/null || echo "Creating default .gitignore"
+        
+        # Create a comprehensive .gitignore if one doesn't exist
+        if [ ! -f unreality3d-unity-template/.gitignore ]; then
+          cat > unreality3d-unity-template/.gitignore << 'EOF'
+        # Unity generated files
+        /[Ll]ibrary/
+        /[Tt]emp/
+        /[Oo]bj/
+        /[Bb]uild/
+        /[Bb]uilds/
+        /[Ll]ogs/
+        /[Uu]ser[Ss]ettings/
+        
+        # Memory captures and recordings
+        /[Mm]emoryCaptures/
+        /[Rr]ecordings/
+        
+        # Visual Studio / IDE files
+        .vs/
+        *.csproj
+        *.sln
+        *.suo
+        *.tmp
+        *.user
+        *.userprefs
+        *.pidb
+        *.booproj
+        *.svd
+        *.pdb
+        *.mdb
+        *.opendb
+        *.VC.db
+        
+        # Unity specific
+        *.pidb.meta
+        *.pdb.meta
+        *.mdb.meta
+        sysinfo.txt
+        
+        # Builds
+        *.apk
+        *.aab
+        *.unitypackage
+        *.unitypackage.meta
+        *.app
+        
+        # OS generated files
+        .DS_Store
+        .DS_Store?
+        ._*
+        .Spotlight-V100
+        .Trashes
+        ehthumbs.db
+        Thumbs.db
+        EOF
+        fi
+        
+        # Create README with quick start instructions
+        cat > unreality3d-unity-template/README.md << 'EOF'
+        # Unreality3D Unity Template
+        
+        ## 🚀 Quick Start Guide
+        
+        ### 1. Open in Unity
+        - Open Unity Hub
+        - Click "Add" → Select this folder
+        - Open with Unity 6+ (recommended)
+        
+        ### 2. Customize Your Content
+        - Modify scenes and assets as needed
+        - Use the included character controller and Firebase integration
+        - Test locally with Play mode
+        
+        ### 3. Publish to Unreality3D
+        - Fork this repository on GitHub
+        - Push your changes to trigger automatic deployment
+        - Get your live URL: `https://unreality3d--[your-repo-name]-[hash].web.app/`
+        
+        ## 📦 What's Included
+        
+        - **Firebase Integration**: Authentication and monetization ready
+        - **PayPal Integration**: Complete payment processing workflow  
+        - **Character Controller**: Versatile multiplayer movement system
+        - **Deployment System**: Automatic publishing via GitHub Actions
+        - **Template Processor**: Optimized WebGL build configuration
+        
+        ## 🔧 Advanced Publishing
+        
+        For advanced users who want to customize the deployment:
+        
+        1. Review `.github/workflows/main.yml` for deployment configuration
+        2. Modify `unity-template-processor.js` for custom build processing
+        3. Update `template.html` for custom WebGL embedding
+        
+        ## 🌐 Learn More
+        
+        - Platform: https://unreality3d.web.app/
+        - Documentation: https://unreality3d.web.app/quickstart.html
+        - Support: Create an issue in this repository
+        
+        ---
+        
+        **Ready to create? Start customizing and push to GitHub!**
+        EOF
+        
+        # Show what we're including
+        echo "📋 Template contents:"
+        find unreality3d-unity-template -type f | head -20
+        echo "... and more"
+        
+        # Get total file count and size
+        FILE_COUNT=$(find unreality3d-unity-template -type f | wc -l)
+        SIZE=$(du -sh unreality3d-unity-template | cut -f1)
+        echo "📊 Total: ${FILE_COUNT} files, ${SIZE}"
+    
+    - name: Create Distribution ZIP
+      run: |
+        echo "📦 Creating distribution ZIP..."
+        
+        # Create ZIP with proper naming
+        zip -r "unreality3d-unity-template-${{ needs.create-release.outputs.version }}.zip" unreality3d-unity-template/
+        
+        # Verify ZIP creation
+        ls -lh *.zip
+        
+        echo "✅ Distribution ZIP created successfully"
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./unreality3d-unity-template-${{ needs.create-release.outputs.version }}.zip
+        asset_name: unreality3d-unity-template-${{ needs.create-release.outputs.version }}.zip
+        asset_content_type: application/zip
+
+  update-download-links:
+    needs: [create-release, build-and-upload]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Update Download Reference
+      run: |
+        echo "🔗 Latest download URL:"
+        echo "https://github.com/unreality3d-platform/u3d-sdk-template/releases/download/${{ needs.create-release.outputs.version }}/unreality3d-unity-template-${{ needs.create-release.outputs.version }}.zip"
+        
+        echo "🌐 This URL should be used for:"
+        echo "- Firebase hosting redirect from unreality3d.com/template"
+        echo "- Direct download links on website"
+        echo "- Always points to latest template version"
