@@ -3,185 +3,212 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity WebGL Player | {{{ PRODUCT_NAME }}}</title>
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
-    <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.2/firebase-firestore-compat.js"></script>
-    <script src="https://www.paypal.com/sdk/js?client-id=AQq_cJJUJlWMNqnCYM0MrD-L_G1rMWGy7vpgBZAVKpSvWlhULR3A7l4Oy_BmU8WLNO6T0VN3YZf8P0gp&currency=USD"></script>
+    <title>Unity Web Player | {{{ PRODUCT_NAME }}}</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, shrink-to-fit=no">
+
+    <!-- Firebase SDKs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-functions-compat.min.js"></script>
+
+    <!-- PayPal SDK -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AdgxrQPKeqcirWWUi7HeoPUWGGCs01AxKZnjkKmv8ITkdiWM2N7ABp-jEYNLmQXIy1qfHvqm4JWydSon&currency=USD"></script>
+
     <style>
-        /* Unity WebGL styles */
-        body {
+        html, body {
             padding: 0;
             margin: 0;
-        }
-
-        #unity-container {
-            position: absolute;
-        }
-
-            #unity-container.unity-desktop {
-                left: 50%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-            }
-
-            #unity-container.unity-mobile {
-                width: 100%;
-                height: 100%;
-            }
-
-        #unity-canvas {
-            background: #231F20;
-        }
-
-        .unity-mobile #unity-canvas {
+            background: #232323;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            position: fixed;
             width: 100%;
             height: 100%;
         }
 
+        #unity-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #232323;
+        }
+
+        #unity-canvas {
+            background: #232323;
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: default;
+        }
+
+        /* Loading Screen Styles */
         #unity-loading-bar {
             position: absolute;
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
-            display: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 300px;
+            height: 150px;
+            z-index: 1000;
         }
 
         #unity-logo {
             width: 154px;
             height: 130px;
-            background: url('TemplateData/unity-logo-dark.png') no-repeat center;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 154 130"><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="white" font-size="20">Unity</text></svg>') no-repeat center;
+            background-size: contain;
         }
 
         #unity-progress-bar-empty {
             width: 141px;
             height: 18px;
             margin-top: 10px;
-            background: url('TemplateData/progress-bar-empty-dark.png') no-repeat center;
+            margin-bottom: 10px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 141 18"><rect width="141" height="18" fill="none" stroke="%23ffffff" stroke-width="2"/></svg>') no-repeat center;
+            background-size: contain;
         }
 
         #unity-progress-bar-full {
             width: 0%;
-            height: 18px;
-            margin-top: 10px;
-            background: url('TemplateData/progress-bar-full-dark.png') no-repeat center;
+            height: 100%;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 141 18"><rect width="141" height="18" fill="%23ffffff"/></svg>') repeat-x left;
+            transition: width 0.3s ease;
         }
 
         #unity-footer {
-            position: relative;
-        }
-
-        .unity-mobile #unity-footer {
-            display: none;
-        }
-
-        #unity-webgl-logo {
-            float: left;
-            width: 204px;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             height: 38px;
-            background: url('TemplateData/webgl-logo.png') no-repeat center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
 
-        #unity-build-title {
-            float: right;
-            margin-right: 10px;
-            line-height: 38px;
-            font-family: arial;
-            font-size: 18px;
+        #unity-webgl-logo, #unity-build-title {
+            color: white;
+            margin: 0 10px;
+            font-size: 16px;
         }
 
         #unity-fullscreen-button {
-            background: white;
+            background: none;
             border: none;
-            padding: 5px 10px;
+            color: white;
             cursor: pointer;
-            margin-left: 10px;
+            font-size: 20px;
+            padding: 5px;
+            margin: 0 5px;
         }
+
+            #unity-fullscreen-button:hover {
+                color: #ccc;
+            }
 
         #unity-warning {
             position: absolute;
             left: 50%;
             top: 5%;
-            transform: translate(-50%);
-            background: yellow;
-            padding: 5px;
-            color: black;
+            transform: translateX(-50%);
+            background: linear-gradient(#606060, #3a3a3a);
+            border: 1px solid #555;
+            border-radius: 5px;
+            color: white;
+            padding: 5px 10px;
             display: none;
+            z-index: 1001;
         }
 
-        /* Three-tier authentication overlay */
+        /* Authentication Overlay */
         .auth-overlay {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             background: rgba(35, 35, 35, 0.95);
+            backdrop-filter: blur(10px);
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 10000;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
+            z-index: 2000;
         }
 
-        .auth-content {
-            background: #2a2a2a;
+        .auth-container {
+            background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+            border: 2px solid #444;
+            border-radius: 15px;
             padding: 40px;
-            border-radius: 10px;
-            max-width: 400px;
+            max-width: 500px;
             width: 90%;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
         }
 
         .auth-title {
-            font-size: 24px;
+            font-size: 28px;
+            font-weight: bold;
             margin-bottom: 20px;
+            color: #fff;
         }
 
-        .auth-description {
+        .auth-message {
             font-size: 16px;
             margin-bottom: 30px;
-            line-height: 1.4;
+            color: #ccc;
+            line-height: 1.5;
         }
 
         .auth-buttons {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 10px;
         }
 
         .auth-btn {
-            padding: 12px 24px;
+            padding: 15px 20px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
+            text-decoration: none;
         }
 
         .auth-btn-primary {
-            background: #0070ba;
+            background: linear-gradient(45deg, #0070ba, #003087);
             color: white;
         }
 
             .auth-btn-primary:hover {
-                background: #005ea6;
+                background: linear-gradient(45deg, #005a9a, #002070);
+                transform: translateY(-2px);
             }
 
         .auth-btn-secondary {
-            background: transparent;
-            color: #ccc;
+            background: linear-gradient(45deg, #444, #333);
+            color: white;
             border: 1px solid #666;
         }
 
             .auth-btn-secondary:hover {
-                background: #333;
-                color: white;
+                background: linear-gradient(45deg, #555, #444);
+                transform: translateY(-2px);
             }
 
         .auth-btn-link {
@@ -190,45 +217,81 @@
             border: none;
             font-size: 14px;
             text-decoration: underline;
+            padding: 8px 16px;
             cursor: pointer;
-            margin-top: 10px;
+            transition: color 0.3s ease;
+            font-weight: normal;
         }
 
             .auth-btn-link:hover {
                 color: #005ea6;
             }
 
-        .paypal-container {
-            margin: 20px 0;
-        }
-
         .loading-text {
+            font-size: 18px;
+            color: #0070ba;
             margin-top: 20px;
-            color: #ccc;
         }
 
-        /* Hide overlay when not needed */
-        .hidden {
-            display: none !important;
+        .paypal-container {
+            margin: 10px 0;
+            min-height: 40px;
         }
 
-        /* Responsive breakpoints */
-        @media (max-width: 960px) {
-            #unity-container {
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .auth-container {
+                padding: 30px 20px;
+                margin: 20px;
+            }
+
+            .auth-title {
+                font-size: 24px;
+            }
+
+            #unity-footer {
+                bottom: 10px;
+            }
+
+            #unity-webgl-logo, #unity-build-title {
+                font-size: 14px;
+            }
+        }
+
+        /* Ensure canvas is always fullscreen */
+        @media (orientation: landscape) {
+            #unity-canvas {
                 width: 100vw;
                 height: 100vh;
             }
         }
+
+        @media (orientation: portrait) {
+            #unity-canvas {
+                width: 100vw;
+                height: 100vh;
+            }
+        }
+
+        /* Hide scrollbars */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </head>
+
 <body>
-    <!-- Three-tier Authentication Overlay -->
-    <div id="authOverlay" class="auth-overlay hidden">
-        <div class="auth-content">
+    <!-- Authentication Overlay -->
+    <div class="auth-overlay" id="authOverlay" style="display: none;">
+        <div class="auth-container">
             <div class="auth-title">Creator Content - Support Artists</div>
-            <div class="auth-description">
-                This experience was created by an independent artist. Support creators by purchasing paid content or continue with free content only.
-                (You can reload the page to sign in with PayPal and purchase paid content at any time.)
+            <div class="auth-message">
+                This experience was created by an independent artist. Support creators by purchasing paid content or continue with free content only. (You can reload the page to sign in with PayPal and purchase paid content at any time.)
             </div>
             <div class="auth-buttons">
                 <button class="auth-btn auth-btn-primary" onclick="startPayPalLogin()">
@@ -238,7 +301,7 @@
                 <button class="auth-btn auth-btn-secondary" onclick="continueAsVisitor()">
                     Continue with Free Content Only
                 </button>
-                <button class="auth-btn auth-btn-link" onclick="openCreatorInfo()">
+                <button class="auth-btn-link" onclick="openCreatorInfo()">
                     Want to create and monetize your own content?
                 </button>
             </div>
@@ -252,8 +315,8 @@
     </div>
 
     <!-- Unity WebGL Container -->
-    <div id="unity-container" class="unity-desktop">
-        <canvas id="unity-canvas" width={{{ WIDTH }}} height{{{ HEIGHT }}}></canvas>
+    <div id="unity-container">
+        <canvas id="unity-canvas" tabindex="-1"></canvas>
         <div id="unity-loading-bar">
             <div id="unity-logo"></div>
             <div id="unity-progress-bar-empty">
@@ -261,141 +324,66 @@
             </div>
         </div>
         <div id="unity-warning"></div>
-    </div>
-    <div id="unity-footer">
-        <div id="unity-webgl-logo"></div>
-        <div id="unity-build-title">{{{ PRODUCT_NAME }}}</div>
+        <div id="unity-footer">
+            <div id="unity-webgl-logo"></div>
+            <div id="unity-fullscreen-button"></div>
+            <div id="unity-build-title">{{{ PRODUCT_NAME }}}</div>
+        </div>
     </div>
 
-    <!-- Firebase Configuration -->
     <script>
-        // Firebase config (unreality3d production)
-        const firebaseConfig = {
-            apiKey: "AIzaSyC6VqQzGIzVvOWVyHmTYvOTEGRp9ky6BQA",
+        // Environment-aware Firebase Configuration
+        const isProduction = window.location.hostname.includes('unreality3d.web.app') ||
+            window.location.hostname.endsWith('.unreality3d.com');
+
+        const firebaseConfig = isProduction ? {
+            apiKey: "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
             authDomain: "unreality3d.firebaseapp.com",
             projectId: "unreality3d",
-            storageBucket: "unreality3d.appspot.com",
-            messagingSenderId: "292977872456",
-            appId: "1:292977872456:web:6ae5df30f2e02c18c9bb23"
+            storageBucket: "unreality3d.firebasestorage.app",
+            messagingSenderId: "183773881724",
+            appId: "1:183773881724:web:50ca32baa00960b46170f9"
+        } : {
+            apiKey: "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
+            authDomain: "unreality3d2025.firebaseapp.com",
+            projectId: "unreality3d2025",
+            storageBucket: "unreality3d2025.firebasestorage.app",
+            messagingSenderId: "244081840635",
+            appId: "1:244081840635:web:71c37efb6b172a706dbb5e"
         };
 
-        firebase.initializeApp(firebaseConfig);
+        console.log('Environment detected:', isProduction ? 'Production' : 'Development');
+        console.log('Firebase Project:', firebaseConfig.projectId);
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+
         const auth = firebase.auth();
-        const db = firebase.firestore();
+        const functions = firebase.functions();
 
         // Global variables
         let unityInstance = null;
         let currentUser = null;
         let userType = 'visitor';
-
-        // ===== PAYPAL INTEGRATION =====
-
-        window.UnityRequestPayment = function(contentId, price) {
-            console.log('Unity requesting payment for:', contentId, 'Price:', price);
-
-            const popup = document.createElement('div');
-            popup.id = 'unity-paypal-container';
-            popup.innerHTML = `
-                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10001; display: flex; justify-content: center; align-items: center;">
-                    <div style="background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%;">
-                        <h3 style="margin-top: 0; color: #333;">Complete Your Purchase</h3>
-                        <p style="color: #666;">Content: ${contentId}</p>
-                        <p style="color: #666;">Price: $${price}</p>
-                        <div id="unity-paypal-buttons"></div>
-                        <button onclick="closePayPalPopup()" style="margin-top: 15px; background: #ccc; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; width: 100%;">Cancel</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(popup);
-
-            try {
-                paypal.Buttons({
-                    createOrder: function(data, actions) {
-                        return fetch('/api/payments/create-order', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                contentId: contentId,
-                                amount: price,
-                                userId: currentUser ? currentUser.uid : null
-                            })
-                        }).then(function(res) {
-                            return res.json();
-                        }).then(function(orderData) {
-                            return orderData.id;
-                        });
-                    },
-                    onApprove: function(data, actions) {
-                        return fetch('/api/payments/capture-order', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                orderID: data.orderID,
-                                contentId: contentId,
-                                userId: currentUser ? currentUser.uid : null
-                            })
-                        }).then(function(res) {
-                            return res.json();
-                        }).then(function(details) {
-                            console.log('Payment completed:', details);
-                            closePayPalPopup();
-                            if (unityInstance) {
-                                unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'true');
-                            }
-                        });
-                    },
-                    onError: function(err) {
-                        console.error('PayPal error:', err);
-                        closePayPalPopup();
-                        if (unityInstance) {
-                            unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'false');
-                        }
-                    }
-                }).render('#unity-paypal-buttons');
-
-            } catch (error) {
-                console.error('Payment request error:', error);
-                if (unityInstance) {
-                    unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'false');
-                }
-            }
-        };
-
-        window.closePayPalPopup = function() {
-            const popup = document.getElementById('unity-paypal-container');
-            if (popup) {
-                popup.remove();
-            }
-        };
-
-        // ===== THREE-TIER AUTHENTICATION SYSTEM =====
-
-        function showAuthOverlay() {
-            document.getElementById('authOverlay').classList.remove('hidden');
-        }
-
-        function hideAuthOverlay() {
-            document.getElementById('authOverlay').classList.add('hidden');
-        }
-
-        function showLoadingText(text) {
-            const loadingElement = document.getElementById('authLoadingText');
-            loadingElement.textContent = text;
-            loadingElement.style.display = 'block';
-        }
-
-        function hideLoadingText() {
-            document.getElementById('authLoadingText').style.display = 'none';
-        }
+        let paypalOrderId = null;
 
         // PayPal login flow
         function startPayPalLogin() {
-            showLoadingText('Redirecting to PayPal...');
-            window.location.href = '/auth/paypal/login';
+            showLoadingText('Connecting to PayPal...');
+            const functions = firebase.functions();
+            const getPayPalAuthUrl = functions.httpsCallable('getPayPalAuthUrl');
+
+            getPayPalAuthUrl({ contentId: '{{{ CONTENT_ID }}}' })
+                .then((result) => {
+                    console.log('PayPal auth URL received:', result.data.authUrl);
+                    window.location.href = result.data.authUrl;
+                })
+                .catch((error) => {
+                    console.error('PayPal auth error:', error);
+                    showLoadingText('PayPal connection failed. Try another method.');
+                });
         }
 
         // Continue as visitor (limited access)
@@ -408,7 +396,7 @@
             }
         }
 
-        // Open creator information
+        // Open creator info page
         function openCreatorInfo() {
             window.open('/quickstart.html', '_blank');
         }
@@ -430,7 +418,7 @@
             loadUnity();
         });
 
-        // ===== UNITY LOADING FUNCTION - FIXED PATTERN =====
+        // ===== UNITY LOADING FUNCTION - RESPONSIVE FULLSCREEN =====
         function loadUnity() {
             var container = document.querySelector("#unity-container");
             var canvas = document.querySelector("#unity-canvas");
@@ -447,9 +435,9 @@
                 var div = document.createElement('div');
                 div.innerHTML = msg;
                 warningBanner.appendChild(div);
-                if (type == 'error') div.style = 'background: red; padding: 10px;';
+                if (type == 'error') div.style = 'background: red; padding: 5px;';
                 else {
-                    if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+                    if (type == 'warning') div.style = 'background: yellow; color: black; padding: 5px;';
                     setTimeout(function() {
                         warningBanner.removeChild(div);
                         updateBannerVisibility();
@@ -464,12 +452,6 @@
                 dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
                 frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
                 codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
-#if MEMORY_FILENAME
-                memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
-#endif
-#if SYMBOLS_FILENAME
-                symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
-#endif
                 streamingAssetsUrl: "StreamingAssets",
                 companyName: "{{{ COMPANY_NAME }}}",
                 productName: "{{{ PRODUCT_NAME }}}",
@@ -477,21 +459,16 @@
                 showBanner: unityShowBanner,
             };
 
+            // Remove the loading bar on mobile
             if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-                var meta = document.createElement('meta');
-                meta.name = 'viewport';
-                meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-                document.getElementsByTagName('head')[0].appendChild(meta);
                 container.className = "unity-mobile";
-                canvas.className = "unity-mobile";
+                config.devicePixelRatio = 1;
+                unityShowBanner('WebGL builds are not supported on mobile devices.');
             } else {
-                canvas.style.width = "{{{ WIDTH }}}px";
-                canvas.style.height = "{{{ HEIGHT }}}px";
+                canvas.style.width = "100vw";
+                canvas.style.height = "100vh";
             }
 
-#if BACKGROUND_FILENAME
-            canvas.style.background = "url('" + buildUrl + "/{{{ BACKGROUND_FILENAME }}}') center / cover";
-#endif
             loadingBar.style.display = "block";
 
             var script = document.createElement("script");
@@ -502,39 +479,223 @@
                 }).then((instance) => {
                     unityInstance = instance;
                     loadingBar.style.display = "none";
-                    if (fullscreenButton) {
-                        fullscreenButton.onclick = () => {
-                            unityInstance.SetFullscreen(1);
-                        };
-                    }
+                    fullscreenButton.onclick = () => {
+                        unityInstance.SetFullscreen(1);
+                    };
                 }).catch((message) => {
                     alert(message);
                 });
             };
-
             document.body.appendChild(script);
         }
 
-        // ===== UNITY-WEB COMMUNICATION BRIDGE =====
+        // Authentication overlay management
+        function showAuthOverlay() {
+            document.getElementById('authOverlay').style.display = 'flex';
+        }
 
-        window.UnityCallTestFunction = function() {
-            console.log('Unity called test function');
-            // Test Firebase function or other backend
+        function hideAuthOverlay() {
+            document.getElementById('authOverlay').style.display = 'none';
+        }
+
+        function showLoadingText(text) {
+            const loadingElement = document.getElementById('authLoadingText');
+            loadingElement.textContent = text;
+            loadingElement.style.display = 'block';
+        }
+
+        // Unity-Firebase Bridge Functions (Called from Unity via DllImport)
+        window.UnityRequestPayment = function(contentId, amount) {
+            console.log('Unity requested payment:', contentId, amount);
+
+            if (!currentUser) {
+                showAuthOverlay();
+                return;
+            }
+
+            const functions = firebase.functions();
+            const createPaymentOrder = functions.httpsCallable('createPaymentOrder');
+
+            createPaymentOrder({
+                contentId: contentId,
+                amount: parseFloat(amount)
+            }).then((result) => {
+                paypalOrderId = result.data.orderId;
+                console.log('Payment order created:', paypalOrderId);
+
+                paypal.Buttons({
+                    createOrder: function(data, actions) {
+                        return paypalOrderId;
+                    },
+                    onApprove: function(data, actions) {
+                        const capturePayment = functions.httpsCallable('capturePayment');
+                        return capturePayment({
+                            orderId: data.orderID,
+                            contentId: contentId
+                        }).then((result) => {
+                            console.log('Payment captured:', result.data);
+                            if (unityInstance) {
+                                unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'success');
+                            }
+                            hideAuthOverlay();
+                        });
+                    },
+                    onError: function(err) {
+                        console.error('PayPal payment error:', err);
+                        if (unityInstance) {
+                            unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'error');
+                        }
+                    }
+                }).render('#paypalContainer');
+
+                showAuthOverlay();
+
+            }).catch((error) => {
+                console.error('Payment order creation failed:', error);
+                if (unityInstance) {
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnPaymentComplete', 'error');
+                }
+            });
         };
 
         window.UnityCheckContentAccess = function(contentId) {
-            console.log('Unity checking access for:', contentId);
+            console.log('Unity checking content access:', contentId);
 
-            if (currentUser) {
-                console.log('User authenticated, granting access');
-                if (unityInstance) {
-                    unityInstance.SendMessage('FirebaseIntegration', 'OnContentAccessResult', 'granted');
-                }
-            } else {
-                console.log('User not authenticated, showing overlay');
+            if (!currentUser) {
+                console.log('No authenticated user, showing auth overlay');
                 showAuthOverlay();
+                return;
             }
+
+            const functions = firebase.functions();
+            const checkContentAccess = functions.httpsCallable('checkContentAccess');
+
+            checkContentAccess({ contentId: contentId })
+                .then((result) => {
+                    console.log('Content access check result:', result.data);
+
+                    if (result.data.hasAccess) {
+                        console.log('User has access to content');
+                        if (unityInstance) {
+                            unityInstance.SendMessage('FirebaseIntegration', 'OnContentAccessGranted', 'true');
+                        }
+                    } else {
+                        console.log('User does not have access, showing payment options');
+                        showAuthOverlay();
+                    }
+                })
+                .catch((error) => {
+                    console.error('Content access check failed:', error);
+                    console.log('Access check failed, showing auth overlay as fallback');
+                    showAuthOverlay();
+                });
         };
+
+        window.UnityCallTestFunction = function() {
+            console.log('Unity called test function');
+
+            if (!currentUser) {
+                console.log('No user authenticated for test function');
+                return;
+            }
+
+            const functions = firebase.functions();
+            const testFunction = functions.httpsCallable('testFunction');
+
+            testFunction({ message: 'Hello from Unity!' })
+                .then((result) => {
+                    console.log('Test function result:', result.data);
+                    if (unityInstance) {
+                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestFunctionComplete', JSON.stringify(result.data));
+                    }
+                })
+                .catch((error) => {
+                    console.error('Test function failed:', error);
+                    if (unityInstance) {
+                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestFunctionComplete', JSON.stringify({error: error.message}));
+                    }
+                });
+        };
+
+        // Handle OAuth callbacks (PayPal, Google, etc.)
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const scope = urlParams.get('scope');
+
+            if (code && scope && scope.includes('openid')) {
+                console.log('PayPal OAuth callback detected');
+                showLoadingText('Processing PayPal authentication...');
+
+                const functions = firebase.functions();
+                const exchangePayPalTokens = functions.httpsCallable('exchangePayPalTokens');
+
+                exchangePayPalTokens({ code: code })
+                    .then((result) => {
+                        console.log('PayPal token exchange successful:', result.data);
+
+                        // Sign in to Firebase with custom token
+                        return auth.signInWithCustomToken(result.data.firebaseToken);
+                    })
+                    .then((userCredential) => {
+                        console.log('Firebase authentication successful:', userCredential.user);
+                        hideAuthOverlay();
+
+                        // Clean up URL
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    })
+                    .catch((error) => {
+                        console.error('PayPal authentication failed:', error);
+                        showLoadingText('Authentication failed. Please try again.');
+                    });
+            }
+        });
+
+        // Responsive canvas handling
+        function handleResize() {
+            if (unityInstance) {
+                const canvas = document.querySelector("#unity-canvas");
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        }
+
+        window.addEventListener('resize', handleResize);
+        window.addEventListener('orientationchange', handleResize);
+
+        // Prevent default touch behaviors on canvas
+        document.addEventListener('touchstart', function(e) {
+            if (e.target.tagName === 'CANVAS') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', function(e) {
+            if (e.target.tagName === 'CANVAS') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', function(e) {
+            if (e.target.tagName === 'CANVAS') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+
+        console.log('Unity WebGL Template loaded - Fullscreen Responsive Mode');
     </script>
 </body>
 </html>
