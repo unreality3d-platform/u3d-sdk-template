@@ -49,6 +49,7 @@ jobs:
         with:
           targetPlatform: WebGL
           allowDirtyBuild: true
+          buildMethod: BuildReportLogger.BuildWebGL
 
       # Process Unity template with our custom processor
       - name: Setup Node.js
