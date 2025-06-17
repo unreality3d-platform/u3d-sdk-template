@@ -64,7 +64,24 @@ namespace U3D
         {
             if (startAutomatically)
             {
-                StartQuest();
+                // Use QuestManager to start quest properly
+                if (questManager != null)
+                {
+                    questManager.StartQuest(this);
+                }
+                else
+                {
+                    // Fallback: find QuestManager and start through it
+                    U3DQuestManager manager = U3DQuestManager.Instance;
+                    if (manager != null)
+                    {
+                        manager.StartQuest(this);
+                    }
+                    else
+                    {
+                        StartQuest(); // Last resort: start directly
+                    }
+                }
             }
         }
 

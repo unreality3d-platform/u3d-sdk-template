@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.UI;
 
 namespace U3D
 {
@@ -50,6 +51,7 @@ namespace U3D
 
         private AudioSource audioSource;
         private static U3DQuestManager instance;
+        private Dictionary<U3DQuest, GameObject> questUIElements = new Dictionary<U3DQuest, GameObject>();
 
         public static U3DQuestManager Instance
         {
@@ -115,6 +117,9 @@ namespace U3D
             PlaySound(questStartSound);
             OnQuestStarted?.Invoke(quest);
 
+            CreateQuestUI(quest);
+            UpdateQuestLogVisibility(); // CRITICAL: This was missing!
+
             Debug.Log($"Quest Started: {quest.questTitle}");
         }
 
@@ -144,6 +149,9 @@ namespace U3D
             PlaySound(questCompleteSound);
             OnQuestCompleted?.Invoke(quest);
 
+            RemoveQuestUI(quest);
+            UpdateQuestLogVisibility();
+
             Debug.Log($"Quest Completed: {quest.questTitle}");
         }
 
@@ -161,7 +169,12 @@ namespace U3D
             U3DQuest parentQuest = objective.GetComponentInParent<U3DQuest>();
             if (parentQuest != null && parentQuest.IsCompleted && activeQuests.Contains(parentQuest))
             {
-                CompleteQuest(parentQuest);
+                UpdateQuestUI(parentQuest);
+
+                if (parentQuest.IsCompleted)
+                {
+                    CompleteQuest(parentQuest);
+                }
             }
         }
 
@@ -188,7 +201,14 @@ namespace U3D
         {
             if (questLogCanvas != null)
             {
-                questLogCanvas.gameObject.SetActive(true);
+                questLogCanvas.gameObject.layer = LayerMask.NameToLayer("UI");
+                questLogCanvas.sortingOrder = 100;
+                questLogCanvas.gameObject.SetActive(false);
+                questLogCanvas.enabled = true;
+            }
+            else
+            {
+                Debug.LogError("QuestLogCanvas is not assigned in QuestManager!");
             }
         }
 
@@ -215,6 +235,204 @@ namespace U3D
             }
             activeQuests.Clear();
             Debug.Log("All quests reset");
+        }
+
+        /// <summary>
+        /// Update quest log visibility based on active quests
+        /// </summary>
+        private void UpdateQuestLogVisibility()
+        {
+            if (questLogCanvas != null)
+            {
+                bool shouldShow = activeQuests.Count > 0;
+
+                if (shouldShow)
+                {
+                    questLogCanvas.gameObject.SetActive(true);
+                    questLogCanvas.enabled = true;
+                    Canvas.ForceUpdateCanvases();
+                }
+                else
+                {
+                    questLogCanvas.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Create UI elements for a quest
+        /// </summary>
+        private void CreateQuestUI(U3DQuest quest)
+        {
+            if (questListParent == null || quest == null)
+            {
+                Debug.LogError("questListParent is null! Cannot create quest UI.");
+                return;
+            }
+
+            if (questUIElements.ContainsKey(quest))
+                return;
+
+            // Create quest container
+            GameObject questContainer = new GameObject($"Quest_{quest.questTitle}");
+            questContainer.transform.SetParent(questListParent, false);
+            questContainer.layer = LayerMask.NameToLayer("UI");
+
+            // Add RectTransform component
+            RectTransform containerRect = questContainer.AddComponent<RectTransform>();
+            containerRect.anchorMin = Vector2.zero;
+            containerRect.anchorMax = Vector2.one;
+            containerRect.offsetMin = Vector2.zero;
+            containerRect.offsetMax = Vector2.zero;
+
+            // Add LayoutElement for proper sizing
+            LayoutElement layoutElement = questContainer.AddComponent<LayoutElement>();
+            layoutElement.minHeight = 80;
+            layoutElement.preferredHeight = 100;
+
+            // Create vertical layout for quest content
+            VerticalLayoutGroup questLayout = questContainer.AddComponent<VerticalLayoutGroup>();
+            questLayout.spacing = 5;
+            questLayout.padding = new RectOffset(10, 10, 10, 10);
+            questLayout.childControlWidth = true;
+            questLayout.childControlHeight = false;
+            questLayout.childForceExpandWidth = true;
+
+            // Quest title
+            GameObject titleObj = new GameObject("QuestTitle");
+            titleObj.transform.SetParent(questContainer.transform, false);
+            titleObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform titleRect = titleObj.AddComponent<RectTransform>();
+            titleRect.sizeDelta = new Vector2(0, 25);
+
+            CanvasRenderer titleCanvasRenderer = titleObj.AddComponent<CanvasRenderer>();
+
+            Text titleText = titleObj.AddComponent<Text>();
+            titleText.text = quest.questTitle;
+            titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            titleText.fontSize = 16;
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = Color.white;
+            titleText.alignment = TextAnchor.MiddleLeft;
+            titleText.raycastTarget = false;
+
+            // Create objectives
+            foreach (U3DQuestObjective objective in GetQuestObjectives(quest))
+            {
+                CreateObjectiveUI(objective, questContainer.transform);
+            }
+
+            questUIElements[quest] = questContainer;
+
+            // Force layout rebuild
+            LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
+        }
+
+        /// <summary>
+        /// Create UI for individual objective
+        /// </summary>
+        private void CreateObjectiveUI(U3DQuestObjective objective, Transform parent)
+        {
+            GameObject objContainer = new GameObject($"Objective_{objective.objectiveDescription}");
+            objContainer.transform.SetParent(parent, false);
+            objContainer.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform objRect = objContainer.AddComponent<RectTransform>();
+            objRect.sizeDelta = new Vector2(0, 20);
+
+            CanvasRenderer canvasRenderer = objContainer.AddComponent<CanvasRenderer>();
+
+            Text objText = objContainer.AddComponent<Text>();
+            objText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            objText.fontSize = 12;
+            objText.color = Color.white;
+            objText.text = objective.GetObjectiveStatus();
+            objText.alignment = TextAnchor.MiddleLeft;
+            objText.raycastTarget = false;
+
+            objContainer.name = $"ObjectiveUI_{objective.GetInstanceID()}";
+        }
+
+        /// <summary>
+        /// Verify canvas setup for Unity 6+ compatibility
+        /// </summary>
+        [ContextMenu("Verify Canvas Setup")]
+        public void VerifyCanvasSetup()
+        {
+            if (questLogCanvas == null)
+            {
+                Debug.LogError("QuestLogCanvas is not assigned!");
+                return;
+            }
+
+            Debug.Log($"Canvas Name: {questLogCanvas.name}");
+            Debug.Log($"Canvas Active: {questLogCanvas.gameObject.activeSelf}");
+            Debug.Log($"Canvas Enabled: {questLogCanvas.enabled}");
+            Debug.Log($"Canvas Render Mode: {questLogCanvas.renderMode}");
+            Debug.Log($"Canvas Sorting Order: {questLogCanvas.sortingOrder}");
+            Debug.Log($"Canvas Layer: {questLogCanvas.gameObject.layer}");
+
+            CanvasScaler scaler = questLogCanvas.GetComponent<CanvasScaler>();
+            GraphicRaycaster raycaster = questLogCanvas.GetComponent<GraphicRaycaster>();
+
+            Debug.Log($"Has CanvasScaler: {scaler != null}");
+            Debug.Log($"Has GraphicRaycaster: {raycaster != null}");
+
+            if (questListParent != null)
+            {
+                Debug.Log($"Quest List Parent: {questListParent.name}");
+                Debug.Log($"Quest List Parent Active: {questListParent.gameObject.activeSelf}");
+            }
+        }
+
+        /// <summary>
+        /// Update UI for a quest
+        /// </summary>
+        private void UpdateQuestUI(U3DQuest quest)
+        {
+            if (!questUIElements.ContainsKey(quest))
+                return;
+
+            GameObject questContainer = questUIElements[quest];
+            if (questContainer == null)
+                return;
+
+            // Update all objective texts
+            foreach (U3DQuestObjective objective in GetQuestObjectives(quest))
+            {
+                Transform objUI = questContainer.transform.Find($"ObjectiveUI_{objective.GetInstanceID()}");
+                if (objUI != null)
+                {
+                    Text objText = objUI.GetComponent<Text>();
+                    if (objText != null)
+                    {
+                        objText.text = objective.GetObjectiveStatus();
+                        objText.color = objective.IsCompleted ? Color.green : (objective.IsActive ? Color.white : Color.gray);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Remove UI for a quest
+        /// </summary>
+        private void RemoveQuestUI(U3DQuest quest)
+        {
+            if (questUIElements.ContainsKey(quest))
+            {
+                if (questUIElements[quest] != null)
+                    Destroy(questUIElements[quest]);
+                questUIElements.Remove(quest);
+            }
+        }
+
+        /// <summary>
+        /// Get objectives from a quest
+        /// </summary>
+        private List<U3DQuestObjective> GetQuestObjectives(U3DQuest quest)
+        {
+            return new List<U3DQuestObjective>(quest.GetComponentsInChildren<U3DQuestObjective>());
         }
     }
 }
