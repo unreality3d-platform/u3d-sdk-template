@@ -20,10 +20,11 @@ namespace U3D.Editor
                 new CreatorTool("Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
                 new CreatorTool("Make 1x Trigger", "Trigger that fires once", () => Debug.Log("Applied 1x Trigger"), true),
                 new CreatorTool("Make Toggle", "Switch between two states", () => Debug.Log("Applied Toggle"), true),
-                new CreatorTool("Make Random", "Randomly trigger different actions", () => Debug.Log("Applied Random"), true),
+                new CreatorTool("Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => Debug.Log("Applied Random"), true),
                 new CreatorTool("Make Mutually Exclusive", "Only one can be selected at a time", () => Debug.Log("Applied Mutually Exclusive"), true),
-                new CreatorTool("Make Destroy Trigger", "Removes objects when triggered", () => Debug.Log("Applied Destroy Trigger"), true),
-                new CreatorTool("Make Reset Trigger", "Returns objects to starting position", () => Debug.Log("Applied Reset Trigger"), true)
+                new CreatorTool("Make Object Destroy Trigger", "Removes objects when triggered", () => Debug.Log("Applied Object Destroy Trigger"), true),
+                new CreatorTool("Make Object Reset Trigger", "Returns objects to starting position", () => Debug.Log("Applied Object Reset Trigger"), true),
+                new CreatorTool("Add Player Reset Trigger", "Reset player position and state to spawn point", () => Debug.Log("Applied Player Reset Trigger"), true)
             };
         }
 
@@ -61,12 +62,13 @@ namespace U3D.Editor
 
             EditorGUI.EndDisabledGroup();
 
+            EditorGUILayout.EndHorizontal();
+
             if (tool.requiresSelection && Selection.activeGameObject == null)
             {
                 EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
             }
 
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }

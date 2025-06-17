@@ -69,7 +69,7 @@ namespace U3D.Editor
                 new SystemsToolsCategory(),
                 new MediaToolsCategory(),
                 new MigrationToolsCategory(),
-                new OptimizationToolsCategory()
+                new MonetizationToolsCategory()
             };
         }
 
@@ -101,67 +101,61 @@ namespace U3D.Editor
                 if (newSelection && !isSelected)
                 {
                     selectedCategoryIndex = i;
-                    searchText = "";
-                }
-
-                if (i < categories.Count - 1)
-                {
-                    GUILayout.Space(1f);
                 }
             }
             EditorGUILayout.EndHorizontal();
+
             EditorGUILayout.Space(10);
 
-            if (categories != null && selectedCategoryIndex < categories.Count)
-            {
-                categoryScrollPosition = EditorGUILayout.BeginScrollView(categoryScrollPosition);
+            categoryScrollPosition = EditorGUILayout.BeginScrollView(categoryScrollPosition);
 
+            if (selectedCategoryIndex >= 0 && selectedCategoryIndex < categories.Count)
+            {
                 if (string.IsNullOrEmpty(searchText))
                 {
                     categories[selectedCategoryIndex].DrawCategory();
                 }
                 else
                 {
-                    DrawSearchResults();
+                    DrawFilteredTools();
                 }
-
-                EditorGUILayout.EndScrollView();
             }
+
+            EditorGUILayout.EndScrollView();
         }
 
-        private void DrawSearchResults()
+        private void DrawFilteredTools()
         {
-            EditorGUILayout.LabelField($"Search Results for: \"{searchText}\"", EditorStyles.boldLabel);
-            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField($"Search Results for \"{searchText}\"", EditorStyles.boldLabel);
+            EditorGUILayout.Space(10);
 
-            bool foundResults = false;
-
+            bool foundAny = false;
             foreach (var category in categories)
             {
                 var matchingTools = category.GetTools().Where(tool =>
-                    tool.title.ToLower().Contains(searchText.ToLower()) ||
-                    tool.description.ToLower().Contains(searchText.ToLower())).ToList();
+                    tool.title.IndexOf(searchText, System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    tool.description.IndexOf(searchText, System.StringComparison.OrdinalIgnoreCase) >= 0
+                ).ToList();
 
-                if (matchingTools.Any())
+                if (matchingTools.Count > 0)
                 {
-                    foundResults = true;
-                    EditorGUILayout.LabelField($"From {category.CategoryName}:", EditorStyles.boldLabel);
-
+                    foundAny = true;
+                    EditorGUILayout.LabelField($"{category.CategoryName}", EditorStyles.boldLabel);
                     foreach (var tool in matchingTools)
                     {
-                        DrawTool(tool);
+                        DrawSearchResultTool(tool);
                     }
                     EditorGUILayout.Space(10);
                 }
             }
 
-            if (!foundResults)
+            if (!foundAny)
             {
-                EditorGUILayout.HelpBox("No tools found matching your search.", MessageType.Info);
+                EditorGUILayout.HelpBox($"No tools found matching \"{searchText}\"", MessageType.Info);
             }
         }
 
-        private void DrawTool(CreatorTool tool)
+        private void DrawSearchResultTool(CreatorTool tool)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
@@ -181,12 +175,13 @@ namespace U3D.Editor
 
             EditorGUI.EndDisabledGroup();
 
+            EditorGUILayout.EndHorizontal();
+
             if (tool.requiresSelection && Selection.activeGameObject == null)
             {
                 EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
             }
 
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }

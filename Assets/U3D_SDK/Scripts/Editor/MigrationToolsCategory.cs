@@ -6,20 +6,17 @@ namespace U3D.Editor
 {
     public class MigrationToolsCategory : IToolCategory
     {
-        public string CategoryName => "Platform Migration";
+        public string CategoryName => "Asset Cleanup";
         private List<CreatorTool> tools;
 
         public MigrationToolsCategory()
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Import from Spatial.io", "Convert Spatial scenes to Unity format", () => Debug.Log("Applied Spatial Import")),
-                new CreatorTool("Import from VRChat", "Convert VRChat worlds to Unity format", () => Debug.Log("Applied VRChat Import")),
-                new CreatorTool("Import from FrameVR", "Convert Frame scenes to Unity format", () => Debug.Log("Applied Frame Import")),
-                new CreatorTool("Import from PlayCanvas", "Convert PlayCanvas projects to Unity", () => Debug.Log("Applied PlayCanvas Import")),
-                new CreatorTool("Import from ArrivalSpace", "Convert ArrivalSpace content to Unity", () => Debug.Log("Applied ArrivalSpace Import")),
-                new CreatorTool("Fix Missing Scripts", "Replace missing script references with placeholders", () => Debug.Log("Applied Missing Script Fix")),
-                new CreatorTool("Clean Missing Scripts", "Remove all components with missing script references", () => Debug.Log("Applied Clean Missing Scripts"))
+                new CreatorTool("Missing Scripts Replacer", "Replace missing script references on GameObjects in scene with placeholder components to prevent errors while retaining visual reminders of where components go", () => Debug.Log("Applied Missing Scripts Replacer")),
+                new CreatorTool("Remove Missing Script Placeholders", "Companion to Missing Scripts Replacer: Remove placeholder entries for missing scripts from GameObjects and components in scene", () => Debug.Log("Applied Remove Missing Script Placeholders")),
+                new CreatorTool("Prefab Missing Script Cleaner", "Remove missing script components from prefabs in selected folder to prevent errors", () => Debug.Log("Applied Prefab Missing Script Cleaner")),
+                new CreatorTool("Remove Missing Scripts Tool", "Tool for detecting and removing missing script references from GameObjects in loaded scene", () => Debug.Log("Applied Remove Missing Scripts Tool"))
             };
         }
 
@@ -27,8 +24,8 @@ namespace U3D.Editor
 
         public void DrawCategory()
         {
-            EditorGUILayout.LabelField("Platform Migration Tools", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Safely move your existing 3D content from other platforms to Unity 6.", MessageType.Info);
+            EditorGUILayout.LabelField("Asset Cleanup Tools", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Clean up missing script references and broken components from your project.", MessageType.Info);
             EditorGUILayout.Space(10);
 
             foreach (var tool in tools)

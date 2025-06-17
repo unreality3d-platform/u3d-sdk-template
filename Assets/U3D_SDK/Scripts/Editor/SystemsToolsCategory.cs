@@ -15,9 +15,10 @@ namespace U3D.Editor
             {
                 new CreatorTool("Add Quest System", "Create missions and objectives for players", () => Debug.Log("Applied Quest System")),
                 new CreatorTool("Add Quiz System", "Interactive questions and knowledge tests", () => Debug.Log("Applied Quiz System")),
-                new CreatorTool("Add Scoreboard", "Track and display player achievements", () => Debug.Log("Applied Scoreboard")),
-                new CreatorTool("Add Interaction UI", "Worldspace canvas for object interactions", () => Debug.Log("Applied Interaction UI"), true),
-                new CreatorTool("Add Scene Portal", "Portal to load different scenes", () => Debug.Log("Applied Scene Portal"), true),
+                new CreatorTool("Add Scoreboard Canvas", "Track and display player achievements", () => Debug.Log("Applied Scoreboard Canvas")),
+                new CreatorTool("Add Worldspace Interaction UI", "3D world canvas for object interactions", () => Debug.Log("Applied Worldspace Interaction UI"), true),
+                new CreatorTool("Add Screen Interaction UI", "Screen overlay canvas for user interfaces", () => Debug.Log("Applied Screen Interaction UI")),
+                new CreatorTool("Add Scene-to-Scene Portal", "Portal to load different scenes", () => Debug.Log("Applied Scene-to-Scene Portal"), true),
                 new CreatorTool("Add 1-Way Portal", "Portal for one-direction travel within scene", () => Debug.Log("Applied 1-Way Portal"), true),
                 new CreatorTool("Add 2-Way Portal", "Portal for bi-directional travel within scene", () => Debug.Log("Applied 2-Way Portal"), true)
             };
@@ -57,12 +58,13 @@ namespace U3D.Editor
 
             EditorGUI.EndDisabledGroup();
 
+            EditorGUILayout.EndHorizontal();
+
             if (tool.requiresSelection && Selection.activeGameObject == null)
             {
                 EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
             }
 
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }
