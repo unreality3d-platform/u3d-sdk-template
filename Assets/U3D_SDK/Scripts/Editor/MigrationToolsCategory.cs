@@ -13,10 +13,10 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Missing Scripts Replacer", "Replace missing script references on GameObjects in scene with placeholder components to prevent errors while retaining visual reminders of where components go", () => Debug.Log("Applied Missing Scripts Replacer")),
-                new CreatorTool("Remove Missing Script Placeholders", "Companion to Missing Scripts Replacer: Remove placeholder entries for missing scripts from GameObjects and components in scene", () => Debug.Log("Applied Remove Missing Script Placeholders")),
-                new CreatorTool("Prefab Missing Script Cleaner", "Remove missing script components from prefabs in selected folder to prevent errors", () => Debug.Log("Applied Prefab Missing Script Cleaner")),
-                new CreatorTool("Remove Missing Scripts Tool", "Tool for detecting and removing missing script references from GameObjects in loaded scene", () => Debug.Log("Applied Remove Missing Scripts Tool"))
+                new CreatorTool("Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
+                new CreatorTool("Remove Placeholder Components", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
+                new CreatorTool("Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
+                new CreatorTool("Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder)
             };
         }
 
@@ -25,7 +25,16 @@ namespace U3D.Editor
         public void DrawCategory()
         {
             EditorGUILayout.LabelField("Asset Cleanup Tools", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Clean up missing script references and broken components from your project.", MessageType.Info);
+            EditorGUILayout.HelpBox("Clean up missing script references and broken components from your project. These tools help maintain a healthy codebase when migrating or updating assets.", MessageType.Info);
+            EditorGUILayout.Space(10);
+
+            // Add workflow guidance
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("🔄 Recommended Workflow:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("1. Replace Missing Scripts → Creates placeholders for safety", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("2. Fix/restore your scripts as needed", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("3. Remove Placeholder Components → Clean up when done", EditorStyles.miniLabel);
+            EditorGUILayout.EndVertical();
             EditorGUILayout.Space(10);
 
             foreach (var tool in tools)
@@ -46,7 +55,12 @@ namespace U3D.Editor
 
             if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
             {
-                tool.action?.Invoke();
+                if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
+                    $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
+                    "Continue", "Cancel"))
+                {
+                    tool.action?.Invoke();
+                }
             }
 
             EditorGUILayout.EndHorizontal();
