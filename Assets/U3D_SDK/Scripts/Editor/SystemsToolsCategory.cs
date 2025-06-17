@@ -34,39 +34,8 @@ namespace U3D.Editor
 
             foreach (var tool in tools)
             {
-                DrawTool(tool);
+                ProjectToolsTab.DrawCategoryTool(tool);
             }
-        }
-
-        private void DrawTool(CreatorTool tool)
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.BeginHorizontal();
-
-            EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
-            EditorGUILayout.EndVertical();
-
-            bool canExecute = !tool.requiresSelection || Selection.activeGameObject != null;
-            EditorGUI.BeginDisabledGroup(!canExecute);
-
-            if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
-            {
-                tool.action?.Invoke();
-            }
-
-            EditorGUI.EndDisabledGroup();
-
-            EditorGUILayout.EndHorizontal();
-
-            if (tool.requiresSelection && Selection.activeGameObject == null)
-            {
-                EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
-            }
-
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.Space(5);
         }
     }
 }

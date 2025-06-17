@@ -31,28 +31,8 @@ namespace U3D.Editor
 
             foreach (var tool in tools)
             {
-                DrawTool(tool);
+                ProjectToolsTab.DrawCategoryTool(tool);
             }
-        }
-
-        private void DrawTool(CreatorTool tool)
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.BeginHorizontal();
-
-            EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
-            EditorGUILayout.EndVertical();
-
-            if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
-            {
-                tool.action?.Invoke();
-            }
-
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.Space(5);
         }
     }
 }

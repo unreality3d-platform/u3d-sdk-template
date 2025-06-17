@@ -90,20 +90,42 @@ namespace U3D.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.BeginHorizontal();
-            for (int i = 0; i < categories.Count; i++)
-            {
-                // Change from Button to Toggle to match main tabs
-                bool isSelected = selectedCategoryIndex == i;
-                bool newSelection = GUILayout.Toggle(isSelected, categories[i].CategoryName,
-                    isSelected ? activeSubtabButtonStyle : subtabButtonStyle);
+            // Responsive subtab layout - wrap buttons when window is narrow
+            float windowWidth = EditorGUIUtility.currentViewWidth;
+            bool useVerticalLayout = windowWidth < 500f; // Threshold for wrapping
 
-                if (newSelection && !isSelected)
+            if (useVerticalLayout)
+            {
+                // Vertical layout for narrow windows
+                for (int i = 0; i < categories.Count; i++)
                 {
-                    selectedCategoryIndex = i;
+                    bool isSelected = selectedCategoryIndex == i;
+                    bool newSelection = GUILayout.Toggle(isSelected, categories[i].CategoryName,
+                        isSelected ? activeSubtabButtonStyle : subtabButtonStyle);
+
+                    if (newSelection && !isSelected)
+                    {
+                        selectedCategoryIndex = i;
+                    }
                 }
             }
-            EditorGUILayout.EndHorizontal();
+            else
+            {
+                // Horizontal layout for wider windows
+                EditorGUILayout.BeginHorizontal();
+                for (int i = 0; i < categories.Count; i++)
+                {
+                    bool isSelected = selectedCategoryIndex == i;
+                    bool newSelection = GUILayout.Toggle(isSelected, categories[i].CategoryName,
+                        isSelected ? activeSubtabButtonStyle : subtabButtonStyle);
+
+                    if (newSelection && !isSelected)
+                    {
+                        selectedCategoryIndex = i;
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            }
 
             EditorGUILayout.Space(10);
 
@@ -143,7 +165,7 @@ namespace U3D.Editor
                     EditorGUILayout.LabelField($"{category.CategoryName}", EditorStyles.boldLabel);
                     foreach (var tool in matchingTools)
                     {
-                        DrawSearchResultTool(tool);
+                        DrawResponsiveTool(tool);
                     }
                     EditorGUILayout.Space(10);
                 }
@@ -155,7 +177,40 @@ namespace U3D.Editor
             }
         }
 
-        private void DrawSearchResultTool(CreatorTool tool)
+        // Copy CheckFixTab's DrawOptimizationTool method exactly - NO width detection
+        private void DrawResponsiveTool(CreatorTool tool)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal();
+
+            EditorGUILayout.BeginVertical();
+            EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.EndVertical();
+
+            bool canExecute = !tool.requiresSelection || Selection.activeGameObject != null;
+            EditorGUI.BeginDisabledGroup(!canExecute);
+
+            if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
+            {
+                tool.action?.Invoke();
+            }
+
+            EditorGUI.EndDisabledGroup();
+
+            EditorGUILayout.EndHorizontal();
+
+            if (tool.requiresSelection && Selection.activeGameObject == null)
+            {
+                EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(5);
+        }
+
+        // Public method for tool categories - exact copy of CheckFixTab pattern
+        public static void DrawCategoryTool(CreatorTool tool)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();

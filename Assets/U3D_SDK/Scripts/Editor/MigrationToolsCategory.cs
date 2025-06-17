@@ -45,25 +45,50 @@ namespace U3D.Editor
 
         private void DrawTool(CreatorTool tool)
         {
+            // Use responsive drawing but keep confirmation
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.BeginHorizontal();
 
-            EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
-            EditorGUILayout.EndVertical();
+            float windowWidth = EditorGUIUtility.currentViewWidth;
 
-            if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
+            if (windowWidth < 400f)
             {
-                if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
-                    $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
-                    "Continue", "Cancel"))
+                // Vertical layout
+                EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
+
+                if (GUILayout.Button("Apply", GUILayout.Height(35)))
                 {
-                    tool.action?.Invoke();
+                    if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
+                        $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
+                        "Continue", "Cancel"))
+                    {
+                        tool.action?.Invoke();
+                    }
                 }
             }
+            else
+            {
+                // Horizontal layout
+                EditorGUILayout.BeginHorizontal();
 
-            EditorGUILayout.EndHorizontal();
+                EditorGUILayout.BeginVertical();
+                EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
+                EditorGUILayout.EndVertical();
+
+                if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
+                {
+                    if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
+                        $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
+                        "Continue", "Cancel"))
+                    {
+                        tool.action?.Invoke();
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }
