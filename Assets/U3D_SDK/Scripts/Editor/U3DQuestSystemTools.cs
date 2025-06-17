@@ -142,11 +142,12 @@ namespace U3D.Editor
             viewportRect.offsetMin = Vector2.zero;
             viewportRect.offsetMax = Vector2.zero;
 
-            // Create content
+            // Create content - FIX: Explicitly add RectTransform
             GameObject contentObj = new GameObject("Content");
+            RectTransform contentRect = contentObj.AddComponent<RectTransform>(); // <- FIXED: Add RectTransform explicitly
             contentObj.transform.SetParent(viewportObj.transform, false);
 
-            RectTransform contentRect = contentObj.GetComponent<RectTransform>();
+            // Now safely set RectTransform properties
             contentRect.anchorMin = new Vector2(0, 1);
             contentRect.anchorMax = new Vector2(1, 1);
             contentRect.pivot = new Vector2(0.5f, 1);
