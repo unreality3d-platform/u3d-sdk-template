@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace U3D
 {
@@ -34,11 +35,11 @@ namespace U3D
         [Tooltip("Canvas for quest dialog UI. Will create default if not assigned")]
         [SerializeField] private Canvas dialogCanvas;
 
-        [Tooltip("Text component for quest giver's name")]
-        [SerializeField] private Text giverNameText;
+        [Tooltip("TextMeshPro component for quest giver's name")]
+        [SerializeField] private TextMeshProUGUI giverNameText;
 
-        [Tooltip("Text component for quest description")]
-        [SerializeField] private Text questDescriptionText;
+        [Tooltip("TextMeshPro component for quest description")]
+        [SerializeField] private TextMeshProUGUI questDescriptionText;
 
         [Tooltip("Button to accept the quest")]
         [SerializeField] private Button acceptQuestButton;
@@ -201,7 +202,7 @@ namespace U3D
                     acceptQuestButton.onClick.RemoveAllListeners();
                     acceptQuestButton.onClick.AddListener(AcceptQuest);
 
-                    Text buttonText = acceptQuestButton.GetComponentInChildren<Text>();
+                    TextMeshProUGUI buttonText = acceptQuestButton.GetComponentInChildren<TextMeshProUGUI>();
                     if (buttonText != null)
                         buttonText.text = "Accept Quest";
                 }
@@ -212,7 +213,7 @@ namespace U3D
                 declineButton.onClick.RemoveAllListeners();
                 declineButton.onClick.AddListener(CloseDialog);
 
-                Text buttonText = declineButton.GetComponentInChildren<Text>();
+                TextMeshProUGUI buttonText = declineButton.GetComponentInChildren<TextMeshProUGUI>();
                 if (buttonText != null)
                     buttonText.text = questToGive.IsActive || questToGive.IsCompleted ? "Close" : "Decline";
             }
@@ -292,7 +293,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create a basic dialog UI using Unity's built-in components
+        /// Create a basic dialog UI using Unity 6+ TextMeshPro components
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -319,15 +320,14 @@ namespace U3D
             RectTransform panelRect = panelObj.GetComponent<RectTransform>();
             panelRect.sizeDelta = new Vector2(400, 300);
 
-            // Create giver name text
+            // Create giver name text using TextMeshPro
             GameObject nameObj = new GameObject("GiverName");
             nameObj.transform.SetParent(panelObj.transform, false);
-            giverNameText = nameObj.AddComponent<Text>();
+            giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
-            giverNameText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             giverNameText.fontSize = 24;
             giverNameText.color = Color.white;
-            giverNameText.alignment = TextAnchor.MiddleCenter;
+            giverNameText.alignment = TextAlignmentOptions.Center;
 
             RectTransform nameRect = nameObj.GetComponent<RectTransform>();
             nameRect.anchorMin = new Vector2(0, 0.7f);
@@ -335,17 +335,15 @@ namespace U3D
             nameRect.offsetMin = Vector2.zero;
             nameRect.offsetMax = Vector2.zero;
 
-            // Create description text
+            // Create description text using TextMeshPro
             GameObject descObj = new GameObject("QuestDescription");
             descObj.transform.SetParent(panelObj.transform, false);
-            questDescriptionText = descObj.AddComponent<Text>();
+            questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
-            questDescriptionText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             questDescriptionText.fontSize = 16;
             questDescriptionText.color = Color.white;
-            questDescriptionText.alignment = TextAnchor.MiddleCenter;
-            questDescriptionText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            questDescriptionText.verticalOverflow = VerticalWrapMode.Overflow;
+            questDescriptionText.alignment = TextAlignmentOptions.Center;
+            questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
 
             RectTransform descRect = descObj.GetComponent<RectTransform>();
             descRect.anchorMin = new Vector2(0, 0.3f);
@@ -368,12 +366,11 @@ namespace U3D
 
             GameObject acceptTextObj = new GameObject("Text");
             acceptTextObj.transform.SetParent(acceptObj.transform, false);
-            Text acceptText = acceptTextObj.AddComponent<Text>();
+            TextMeshProUGUI acceptText = acceptTextObj.AddComponent<TextMeshProUGUI>();
             acceptText.text = "Accept";
-            acceptText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             acceptText.fontSize = 14;
             acceptText.color = Color.white;
-            acceptText.alignment = TextAnchor.MiddleCenter;
+            acceptText.alignment = TextAlignmentOptions.Center;
 
             RectTransform acceptTextRect = acceptTextObj.GetComponent<RectTransform>();
             acceptTextRect.anchorMin = Vector2.zero;
@@ -396,12 +393,11 @@ namespace U3D
 
             GameObject declineTextObj = new GameObject("Text");
             declineTextObj.transform.SetParent(declineObj.transform, false);
-            Text declineText = declineTextObj.AddComponent<Text>();
+            TextMeshProUGUI declineText = declineTextObj.AddComponent<TextMeshProUGUI>();
             declineText.text = "Decline";
-            declineText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             declineText.fontSize = 14;
             declineText.color = Color.white;
-            declineText.alignment = TextAnchor.MiddleCenter;
+            declineText.alignment = TextAlignmentOptions.Center;
 
             RectTransform declineTextRect = declineTextObj.GetComponent<RectTransform>();
             declineTextRect.anchorMin = Vector2.zero;

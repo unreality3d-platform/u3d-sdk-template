@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using TMPro;
 
 namespace U3D
 {
@@ -71,6 +72,10 @@ namespace U3D
                 audioSource = GetComponent<AudioSource>();
                 if (audioSource == null)
                     audioSource = gameObject.AddComponent<AudioSource>();
+
+                // CRITICAL: Discover quests in Awake to fix execution order
+                if (autoDiscoverQuests)
+                    DiscoverQuests();
             }
             else if (instance != this)
             {
@@ -81,9 +86,6 @@ namespace U3D
 
         private void Start()
         {
-            if (autoDiscoverQuests)
-                DiscoverQuests();
-
             InitializeQuestUI();
         }
 
@@ -108,6 +110,8 @@ namespace U3D
         /// </summary>
         public void StartQuest(U3DQuest quest)
         {
+            Debug.Log($"StartQuest called for: {quest?.questTitle}, already active: {activeQuests.Contains(quest)}");
+
             if (quest == null || activeQuests.Contains(quest))
                 return;
 
@@ -118,7 +122,6 @@ namespace U3D
             OnQuestStarted?.Invoke(quest);
 
             CreateQuestUI(quest);
-            UpdateQuestLogVisibility(); // CRITICAL: This was missing!
 
             Debug.Log($"Quest Started: {quest.questTitle}");
         }
@@ -150,7 +153,6 @@ namespace U3D
             OnQuestCompleted?.Invoke(quest);
 
             RemoveQuestUI(quest);
-            UpdateQuestLogVisibility();
 
             Debug.Log($"Quest Completed: {quest.questTitle}");
         }
@@ -195,7 +197,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Initialize the quest UI if canvas is assigned
+        /// Initialize the quest UI - Canvas is always enabled if QuestManager exists
         /// </summary>
         private void InitializeQuestUI()
         {
@@ -203,7 +205,8 @@ namespace U3D
             {
                 questLogCanvas.gameObject.layer = LayerMask.NameToLayer("UI");
                 questLogCanvas.sortingOrder = 100;
-                questLogCanvas.gameObject.SetActive(false);
+                // FIXED: Canvas is always enabled when QuestManager exists
+                questLogCanvas.gameObject.SetActive(true);
                 questLogCanvas.enabled = true;
             }
             else
@@ -238,29 +241,8 @@ namespace U3D
         }
 
         /// <summary>
-        /// Update quest log visibility based on active quests
-        /// </summary>
-        private void UpdateQuestLogVisibility()
-        {
-            if (questLogCanvas != null)
-            {
-                bool shouldShow = activeQuests.Count > 0;
-
-                if (shouldShow)
-                {
-                    questLogCanvas.gameObject.SetActive(true);
-                    questLogCanvas.enabled = true;
-                    Canvas.ForceUpdateCanvases();
-                }
-                else
-                {
-                    questLogCanvas.gameObject.SetActive(false);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Create UI elements for a quest
+        /// Create UI elements for a quest using Unity 6+ TextMeshPro
+        /// Add layout components only when creating quest UI (not on default Content)
         /// </summary>
         private void CreateQuestUI(U3DQuest quest)
         {
@@ -272,6 +254,33 @@ namespace U3D
 
             if (questUIElements.ContainsKey(quest))
                 return;
+
+            // Add layout components to Content object only when first quest is added
+            if (questUIElements.Count == 0)
+            {
+                // Add VerticalLayoutGroup to organize quest elements
+                VerticalLayoutGroup layoutGroup = questListParent.GetComponent<VerticalLayoutGroup>();
+                if (layoutGroup == null)
+                {
+                    layoutGroup = questListParent.gameObject.AddComponent<VerticalLayoutGroup>();
+                    layoutGroup.spacing = 10f;
+                    layoutGroup.padding = new RectOffset(10, 10, 10, 10);
+                    layoutGroup.childControlWidth = true;
+                    layoutGroup.childControlHeight = false;
+                    layoutGroup.childForceExpandWidth = true;
+                    layoutGroup.childForceExpandHeight = false;
+                    layoutGroup.childAlignment = TextAnchor.UpperCenter;
+                }
+
+                // Add ContentSizeFitter to expand Content as needed
+                ContentSizeFitter sizeFitter = questListParent.GetComponent<ContentSizeFitter>();
+                if (sizeFitter == null)
+                {
+                    sizeFitter = questListParent.gameObject.AddComponent<ContentSizeFitter>();
+                    sizeFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+                    sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                }
+            }
 
             // Create quest container
             GameObject questContainer = new GameObject($"Quest_{quest.questTitle}");
@@ -298,7 +307,7 @@ namespace U3D
             questLayout.childControlHeight = false;
             questLayout.childForceExpandWidth = true;
 
-            // Quest title
+            // Quest title using TextMeshPro
             GameObject titleObj = new GameObject("QuestTitle");
             titleObj.transform.SetParent(questContainer.transform, false);
             titleObj.layer = LayerMask.NameToLayer("UI");
@@ -306,15 +315,12 @@ namespace U3D
             RectTransform titleRect = titleObj.AddComponent<RectTransform>();
             titleRect.sizeDelta = new Vector2(0, 25);
 
-            CanvasRenderer titleCanvasRenderer = titleObj.AddComponent<CanvasRenderer>();
-
-            Text titleText = titleObj.AddComponent<Text>();
+            TextMeshProUGUI titleText = titleObj.AddComponent<TextMeshProUGUI>();
             titleText.text = quest.questTitle;
-            titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             titleText.fontSize = 16;
-            titleText.fontStyle = FontStyle.Bold;
+            titleText.fontStyle = FontStyles.Bold;
             titleText.color = Color.white;
-            titleText.alignment = TextAnchor.MiddleLeft;
+            titleText.alignment = TextAlignmentOptions.MidlineLeft;
             titleText.raycastTarget = false;
 
             // Create objectives
@@ -327,10 +333,12 @@ namespace U3D
 
             // Force layout rebuild
             LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
+
+            Debug.Log($"Quest UI created for: {quest.questTitle}");
         }
 
         /// <summary>
-        /// Create UI for individual objective
+        /// Create UI for individual objective using TextMeshPro
         /// </summary>
         private void CreateObjectiveUI(U3DQuestObjective objective, Transform parent)
         {
@@ -341,17 +349,16 @@ namespace U3D
             RectTransform objRect = objContainer.AddComponent<RectTransform>();
             objRect.sizeDelta = new Vector2(0, 20);
 
-            CanvasRenderer canvasRenderer = objContainer.AddComponent<CanvasRenderer>();
-
-            Text objText = objContainer.AddComponent<Text>();
-            objText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            TextMeshProUGUI objText = objContainer.AddComponent<TextMeshProUGUI>();
             objText.fontSize = 12;
             objText.color = Color.white;
             objText.text = objective.GetObjectiveStatus();
-            objText.alignment = TextAnchor.MiddleLeft;
+            objText.alignment = TextAlignmentOptions.MidlineLeft;
             objText.raycastTarget = false;
 
             objContainer.name = $"ObjectiveUI_{objective.GetInstanceID()}";
+
+            Debug.Log($"Created objective UI: {objText.text}");
         }
 
         /// <summary>
@@ -404,7 +411,7 @@ namespace U3D
                 Transform objUI = questContainer.transform.Find($"ObjectiveUI_{objective.GetInstanceID()}");
                 if (objUI != null)
                 {
-                    Text objText = objUI.GetComponent<Text>();
+                    TextMeshProUGUI objText = objUI.GetComponent<TextMeshProUGUI>();
                     if (objText != null)
                     {
                         objText.text = objective.GetObjectiveStatus();

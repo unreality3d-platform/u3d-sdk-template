@@ -1,12 +1,13 @@
 ﻿using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
+using TMPro;
 using U3D;
 
 namespace U3D.Editor
 {
     /// <summary>
-    /// Editor tools for creating quest system components quickly and with proper setup
+    /// Editor tools for creating quest system components with Unity 6+ default setup
     /// </summary>
     public static class U3DQuestSystemTools
     {
@@ -66,7 +67,7 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Create a quest log UI using Unity's built-in components
+        /// Create a quest log UI using Unity's internal DefaultControls.CreateScrollView method
         /// </summary>
         private static GameObject CreateQuestLogUI()
         {
@@ -95,17 +96,16 @@ namespace U3D.Editor
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
-            // Create title
+            // Create title using TextMeshPro
             GameObject titleObj = new GameObject("Title");
             titleObj.transform.SetParent(questLogPanel.transform, false);
 
-            Text titleText = titleObj.AddComponent<Text>();
+            TextMeshProUGUI titleText = titleObj.AddComponent<TextMeshProUGUI>();
             titleText.text = "QUESTS";
-            titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             titleText.fontSize = 24;
-            titleText.fontStyle = FontStyle.Bold;
+            titleText.fontStyle = FontStyles.Bold;
             titleText.color = Color.white;
-            titleText.alignment = TextAnchor.MiddleCenter;
+            titleText.alignment = TextAlignmentOptions.Center;
 
             RectTransform titleRect = titleObj.GetComponent<RectTransform>();
             titleRect.anchorMin = new Vector2(0, 0.9f);
@@ -113,66 +113,22 @@ namespace U3D.Editor
             titleRect.offsetMin = Vector2.zero;
             titleRect.offsetMax = Vector2.zero;
 
-            // Create scroll view for quest list
-            GameObject scrollObj = new GameObject("Scroll View");
-            scrollObj.transform.SetParent(questLogPanel.transform, false);
+            // Create ScrollView using Unity's internal method (same as GameObject > UI > Scroll View)
+            DefaultControls.Resources uiResources = new DefaultControls.Resources();
+            GameObject scrollViewObj = DefaultControls.CreateScrollView(uiResources);
 
-            ScrollRect scrollRect = scrollObj.AddComponent<ScrollRect>();
-            Image scrollImage = scrollObj.AddComponent<Image>();
-            scrollImage.color = new Color(0.1f, 0.1f, 0.1f, 0.5f);
+            // Parent the ScrollView to QuestLog panel 
+            scrollViewObj.transform.SetParent(questLogPanel.transform, false);
 
-            RectTransform scrollRectTransform = scrollObj.GetComponent<RectTransform>();
-            scrollRectTransform.anchorMin = new Vector2(0.05f, 0.05f);
-            scrollRectTransform.anchorMax = new Vector2(0.95f, 0.85f);
-            scrollRectTransform.offsetMin = Vector2.zero;
-            scrollRectTransform.offsetMax = Vector2.zero;
+            // Position the scroll view within the quest log panel
+            RectTransform scrollRect = scrollViewObj.GetComponent<RectTransform>();
+            scrollRect.anchorMin = new Vector2(0.05f, 0.05f);
+            scrollRect.anchorMax = new Vector2(0.95f, 0.85f);
+            scrollRect.offsetMin = Vector2.zero;
+            scrollRect.offsetMax = Vector2.zero;
 
-            // Create viewport
-            GameObject viewportObj = new GameObject("Viewport");
-            viewportObj.transform.SetParent(scrollObj.transform, false);
-
-            Mask viewportMask = viewportObj.AddComponent<Mask>();
-            viewportMask.showMaskGraphic = false;
-            Image viewportImage = viewportObj.AddComponent<Image>();
-            viewportImage.color = Color.clear;
-
-            RectTransform viewportRect = viewportObj.GetComponent<RectTransform>();
-            viewportRect.anchorMin = Vector2.zero;
-            viewportRect.anchorMax = Vector2.one;
-            viewportRect.offsetMin = Vector2.zero;
-            viewportRect.offsetMax = Vector2.zero;
-
-            // Create content - FIX: Explicitly add RectTransform
-            GameObject contentObj = new GameObject("Content");
-            RectTransform contentRect = contentObj.AddComponent<RectTransform>(); // <- FIXED: Add RectTransform explicitly
-            contentObj.transform.SetParent(viewportObj.transform, false);
-
-            // Now safely set RectTransform properties
-            contentRect.anchorMin = new Vector2(0, 1);
-            contentRect.anchorMax = new Vector2(1, 1);
-            contentRect.pivot = new Vector2(0.5f, 1);
-            contentRect.sizeDelta = new Vector2(0, 0);
-
-            VerticalLayoutGroup layoutGroup = contentObj.AddComponent<VerticalLayoutGroup>();
-            layoutGroup.childAlignment = TextAnchor.UpperCenter;
-            layoutGroup.spacing = 10;
-            layoutGroup.padding = new RectOffset(10, 10, 10, 10);
-            layoutGroup.childControlHeight = false;
-            layoutGroup.childControlWidth = true;
-            layoutGroup.childForceExpandHeight = false;
-            layoutGroup.childForceExpandWidth = true;
-
-            ContentSizeFitter sizeFitter = contentObj.AddComponent<ContentSizeFitter>();
-            sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            // Connect scroll rect components
-            scrollRect.content = contentRect;
-            scrollRect.viewport = viewportRect;
-            scrollRect.vertical = true;
-            scrollRect.horizontal = false;
-
-            // Initially hide the quest log
-            canvasObj.SetActive(false);
+            // Canvas is always enabled when QuestManager exists
+            canvasObj.SetActive(true);
 
             return canvasObj;
         }

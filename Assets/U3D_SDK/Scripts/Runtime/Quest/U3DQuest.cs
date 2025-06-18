@@ -49,6 +49,7 @@ namespace U3D
         private U3DQuestManager questManager;
         private bool isActive = false;
         private bool isCompleted = false;
+        private bool hasAttemptedAutoStart = false; // Prevent double auto-start
 
         public bool IsActive => isActive;
         public bool IsCompleted => isCompleted;
@@ -62,24 +63,29 @@ namespace U3D
 
         private void Start()
         {
-            if (startAutomatically)
+            // FIXED: Prevent double auto-start and ensure proper manager connection
+            if (startAutomatically && !hasAttemptedAutoStart && !isActive)
             {
-                // Use QuestManager to start quest properly
+                hasAttemptedAutoStart = true;
+
+                // Try to use the already-initialized quest manager first
                 if (questManager != null)
                 {
+                    Debug.Log($"Starting quest '{questTitle}' through initialized manager");
                     questManager.StartQuest(this);
                 }
                 else
                 {
-                    // Fallback: find QuestManager and start through it
+                    // Fallback: find QuestManager instance
                     U3DQuestManager manager = U3DQuestManager.Instance;
                     if (manager != null)
                     {
+                        Debug.Log($"Starting quest '{questTitle}' through found manager instance");
                         manager.StartQuest(this);
                     }
                     else
                     {
-                        StartQuest(); // Last resort: start directly
+                        Debug.LogWarning($"No QuestManager found for auto-starting quest '{questTitle}'. Quest will not start automatically.");
                     }
                 }
             }
@@ -91,6 +97,7 @@ namespace U3D
         public void Initialize(U3DQuestManager manager)
         {
             questManager = manager;
+            Debug.Log($"Quest '{questTitle}' initialized with QuestManager");
 
             // Set up objective event listeners
             foreach (U3DQuestObjective objective in objectives)
@@ -105,6 +112,8 @@ namespace U3D
         /// </summary>
         public void StartQuest()
         {
+            Debug.Log($"StartQuest called on '{questTitle}' - isActive: {isActive}, isCompleted: {isCompleted}, isRepeatable: {isRepeatable}");
+
             if (isActive || (isCompleted && !isRepeatable))
                 return;
 
@@ -160,6 +169,7 @@ namespace U3D
         {
             isActive = false;
             isCompleted = false;
+            hasAttemptedAutoStart = false; // Allow auto-start again
 
             foreach (U3DQuestObjective objective in objectives)
             {
