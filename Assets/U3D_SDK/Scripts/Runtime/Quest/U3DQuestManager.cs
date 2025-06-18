@@ -169,8 +169,9 @@ namespace U3D
 
             // Check if parent quest is complete
             U3DQuest parentQuest = objective.GetComponentInParent<U3DQuest>();
-            if (parentQuest != null && parentQuest.IsCompleted && activeQuests.Contains(parentQuest))
+            if (parentQuest != null && activeQuests.Contains(parentQuest))
             {
+                // FIXED: Update UI whenever objective progress changes, not just when quest completes
                 UpdateQuestUI(parentQuest);
 
                 if (parentQuest.IsCompleted)
@@ -241,7 +242,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create UI elements for a quest using Unity 6+ TextMeshPro
+        /// Create UI elements for a quest using Unity 6+ TextMeshPro with MUCH larger font sizes
         /// Add layout components only when creating quest UI (not on default Content)
         /// </summary>
         private void CreateQuestUI(U3DQuest quest)
@@ -307,7 +308,7 @@ namespace U3D
             questLayout.childControlHeight = false;
             questLayout.childForceExpandWidth = true;
 
-            // Quest title using TextMeshPro
+            // Quest title using TextMeshPro with MUCH larger font
             GameObject titleObj = new GameObject("QuestTitle");
             titleObj.transform.SetParent(questContainer.transform, false);
             titleObj.layer = LayerMask.NameToLayer("UI");
@@ -317,7 +318,7 @@ namespace U3D
 
             TextMeshProUGUI titleText = titleObj.AddComponent<TextMeshProUGUI>();
             titleText.text = quest.questTitle;
-            titleText.fontSize = 16;
+            titleText.fontSize = 36; // INCREASED from 16 
             titleText.fontStyle = FontStyles.Bold;
             titleText.color = Color.white;
             titleText.alignment = TextAlignmentOptions.MidlineLeft;
@@ -338,7 +339,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create UI for individual objective using TextMeshPro
+        /// Create UI for individual objective using TextMeshPro with larger font
         /// </summary>
         private void CreateObjectiveUI(U3DQuestObjective objective, Transform parent)
         {
@@ -347,10 +348,10 @@ namespace U3D
             objContainer.layer = LayerMask.NameToLayer("UI");
 
             RectTransform objRect = objContainer.AddComponent<RectTransform>();
-            objRect.sizeDelta = new Vector2(0, 20);
+            objRect.sizeDelta = new Vector2(0, 35);
 
             TextMeshProUGUI objText = objContainer.AddComponent<TextMeshProUGUI>();
-            objText.fontSize = 12;
+            objText.fontSize = 24; // INCREASED from 12
             objText.color = Color.white;
             objText.text = objective.GetObjectiveStatus();
             objText.alignment = TextAlignmentOptions.MidlineLeft;

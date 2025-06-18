@@ -96,13 +96,13 @@ namespace U3D.Editor
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
-            // Create title using TextMeshPro
+            // Create title using TextMeshPro with MUCH larger font
             GameObject titleObj = new GameObject("Title");
             titleObj.transform.SetParent(questLogPanel.transform, false);
 
             TextMeshProUGUI titleText = titleObj.AddComponent<TextMeshProUGUI>();
             titleText.text = "QUESTS";
-            titleText.fontSize = 24;
+            titleText.fontSize = 48; // INCREASED from 24 
             titleText.fontStyle = FontStyles.Bold;
             titleText.color = Color.white;
             titleText.alignment = TextAlignmentOptions.Center;

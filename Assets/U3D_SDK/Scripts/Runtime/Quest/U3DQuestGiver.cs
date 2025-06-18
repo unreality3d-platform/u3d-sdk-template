@@ -293,7 +293,8 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create a basic dialog UI using Unity 6+ TextMeshPro components
+        /// Create a dialog UI using Unity's DefaultControls method (same working system as QuestSystemTools)
+        /// Uses TextMeshPro components with larger font sizes for better readability
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -320,12 +321,13 @@ namespace U3D
             RectTransform panelRect = panelObj.GetComponent<RectTransform>();
             panelRect.sizeDelta = new Vector2(400, 300);
 
-            // Create giver name text using TextMeshPro
+            // Create giver name text using TextMeshPro with larger font
             GameObject nameObj = new GameObject("GiverName");
             nameObj.transform.SetParent(panelObj.transform, false);
             giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
-            giverNameText.fontSize = 24;
+            giverNameText.fontSize = 36; // INCREASED from 24
+            giverNameText.fontStyle = FontStyles.Bold;
             giverNameText.color = Color.white;
             giverNameText.alignment = TextAlignmentOptions.Center;
 
@@ -335,12 +337,12 @@ namespace U3D
             nameRect.offsetMin = Vector2.zero;
             nameRect.offsetMax = Vector2.zero;
 
-            // Create description text using TextMeshPro
+            // Create description text using TextMeshPro with larger font
             GameObject descObj = new GameObject("QuestDescription");
             descObj.transform.SetParent(panelObj.transform, false);
             questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
-            questDescriptionText.fontSize = 16;
+            questDescriptionText.fontSize = 36; // INCREASED from 16
             questDescriptionText.color = Color.white;
             questDescriptionText.alignment = TextAlignmentOptions.Center;
             questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
@@ -351,11 +353,15 @@ namespace U3D
             descRect.offsetMin = new Vector2(10, 0);
             descRect.offsetMax = new Vector2(-10, 0);
 
-            // Create accept button
-            GameObject acceptObj = new GameObject("AcceptButton");
+            // Create accept button using Unity's DefaultControls method (same working system)
+            DefaultControls.Resources uiResources = new DefaultControls.Resources();
+            GameObject acceptObj = DefaultControls.CreateButton(uiResources);
+            acceptObj.name = "AcceptButton";
             acceptObj.transform.SetParent(panelObj.transform, false);
-            acceptQuestButton = acceptObj.AddComponent<Button>();
-            Image acceptImage = acceptObj.AddComponent<Image>();
+            acceptQuestButton = acceptObj.GetComponent<Button>();
+
+            // Configure accept button
+            Image acceptImage = acceptObj.GetComponent<Image>();
             acceptImage.color = new Color(0.2f, 0.8f, 0.2f, 1f);
 
             RectTransform acceptRect = acceptObj.GetComponent<RectTransform>();
@@ -364,25 +370,37 @@ namespace U3D
             acceptRect.offsetMin = Vector2.zero;
             acceptRect.offsetMax = Vector2.zero;
 
-            GameObject acceptTextObj = new GameObject("Text");
-            acceptTextObj.transform.SetParent(acceptObj.transform, false);
-            TextMeshProUGUI acceptText = acceptTextObj.AddComponent<TextMeshProUGUI>();
-            acceptText.text = "Accept";
-            acceptText.fontSize = 14;
-            acceptText.color = Color.white;
-            acceptText.alignment = TextAlignmentOptions.Center;
+            // Update button text to TextMeshPro with larger font
+            Transform acceptTextTransform = acceptObj.transform.Find("Text");
+            if (acceptTextTransform != null)
+            {
+                // Remove legacy Text component
+                Text legacyText = acceptTextTransform.GetComponent<Text>();
+                if (legacyText != null)
+                    DestroyImmediate(legacyText);
 
-            RectTransform acceptTextRect = acceptTextObj.GetComponent<RectTransform>();
-            acceptTextRect.anchorMin = Vector2.zero;
-            acceptTextRect.anchorMax = Vector2.one;
-            acceptTextRect.offsetMin = Vector2.zero;
-            acceptTextRect.offsetMax = Vector2.zero;
+                // Add TextMeshPro component
+                TextMeshProUGUI acceptText = acceptTextTransform.gameObject.AddComponent<TextMeshProUGUI>();
+                acceptText.text = "Accept";
+                acceptText.fontSize = 24; // INCREASED from 14
+                acceptText.color = Color.white;
+                acceptText.alignment = TextAlignmentOptions.Center;
 
-            // Create decline button
-            GameObject declineObj = new GameObject("DeclineButton");
+                RectTransform acceptTextRect = acceptTextTransform.GetComponent<RectTransform>();
+                acceptTextRect.anchorMin = Vector2.zero;
+                acceptTextRect.anchorMax = Vector2.one;
+                acceptTextRect.offsetMin = Vector2.zero;
+                acceptTextRect.offsetMax = Vector2.zero;
+            }
+
+            // Create decline button using Unity's DefaultControls method (same working system)
+            GameObject declineObj = DefaultControls.CreateButton(uiResources);
+            declineObj.name = "DeclineButton";
             declineObj.transform.SetParent(panelObj.transform, false);
-            declineButton = declineObj.AddComponent<Button>();
-            Image declineImage = declineObj.AddComponent<Image>();
+            declineButton = declineObj.GetComponent<Button>();
+
+            // Configure decline button
+            Image declineImage = declineObj.GetComponent<Image>();
             declineImage.color = new Color(0.8f, 0.2f, 0.2f, 1f);
 
             RectTransform declineRect = declineObj.GetComponent<RectTransform>();
@@ -391,19 +409,28 @@ namespace U3D
             declineRect.offsetMin = Vector2.zero;
             declineRect.offsetMax = Vector2.zero;
 
-            GameObject declineTextObj = new GameObject("Text");
-            declineTextObj.transform.SetParent(declineObj.transform, false);
-            TextMeshProUGUI declineText = declineTextObj.AddComponent<TextMeshProUGUI>();
-            declineText.text = "Decline";
-            declineText.fontSize = 14;
-            declineText.color = Color.white;
-            declineText.alignment = TextAlignmentOptions.Center;
+            // Update button text to TextMeshPro with larger font
+            Transform declineTextTransform = declineObj.transform.Find("Text");
+            if (declineTextTransform != null)
+            {
+                // Remove legacy Text component
+                Text legacyText = declineTextTransform.GetComponent<Text>();
+                if (legacyText != null)
+                    DestroyImmediate(legacyText);
 
-            RectTransform declineTextRect = declineTextObj.GetComponent<RectTransform>();
-            declineTextRect.anchorMin = Vector2.zero;
-            declineTextRect.anchorMax = Vector2.one;
-            declineTextRect.offsetMin = Vector2.zero;
-            declineTextRect.offsetMax = Vector2.zero;
+                // Add TextMeshPro component
+                TextMeshProUGUI declineText = declineTextTransform.gameObject.AddComponent<TextMeshProUGUI>();
+                declineText.text = "Decline";
+                declineText.fontSize = 24; // INCREASED from 14
+                declineText.color = Color.white;
+                declineText.alignment = TextAlignmentOptions.Center;
+
+                RectTransform declineTextRect = declineTextTransform.GetComponent<RectTransform>();
+                declineTextRect.anchorMin = Vector2.zero;
+                declineTextRect.anchorMax = Vector2.one;
+                declineTextRect.offsetMin = Vector2.zero;
+                declineTextRect.offsetMax = Vector2.zero;
+            }
         }
 
         /// <summary>
