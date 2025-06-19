@@ -52,9 +52,6 @@ namespace U3D
         [Tooltip("GameObject shown when quest is available (like an exclamation mark)")]
         [SerializeField] private GameObject questAvailableIndicator;
 
-        [Tooltip("GameObject shown when player is in interaction range")]
-        [SerializeField] private GameObject interactionPrompt;
-
         [Tooltip("GameObject shown when quest has been completed")]
         [SerializeField] private GameObject questCompletedIndicator;
 
@@ -155,8 +152,9 @@ namespace U3D
 
             if (playerInRange != wasInRange)
             {
-                if (interactionPrompt != null)
-                    interactionPrompt.SetActive(playerInRange && CanGiveQuest());
+                // Show/hide dialog canvas based on proximity
+                if (dialogCanvas != null)
+                    dialogCanvas.gameObject.SetActive(playerInRange && CanGiveQuest());
 
                 // NOTE: The interface methods will handle system behavior automatically
                 // These UnityEvents are for Creator customization only
@@ -408,9 +406,6 @@ namespace U3D
 
             if (questCompletedIndicator != null)
                 questCompletedIndicator.SetActive(questCompleted);
-
-            if (interactionPrompt != null)
-                interactionPrompt.SetActive(playerInRange && (hasQuestAvailable || questToGive.IsActive || questCompleted));
         }
 
         private void SetupUI()

@@ -101,16 +101,22 @@ namespace U3D
             // Determine primary interactable based on priority and distance
             IU3DInteractable newPrimary = GetPrimaryInteractable();
 
+            // Handle range enter/exit events
             if (newPrimary != currentInteractable)
             {
-                // Deactivate old primary
+                // Exit previous
                 if (currentInteractable != null)
+                {
                     currentInteractable.OnPlayerExitRange();
+                }
 
-                // Activate new primary  
+                // Enter new
+                if (newPrimary != null)
+                {
+                    newPrimary.OnPlayerEnterRange();
+                }
+
                 currentInteractable = newPrimary;
-                if (currentInteractable != null)
-                    currentInteractable.OnPlayerEnterRange();
             }
         }
 
@@ -121,75 +127,89 @@ namespace U3D
         {
             nearbyInteractables.Clear();
 
-            // Find all interactables in scene
-            IU3DInteractable[] allInteractables = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
-                .OfType<IU3DInteractable>()
-                .ToArray();
+            // Use sphere overlap to find all colliders in range
+            Collider[] colliders = Physics.OverlapSphere(transform.position, interactionRange, interactionLayerMask);
 
-            foreach (IU3DInteractable interactable in allInteractables)
+            foreach (Collider col in colliders)
             {
-                if (interactable != null && interactable.CanInteract())
+                // Check for IU3DInteractable components
+                MonoBehaviour[] components = col.GetComponentsInChildren<MonoBehaviour>();
+                IU3DInteractable[] interactables = components.OfType<IU3DInteractable>().ToArray();
+
+                foreach (IU3DInteractable interactable in interactables)
                 {
-                    float distance = Vector3.Distance(transform.position, ((MonoBehaviour)interactable).transform.position);
-                    if (distance <= interactionRange)
+                    if (interactable.CanInteract())
                     {
                         nearbyInteractables.Add(interactable);
                     }
                 }
             }
-        }
 
-        /// <summary>
-        /// Get the primary interactable based on priority system
-        /// </summary>
-        private IU3DInteractable GetPrimaryInteractable()
-        {
-            if (nearbyInteractables.Count == 0) return null;
-            if (nearbyInteractables.Count == 1) return nearbyInteractables[0];
-
-            // Priority system: QuestGivers > Other interactables
-            // Within same priority: closest wins
-            IU3DInteractable primaryCandidate = null;
-            float closestDistance = float.MaxValue;
-            int highestPriority = -1;
-
-            foreach (IU3DInteractable interactable in nearbyInteractables)
+            if (debugMode && nearbyInteractables.Count > 0)
             {
-                int priority = interactable.GetInteractionPriority();
-                float distance = Vector3.Distance(transform.position, ((MonoBehaviour)interactable).transform.position);
-
-                if (priority > highestPriority || (priority == highestPriority && distance < closestDistance))
-                {
-                    primaryCandidate = interactable;
-                    closestDistance = distance;
-                    highestPriority = priority;
-                }
+                Debug.Log($"Found {nearbyInteractables.Count} interactables in range");
             }
-
-            return primaryCandidate;
         }
 
         /// <summary>
-        /// Get closest interactable regardless of priority
+        /// Get the closest interactable object
         /// </summary>
         private IU3DInteractable GetClosestInteractable()
         {
             if (nearbyInteractables.Count == 0) return null;
 
-            IU3DInteractable closest = nearbyInteractables[0];
-            float closestDistance = Vector3.Distance(transform.position, ((MonoBehaviour)closest).transform.position);
+            IU3DInteractable closest = null;
+            float closestDistance = Mathf.Infinity;
 
-            for (int i = 1; i < nearbyInteractables.Count; i++)
+            foreach (IU3DInteractable interactable in nearbyInteractables)
             {
-                float distance = Vector3.Distance(transform.position, ((MonoBehaviour)nearbyInteractables[i]).transform.position);
-                if (distance < closestDistance)
+                if (interactable.CanInteract())
                 {
-                    closest = nearbyInteractables[i];
-                    closestDistance = distance;
+                    Vector3 targetPos = ((MonoBehaviour)interactable).transform.position;
+                    float distance = Vector3.Distance(transform.position, targetPos);
+
+                    if (distance < closestDistance)
+                    {
+                        closestDistance = distance;
+                        closest = interactable;
+                    }
                 }
             }
 
             return closest;
+        }
+
+        /// <summary>
+        /// Get primary interactable based on priority and distance
+        /// Higher priority objects take precedence
+        /// </summary>
+        private IU3DInteractable GetPrimaryInteractable()
+        {
+            if (nearbyInteractables.Count == 0) return null;
+
+            IU3DInteractable primary = null;
+            int highestPriority = int.MinValue;
+            float closestDistance = Mathf.Infinity;
+
+            foreach (IU3DInteractable interactable in nearbyInteractables)
+            {
+                if (interactable.CanInteract())
+                {
+                    int priority = interactable.GetInteractionPriority();
+                    Vector3 targetPos = ((MonoBehaviour)interactable).transform.position;
+                    float distance = Vector3.Distance(transform.position, targetPos);
+
+                    // Higher priority wins, or closer distance if same priority
+                    if (priority > highestPriority || (priority == highestPriority && distance < closestDistance))
+                    {
+                        primary = interactable;
+                        highestPriority = priority;
+                        closestDistance = distance;
+                    }
+                }
+            }
+
+            return primary;
         }
 
         private void OnDrawGizmosSelected()
@@ -262,7 +282,7 @@ namespace U3D
 
     /// <summary>
     /// Updated QuestGiver that implements the unified interaction interface
-    /// FIXED: Interface methods renamed to avoid conflicts with UnityEvent fields
+    /// FIXED: Interface methods updated to work without interactionPrompt field
     /// </summary>
     public partial class U3DQuestGiver : IU3DInteractable
     {
@@ -274,9 +294,9 @@ namespace U3D
 
         public void OnPlayerEnterRange()
         {
-            // System method - show interaction prompt
-            if (interactionPrompt != null)
-                interactionPrompt.SetActive(CanGiveQuest());
+            // System method - show dialog canvas instead of interaction prompt
+            if (dialogCanvas != null)
+                dialogCanvas.gameObject.SetActive(CanGiveQuest());
 
             // Invoke Creator's custom UnityEvent (use field names)
             OnPlayerEnterRangeEvent?.Invoke();
@@ -284,10 +304,7 @@ namespace U3D
 
         public void OnPlayerExitRange()
         {
-            // System method - hide interaction prompt and close dialog
-            if (interactionPrompt != null)
-                interactionPrompt.SetActive(false);
-
+            // System method - hide dialog canvas
             CloseDialog();
 
             // Invoke Creator's custom UnityEvent (use field names)  
