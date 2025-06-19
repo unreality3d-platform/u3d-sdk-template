@@ -262,10 +262,11 @@ namespace U3D
 
     /// <summary>
     /// Updated QuestGiver that implements the unified interaction interface
+    /// FIXED: Interface methods renamed to avoid conflicts with UnityEvent fields
     /// </summary>
     public partial class U3DQuestGiver : IU3DInteractable
     {
-        // IU3DInteractable implementation
+        // IU3DInteractable implementation - methods have different names than UnityEvents
         public void OnInteract()
         {
             StartInteraction();
@@ -273,18 +274,24 @@ namespace U3D
 
         public void OnPlayerEnterRange()
         {
-            // Show interaction prompt
+            // System method - show interaction prompt
             if (interactionPrompt != null)
                 interactionPrompt.SetActive(CanGiveQuest());
+
+            // Invoke Creator's custom UnityEvent (use field names)
+            OnPlayerEnterRangeEvent?.Invoke();
         }
 
         public void OnPlayerExitRange()
         {
-            // Hide interaction prompt and close dialog
+            // System method - hide interaction prompt and close dialog
             if (interactionPrompt != null)
                 interactionPrompt.SetActive(false);
 
             CloseDialog();
+
+            // Invoke Creator's custom UnityEvent (use field names)  
+            OnPlayerExitRangeEvent?.Invoke();
         }
 
         public bool CanInteract()

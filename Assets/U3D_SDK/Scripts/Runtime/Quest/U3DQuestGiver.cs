@@ -9,7 +9,7 @@ namespace U3D
 {
     /// <summary>
     /// NPC or object that gives quests to players.
-    /// FIXED: Proper choice system, TMP display, KeyCode handling
+    /// FIXED: UnityEvent field names updated to avoid interface method conflicts
     /// </summary>
     [AddComponentMenu("U3D/Quest System/U3D Quest Giver")]
     public partial class U3DQuestGiver : MonoBehaviour
@@ -71,9 +71,15 @@ namespace U3D
         [TextArea(2, 4)]
         [SerializeField] private string questCompletedText = "Thank you for completing my quest!";
 
-        [Header("Events")]
+        [Header("Creator Events")]
         [Tooltip("Called when a choice is selected")]
         public U3DInteractionChoiceEvent OnChoiceSelected;
+
+        [Tooltip("Called when player enters interaction range")]
+        public UnityEvent OnPlayerEnterRangeEvent;
+
+        [Tooltip("Called when player exits interaction range")]
+        public UnityEvent OnPlayerExitRangeEvent;
 
         private Transform playerTransform;
         private bool playerInRange = false;
@@ -82,51 +88,44 @@ namespace U3D
 
         private void Awake()
         {
-            // FIXED: Initialize default choices if none are set - using proper list setup
             InitializeDefaultChoices();
         }
 
-        /// <summary>
-        /// FIXED: Properly initialize default choices if list is empty
-        /// </summary>
         private void InitializeDefaultChoices()
         {
             if (interactionChoices.Count == 0)
             {
-                interactionChoices.Add(new U3DInteractionChoice(KeyCode.E, "Accept", "accept"));
-                Debug.Log("QuestGiver: Initialized with default 'Accept [E]' choice");
+                // PROTECTED: Use U3DKeyManager to get safe key (respects PlayerController)
+                KeyCode safeKey = U3DKeyManager.GetSafeAlternative(KeyCode.E);
+                if (safeKey != KeyCode.E)
+                {
+                    Debug.LogWarning($"QuestGiver: E key conflicts with PlayerController. Using {safeKey} instead.");
+                }
+
+                interactionChoices.Add(new U3DInteractionChoice(safeKey, "Accept", "accept"));
+                Debug.Log($"QuestGiver: Initialized with safe 'Accept [{safeKey}]' choice");
             }
         }
 
         private void Start()
         {
-            // Find player
             GameObject player = GameObject.FindGameObjectWithTag("Player");
             if (player != null)
                 playerTransform = player.transform;
 
-            // FIXED: Ensure quest doesn't auto-start if it has a QuestGiver
             PreventQuestAutoStart();
-
-            // Set up UI
             SetupUI();
 
-            // Hide dialog initially
             if (dialogCanvas != null)
                 dialogCanvas.gameObject.SetActive(false);
 
             UpdateVisualState();
         }
 
-        /// <summary>
-        /// FIXED: Prevent quest from auto-starting if it has a QuestGiver
-        /// </summary>
         private void PreventQuestAutoStart()
         {
             if (questToGive != null)
             {
-                // Check if quest has auto-start enabled and disable it
-                // This prevents conflicts between QuestGiver workflow and auto-start
 #if UNITY_EDITOR
                 UnityEditor.SerializedObject serializedQuest = new UnityEditor.SerializedObject(questToGive);
                 UnityEditor.SerializedProperty autoStartProp = serializedQuest.FindProperty("startAutomatically");
@@ -146,9 +145,6 @@ namespace U3D
             HandleInteractionChoices();
         }
 
-        /// <summary>
-        /// Check if player is within interaction range
-        /// </summary>
         private void CheckPlayerProximity()
         {
             if (playerTransform == null || interactionRange <= 0) return;
@@ -157,13 +153,18 @@ namespace U3D
             bool wasInRange = playerInRange;
             playerInRange = distance <= interactionRange;
 
-            // Show/hide interaction prompt based on proximity
             if (playerInRange != wasInRange)
             {
                 if (interactionPrompt != null)
                     interactionPrompt.SetActive(playerInRange && CanGiveQuest());
 
-                // Auto-interact if enabled
+                // NOTE: The interface methods will handle system behavior automatically
+                // These UnityEvents are for Creator customization only
+                if (playerInRange)
+                    OnPlayerEnterRangeEvent?.Invoke();
+                else
+                    OnPlayerExitRangeEvent?.Invoke();
+
                 if (playerInRange && autoInteract && CanGiveQuest())
                 {
                     StartInteraction();
@@ -171,14 +172,10 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// FIXED: Handle input for interaction choices with proper key detection
-        /// </summary>
         private void HandleInteractionChoices()
         {
             if (!playerInRange || !CanGiveQuest()) return;
 
-            // Check if dialog is open - only process choices when dialog is visible
             if (dialogCanvas != null && dialogCanvas.gameObject.activeSelf)
             {
                 foreach (U3DInteractionChoice choice in interactionChoices)
@@ -190,7 +187,6 @@ namespace U3D
                     }
                 }
 
-                // Check for additional context-based choices
                 foreach (U3DInteractionChoice choice in GetAvailableChoices())
                 {
                     if (choice.WasKeyPressed())
@@ -202,7 +198,6 @@ namespace U3D
             }
             else
             {
-                // Check for any interaction key to open dialog
                 foreach (U3DInteractionChoice choice in interactionChoices)
                 {
                     if (choice.WasKeyPressed())
@@ -212,7 +207,6 @@ namespace U3D
                     }
                 }
 
-                // Fallback: mouse/touch input to open dialog
                 if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
                 {
                     StartInteraction();
@@ -220,14 +214,10 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// Handle when a specific choice is selected
-        /// </summary>
         private void HandleChoiceSelected(U3DInteractionChoice choice)
         {
             OnChoiceSelected?.Invoke(choice);
 
-            // Handle built-in quest logic
             switch (choice.choiceID.ToLower())
             {
                 case "accept":
@@ -238,7 +228,6 @@ namespace U3D
                     CloseDialog();
                     break;
                 default:
-                    // Custom choice - just close dialog and let events handle it
                     CloseDialog();
                     break;
             }
@@ -246,9 +235,6 @@ namespace U3D
             Debug.Log($"Choice selected: {choice.choiceLabel} [{choice.choiceKey}]");
         }
 
-        /// <summary>
-        /// Start interaction with the quest giver
-        /// </summary>
         public void StartInteraction()
         {
             if (questToGive == null) return;
@@ -257,9 +243,6 @@ namespace U3D
             ShowDialog(dialogText);
         }
 
-        /// <summary>
-        /// Get appropriate dialog text based on quest state
-        /// </summary>
         private string GetAppropriateDialogText()
         {
             if (questToGive.IsCompleted)
@@ -270,9 +253,6 @@ namespace U3D
                 return questOfferText;
         }
 
-        /// <summary>
-        /// FIXED: Show the quest dialog UI with proper choices display
-        /// </summary>
         private void ShowDialog(string dialogText)
         {
             if (dialogCanvas != null)
@@ -285,13 +265,12 @@ namespace U3D
                 if (questDescriptionText != null)
                     questDescriptionText.text = dialogText;
 
-                // FIXED: Update choices display properly
                 UpdateChoicesDisplay();
             }
         }
 
         /// <summary>
-        /// FIXED: Update the choices display in the dialog with proper TMP components
+        /// FIXED: Update choices display without layout components
         /// </summary>
         private void UpdateChoicesDisplay()
         {
@@ -308,34 +287,28 @@ namespace U3D
             // Show appropriate choices based on quest state
             List<U3DInteractionChoice> availableChoices = GetAvailableChoices();
 
-            // Create choice displays with proper TMP components
+            // Create choice displays
             foreach (U3DInteractionChoice choice in availableChoices)
             {
                 CreateChoiceDisplay(choice);
             }
 
-            // FIXED: Force layout rebuild
-            LayoutRebuilder.ForceRebuildLayoutImmediate(choicesParent.GetComponent<RectTransform>());
+            Debug.Log($"Updated choices display with {availableChoices.Count} choices");
         }
 
-        /// <summary>
-        /// Get choices available based on current quest state
-        /// </summary>
         private List<U3DInteractionChoice> GetAvailableChoices()
         {
             List<U3DInteractionChoice> available = new List<U3DInteractionChoice>();
 
             if (questToGive.IsCompleted || questToGive.IsActive)
             {
-                // Just show close option
-                available.Add(new U3DInteractionChoice(KeyCode.E, "Close", "close"));
+                KeyCode safeKey = U3DKeyManager.GetSafeAlternative(KeyCode.E);
+                available.Add(new U3DInteractionChoice(safeKey, "Close", "close"));
             }
             else
             {
-                // Show configured choices for quest offering
                 available.AddRange(interactionChoices);
 
-                // Add decline option if not already present
                 bool hasDecline = false;
                 foreach (var choice in interactionChoices)
                 {
@@ -348,7 +321,8 @@ namespace U3D
 
                 if (!hasDecline)
                 {
-                    available.Add(new U3DInteractionChoice(KeyCode.X, "Decline", "decline"));
+                    KeyCode safeKey = U3DKeyManager.GetSafeAlternative(KeyCode.X);
+                    available.Add(new U3DInteractionChoice(safeKey, "Decline", "decline"));
                 }
             }
 
@@ -356,45 +330,38 @@ namespace U3D
         }
 
         /// <summary>
-        /// FIXED: Create a choice display UI element with proper TMP components
+        /// FIXED: Create choice display using direct TextMeshPro creation
         /// </summary>
         private void CreateChoiceDisplay(U3DInteractionChoice choice)
         {
+            if (choicesParent == null) return;
+
+            // Create choice text object directly
             GameObject choiceObj = new GameObject($"Choice_{choice.choiceID}");
             choiceObj.transform.SetParent(choicesParent, false);
             choiceObj.layer = LayerMask.NameToLayer("UI");
 
-            // Add RectTransform
+            // Add RectTransform and position manually
             RectTransform choiceRect = choiceObj.AddComponent<RectTransform>();
-            choiceRect.sizeDelta = new Vector2(0, 40);
+            float yPosition = -40f * choiceDisplays.Count;
+            choiceRect.anchorMin = new Vector2(0f, 1f);
+            choiceRect.anchorMax = new Vector2(1f, 1f);
+            choiceRect.anchoredPosition = new Vector2(0f, yPosition);
+            choiceRect.sizeDelta = new Vector2(0f, 40f);
 
-            // FIXED: Add LayoutElement for proper sizing
-            LayoutElement layoutElement = choiceObj.AddComponent<LayoutElement>();
-            layoutElement.minHeight = 40;
-            layoutElement.preferredHeight = 40;
-
-            // FIXED: Create TextMeshPro component properly
+            // Create TextMeshPro component directly
             TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
-            choiceText.text = choice.GetDisplayText(); // "Accept [E]"
-            choiceText.fontSize = 32; // Large, readable font
+            choiceText.text = choice.GetDisplayText();
+            choiceText.fontSize = 32;
             choiceText.color = Color.white;
             choiceText.alignment = TextAlignmentOptions.MidlineLeft;
             choiceText.raycastTarget = false;
-
-            // FIXED: Ensure proper anchoring
-            choiceRect.anchorMin = Vector2.zero;
-            choiceRect.anchorMax = Vector2.one;
-            choiceRect.offsetMin = Vector2.zero;
-            choiceRect.offsetMax = Vector2.zero;
 
             choiceDisplays.Add(choiceText);
 
             Debug.Log($"Created choice display: {choiceText.text}");
         }
 
-        /// <summary>
-        /// Accept the quest and start it
-        /// </summary>
         public void AcceptQuest()
         {
             if (questToGive == null || questToGive.IsActive) return;
@@ -415,29 +382,18 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// Close the dialog UI
-        /// </summary>
         public void CloseDialog()
         {
             if (dialogCanvas != null)
                 dialogCanvas.gameObject.SetActive(false);
         }
 
-        /// <summary>
-        /// Check if this quest giver can give their quest
-        /// </summary>
         private bool CanGiveQuest()
         {
             if (questToGive == null) return false;
-
-            // Can give quest if: not given yet, or is repeatable, or quest was completed and is repeatable
             return !questGiven || allowRepeatQuests || (questToGive.IsCompleted && allowRepeatQuests);
         }
 
-        /// <summary>
-        /// Update visual indicators based on quest state
-        /// </summary>
         private void UpdateVisualState()
         {
             bool hasQuestAvailable = CanGiveQuest() && !questToGive.IsActive && !questToGive.IsCompleted;
@@ -453,12 +409,8 @@ namespace U3D
                 interactionPrompt.SetActive(playerInRange && (hasQuestAvailable || questToGive.IsActive || questCompleted));
         }
 
-        /// <summary>
-        /// Set up UI components if not manually assigned
-        /// </summary>
         private void SetupUI()
         {
-            // Create default dialog canvas if none assigned
             if (dialogCanvas == null)
             {
                 CreateDefaultDialogUI();
@@ -466,7 +418,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// FIXED: Create a dialog UI with proper TMP and layout components
+        /// FIXED: Create dialog UI using Unity DefaultControls with direct TextMeshPro creation
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -476,84 +428,77 @@ namespace U3D
             dialogCanvas = canvasObj.AddComponent<Canvas>();
             dialogCanvas.renderMode = RenderMode.WorldSpace;
             dialogCanvas.worldCamera = Camera.main;
-
-            // Add GraphicRaycaster for interaction
             canvasObj.AddComponent<GraphicRaycaster>();
 
             // Position canvas above quest giver
             canvasObj.transform.localPosition = Vector3.up * 2f;
             canvasObj.transform.localScale = Vector3.one * 0.01f;
 
-            // Create background panel
-            GameObject panelObj = new GameObject("DialogPanel");
+            // Use Unity's DefaultControls to create background panel
+            DefaultControls.Resources uiResources = new DefaultControls.Resources();
+            GameObject panelObj = DefaultControls.CreatePanel(uiResources);
+            panelObj.name = "DialogPanel";
             panelObj.transform.SetParent(canvasObj.transform, false);
-            Image panelImage = panelObj.AddComponent<Image>();
+
+            Image panelImage = panelObj.GetComponent<Image>();
             panelImage.color = new Color(0, 0, 0, 0.8f);
 
             RectTransform panelRect = panelObj.GetComponent<RectTransform>();
-            panelRect.sizeDelta = new Vector2(400, 350); // Taller for choices
+            panelRect.sizeDelta = new Vector2(400, 350);
 
-            // Create giver name text
+            // Create giver name text - DIRECT TextMeshPro creation
             GameObject nameObj = new GameObject("GiverName");
             nameObj.transform.SetParent(panelObj.transform, false);
+            nameObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform nameRect = nameObj.AddComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0, 0.8f);
+            nameRect.anchorMax = new Vector2(1, 1);
+            nameRect.offsetMin = Vector2.zero;
+            nameRect.offsetMax = Vector2.zero;
+
             giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
             giverNameText.fontSize = 36;
             giverNameText.fontStyle = FontStyles.Bold;
             giverNameText.color = Color.white;
             giverNameText.alignment = TextAlignmentOptions.Center;
+            giverNameText.raycastTarget = false;
 
-            RectTransform nameRect = nameObj.GetComponent<RectTransform>();
-            nameRect.anchorMin = new Vector2(0, 0.8f);
-            nameRect.anchorMax = new Vector2(1, 1);
-            nameRect.offsetMin = Vector2.zero;
-            nameRect.offsetMax = Vector2.zero;
-
-            // Create description text
+            // Create description text - DIRECT TextMeshPro creation
             GameObject descObj = new GameObject("QuestDescription");
             descObj.transform.SetParent(panelObj.transform, false);
+            descObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform descRect = descObj.AddComponent<RectTransform>();
+            descRect.anchorMin = new Vector2(0, 0.4f);
+            descRect.anchorMax = new Vector2(1, 0.8f);
+            descRect.offsetMin = new Vector2(10, 0);
+            descRect.offsetMax = new Vector2(-10, 0);
+
             questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
             questDescriptionText.fontSize = 28;
             questDescriptionText.color = Color.white;
             questDescriptionText.alignment = TextAlignmentOptions.Center;
             questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
+            questDescriptionText.raycastTarget = false;
 
-            RectTransform descRect = descObj.GetComponent<RectTransform>();
-            descRect.anchorMin = new Vector2(0, 0.4f);
-            descRect.anchorMax = new Vector2(1, 0.8f);
-            descRect.offsetMin = new Vector2(10, 0);
-            descRect.offsetMax = new Vector2(-10, 0);
-
-            // FIXED: Create choices container with proper layout components
+            // Create choices parent as simple container
             GameObject choicesObj = new GameObject("Choices");
             choicesObj.transform.SetParent(panelObj.transform, false);
+            choicesObj.layer = LayerMask.NameToLayer("UI");
             choicesParent = choicesObj.transform;
 
-            RectTransform choicesRect = choicesObj.GetComponent<RectTransform>();
+            RectTransform choicesRect = choicesObj.AddComponent<RectTransform>();
             choicesRect.anchorMin = new Vector2(0, 0.05f);
             choicesRect.anchorMax = new Vector2(1, 0.4f);
             choicesRect.offsetMin = new Vector2(10, 0);
             choicesRect.offsetMax = new Vector2(-10, 0);
 
-            // FIXED: Add vertical layout for choices with proper settings
-            VerticalLayoutGroup choicesLayout = choicesObj.AddComponent<VerticalLayoutGroup>();
-            choicesLayout.spacing = 5;
-            choicesLayout.childControlWidth = true;
-            choicesLayout.childControlHeight = false;
-            choicesLayout.childForceExpandWidth = true;
-            choicesLayout.childAlignment = TextAnchor.MiddleLeft;
-            choicesLayout.padding = new RectOffset(5, 5, 5, 5);
-
-            // FIXED: Add ContentSizeFitter for dynamic sizing
-            ContentSizeFitter choicesFitter = choicesObj.AddComponent<ContentSizeFitter>();
-            choicesFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-            choicesFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            Debug.Log($"Created default dialog UI for {giverName} using DefaultControls with key protection");
         }
 
-        /// <summary>
-        /// Reset this quest giver (useful for testing)
-        /// </summary>
         [ContextMenu("Reset Quest Giver")]
         public void ResetQuestGiver()
         {
@@ -564,7 +509,6 @@ namespace U3D
 
         private void OnDrawGizmosSelected()
         {
-            // Draw interaction range
             if (interactionRange > 0)
             {
                 Gizmos.color = Color.blue;
