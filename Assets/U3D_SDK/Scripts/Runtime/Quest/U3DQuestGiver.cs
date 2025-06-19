@@ -9,7 +9,7 @@ namespace U3D
 {
     /// <summary>
     /// NPC or object that gives quests to players.
-    /// Uses Unity's built-in Canvas and UI components with new interaction choice system.
+    /// FIXED: Proper choice system, TMP display, KeyCode handling
     /// </summary>
     [AddComponentMenu("U3D/Quest System/U3D Quest Giver")]
     public class U3DQuestGiver : MonoBehaviour
@@ -82,10 +82,19 @@ namespace U3D
 
         private void Awake()
         {
-            // Initialize default choices if none are set
+            // FIXED: Initialize default choices if none are set - using proper list setup
+            InitializeDefaultChoices();
+        }
+
+        /// <summary>
+        /// FIXED: Properly initialize default choices if list is empty
+        /// </summary>
+        private void InitializeDefaultChoices()
+        {
             if (interactionChoices.Count == 0)
             {
                 interactionChoices.Add(new U3DInteractionChoice(KeyCode.E, "Accept", "accept"));
+                Debug.Log("QuestGiver: Initialized with default 'Accept [E]' choice");
             }
         }
 
@@ -96,6 +105,9 @@ namespace U3D
             if (player != null)
                 playerTransform = player.transform;
 
+            // FIXED: Ensure quest doesn't auto-start if it has a QuestGiver
+            PreventQuestAutoStart();
+
             // Set up UI
             SetupUI();
 
@@ -104,6 +116,28 @@ namespace U3D
                 dialogCanvas.gameObject.SetActive(false);
 
             UpdateVisualState();
+        }
+
+        /// <summary>
+        /// FIXED: Prevent quest from auto-starting if it has a QuestGiver
+        /// </summary>
+        private void PreventQuestAutoStart()
+        {
+            if (questToGive != null)
+            {
+                // Check if quest has auto-start enabled and disable it
+                // This prevents conflicts between QuestGiver workflow and auto-start
+#if UNITY_EDITOR
+                UnityEditor.SerializedObject serializedQuest = new UnityEditor.SerializedObject(questToGive);
+                UnityEditor.SerializedProperty autoStartProp = serializedQuest.FindProperty("startAutomatically");
+                if (autoStartProp != null && autoStartProp.boolValue == true)
+                {
+                    autoStartProp.boolValue = false;
+                    serializedQuest.ApplyModifiedProperties();
+                    Debug.Log($"QuestGiver: Disabled auto-start on quest '{questToGive.questTitle}' - will wait for QuestGiver acceptance");
+                }
+#endif
+            }
         }
 
         private void Update()
@@ -138,7 +172,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Handle input for interaction choices - UPDATED for choice system
+        /// FIXED: Handle input for interaction choices with proper key detection
         /// </summary>
         private void HandleInteractionChoices()
         {
@@ -148,6 +182,16 @@ namespace U3D
             if (dialogCanvas != null && dialogCanvas.gameObject.activeSelf)
             {
                 foreach (U3DInteractionChoice choice in interactionChoices)
+                {
+                    if (choice.WasKeyPressed())
+                    {
+                        HandleChoiceSelected(choice);
+                        return;
+                    }
+                }
+
+                // Check for additional context-based choices
+                foreach (U3DInteractionChoice choice in GetAvailableChoices())
                 {
                     if (choice.WasKeyPressed())
                     {
@@ -190,6 +234,7 @@ namespace U3D
                     AcceptQuest();
                     break;
                 case "decline":
+                case "close":
                     CloseDialog();
                     break;
                 default:
@@ -226,7 +271,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Show the quest dialog UI with choices
+        /// FIXED: Show the quest dialog UI with proper choices display
         /// </summary>
         private void ShowDialog(string dialogText)
         {
@@ -240,13 +285,13 @@ namespace U3D
                 if (questDescriptionText != null)
                     questDescriptionText.text = dialogText;
 
-                // Update choices display
+                // FIXED: Update choices display properly
                 UpdateChoicesDisplay();
             }
         }
 
         /// <summary>
-        /// Update the choices display in the dialog
+        /// FIXED: Update the choices display in the dialog with proper TMP components
         /// </summary>
         private void UpdateChoicesDisplay()
         {
@@ -263,11 +308,14 @@ namespace U3D
             // Show appropriate choices based on quest state
             List<U3DInteractionChoice> availableChoices = GetAvailableChoices();
 
-            // Create choice displays
+            // Create choice displays with proper TMP components
             foreach (U3DInteractionChoice choice in availableChoices)
             {
                 CreateChoiceDisplay(choice);
             }
+
+            // FIXED: Force layout rebuild
+            LayoutRebuilder.ForceRebuildLayoutImmediate(choicesParent.GetComponent<RectTransform>());
         }
 
         /// <summary>
@@ -308,7 +356,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create a choice display UI element
+        /// FIXED: Create a choice display UI element with proper TMP components
         /// </summary>
         private void CreateChoiceDisplay(U3DInteractionChoice choice)
         {
@@ -316,17 +364,32 @@ namespace U3D
             choiceObj.transform.SetParent(choicesParent, false);
             choiceObj.layer = LayerMask.NameToLayer("UI");
 
+            // Add RectTransform
             RectTransform choiceRect = choiceObj.AddComponent<RectTransform>();
-            choiceRect.sizeDelta = new Vector2(0, 35);
+            choiceRect.sizeDelta = new Vector2(0, 40);
 
+            // FIXED: Add LayoutElement for proper sizing
+            LayoutElement layoutElement = choiceObj.AddComponent<LayoutElement>();
+            layoutElement.minHeight = 40;
+            layoutElement.preferredHeight = 40;
+
+            // FIXED: Create TextMeshPro component properly
             TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
-            choiceText.text = choice.GetDisplayText();
+            choiceText.text = choice.GetDisplayText(); // "Accept [E]"
             choiceText.fontSize = 32; // Large, readable font
             choiceText.color = Color.white;
             choiceText.alignment = TextAlignmentOptions.MidlineLeft;
             choiceText.raycastTarget = false;
 
+            // FIXED: Ensure proper anchoring
+            choiceRect.anchorMin = Vector2.zero;
+            choiceRect.anchorMax = Vector2.one;
+            choiceRect.offsetMin = Vector2.zero;
+            choiceRect.offsetMax = Vector2.zero;
+
             choiceDisplays.Add(choiceText);
+
+            Debug.Log($"Created choice display: {choiceText.text}");
         }
 
         /// <summary>
@@ -403,7 +466,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create a dialog UI using Unity's DefaultControls method - UPDATED for choices
+        /// FIXED: Create a dialog UI with proper TMP and layout components
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -462,7 +525,7 @@ namespace U3D
             descRect.offsetMin = new Vector2(10, 0);
             descRect.offsetMax = new Vector2(-10, 0);
 
-            // Create choices container
+            // FIXED: Create choices container with proper layout components
             GameObject choicesObj = new GameObject("Choices");
             choicesObj.transform.SetParent(panelObj.transform, false);
             choicesParent = choicesObj.transform;
@@ -473,13 +536,19 @@ namespace U3D
             choicesRect.offsetMin = new Vector2(10, 0);
             choicesRect.offsetMax = new Vector2(-10, 0);
 
-            // Add vertical layout for choices
+            // FIXED: Add vertical layout for choices with proper settings
             VerticalLayoutGroup choicesLayout = choicesObj.AddComponent<VerticalLayoutGroup>();
             choicesLayout.spacing = 5;
             choicesLayout.childControlWidth = true;
             choicesLayout.childControlHeight = false;
             choicesLayout.childForceExpandWidth = true;
             choicesLayout.childAlignment = TextAnchor.MiddleLeft;
+            choicesLayout.padding = new RectOffset(5, 5, 5, 5);
+
+            // FIXED: Add ContentSizeFitter for dynamic sizing
+            ContentSizeFitter choicesFitter = choicesObj.AddComponent<ContentSizeFitter>();
+            choicesFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            choicesFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         }
 
         /// <summary>

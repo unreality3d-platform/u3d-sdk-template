@@ -191,7 +191,7 @@ namespace U3D.Editor
             U3DQuestGiver questGiver = giverObj.AddComponent<U3DQuestGiver>();
             questGiver.giverName = "Quest Giver";
 
-            // AUTOMATIC SETUP: Default interaction choice system
+            // AUTOMATIC SETUP: Default interaction choice system - FIXED KeyCode assignment
             // Uses SerializedObject to set up default "Accept [E]" choice
             SerializedObject serializedGiver = new SerializedObject(questGiver);
             SerializedProperty choicesProperty = serializedGiver.FindProperty("interactionChoices");
@@ -202,7 +202,7 @@ namespace U3D.Editor
 
             SerializedProperty firstChoice = choicesProperty.GetArrayElementAtIndex(0);
             firstChoice.FindPropertyRelative("choiceLabel").stringValue = "Accept";
-            firstChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.E;
+            firstChoice.FindPropertyRelative("choiceKey").enumValueFlag = (int)KeyCode.E; // FIXED: Use enumValueFlag
             firstChoice.FindPropertyRelative("choiceID").stringValue = "accept";
 
             serializedGiver.ApplyModifiedProperties();
@@ -322,18 +322,18 @@ namespace U3D.Editor
 
             choicesProperty.ClearArray();
 
-            // Add Accept choice
+            // Add Accept choice - FIXED KeyCode assignment
             choicesProperty.InsertArrayElementAtIndex(0);
             SerializedProperty acceptChoice = choicesProperty.GetArrayElementAtIndex(0);
             acceptChoice.FindPropertyRelative("choiceLabel").stringValue = "Accept";
-            acceptChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.E;
+            acceptChoice.FindPropertyRelative("choiceKey").enumValueFlag = (int)KeyCode.E; // FIXED
             acceptChoice.FindPropertyRelative("choiceID").stringValue = "accept";
 
-            // Add Decline choice
+            // Add Decline choice - FIXED KeyCode assignment
             choicesProperty.InsertArrayElementAtIndex(1);
             SerializedProperty declineChoice = choicesProperty.GetArrayElementAtIndex(1);
             declineChoice.FindPropertyRelative("choiceLabel").stringValue = "Decline";
-            declineChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.X;
+            declineChoice.FindPropertyRelative("choiceKey").enumValueFlag = (int)KeyCode.X; // FIXED
             declineChoice.FindPropertyRelative("choiceID").stringValue = "decline";
 
             serializedGiver.ApplyModifiedProperties();
@@ -392,7 +392,7 @@ namespace U3D.Editor
                 choicesProperty.InsertArrayElementAtIndex(i);
                 SerializedProperty choice = choicesProperty.GetArrayElementAtIndex(i);
                 choice.FindPropertyRelative("choiceLabel").stringValue = labels[i];
-                choice.FindPropertyRelative("choiceKey").enumValueIndex = (int)keys[i];
+                choice.FindPropertyRelative("choiceKey").enumValueFlag = (int)keys[i]; // FIXED
                 choice.FindPropertyRelative("choiceID").stringValue = $"option_{i + 1}";
             }
 

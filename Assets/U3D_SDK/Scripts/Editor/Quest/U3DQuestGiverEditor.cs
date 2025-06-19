@@ -140,14 +140,14 @@ namespace U3D.Editor
             interactionChoices.InsertArrayElementAtIndex(0);
             var acceptChoice = interactionChoices.GetArrayElementAtIndex(0);
             acceptChoice.FindPropertyRelative("choiceLabel").stringValue = "Accept";
-            acceptChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.E;
+            acceptChoice.FindPropertyRelative("choiceKey").enumValueFlag = (int)KeyCode.E;
             acceptChoice.FindPropertyRelative("choiceID").stringValue = "accept";
 
             // Add Decline choice
             interactionChoices.InsertArrayElementAtIndex(1);
             var declineChoice = interactionChoices.GetArrayElementAtIndex(1);
             declineChoice.FindPropertyRelative("choiceLabel").stringValue = "Decline";
-            declineChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.X;
+            declineChoice.FindPropertyRelative("choiceKey").enumValueFlag = (int)KeyCode.X;
             declineChoice.FindPropertyRelative("choiceID").stringValue = "decline";
 
             serializedObject.ApplyModifiedProperties();
@@ -165,7 +165,7 @@ namespace U3D.Editor
                 interactionChoices.InsertArrayElementAtIndex(i);
                 var choice = interactionChoices.GetArrayElementAtIndex(i);
                 choice.FindPropertyRelative("choiceLabel").stringValue = labels[i];
-                choice.FindPropertyRelative("choiceKey").enumValueIndex = (int)keys[i];
+                choice.FindPropertyRelative("choiceKey").enumValueFlag = (int)keys[i];
                 choice.FindPropertyRelative("choiceID").stringValue = $"option_{i + 1}";
             }
 
