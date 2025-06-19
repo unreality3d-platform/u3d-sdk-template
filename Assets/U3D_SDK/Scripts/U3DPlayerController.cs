@@ -1,3 +1,4 @@
+using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -520,8 +521,7 @@ public class U3DPlayerController : MonoBehaviour
     {
         if (!context.performed) return;
 
-        // Interaction logic will be implemented in future phases
-        Debug.Log("Interact pressed - placeholder for future implementation");
+        U3DInteractionManager.Instance?.OnPlayerInteract();
     }
 
     public void OnPause(InputAction.CallbackContext context)

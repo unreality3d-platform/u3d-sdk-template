@@ -12,7 +12,7 @@ namespace U3D
     /// FIXED: Proper choice system, TMP display, KeyCode handling
     /// </summary>
     [AddComponentMenu("U3D/Quest System/U3D Quest Giver")]
-    public class U3DQuestGiver : MonoBehaviour
+    public partial class U3DQuestGiver : MonoBehaviour
     {
         [Header("Quest Giver Configuration")]
         [Tooltip("Name of this quest giver (shown in dialog)")]
