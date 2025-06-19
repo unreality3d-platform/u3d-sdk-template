@@ -330,36 +330,40 @@ namespace U3D
         }
 
         /// <summary>
-        /// FIXED: Create choice display using direct TextMeshPro creation
+        /// FIXED: Create choice display using WORKING Quest system CreateObjectiveUI() pattern EXACTLY
         /// </summary>
         private void CreateChoiceDisplay(U3DInteractionChoice choice)
         {
-            if (choicesParent == null) return;
+            if (choicesParent == null)
+            {
+                Debug.LogError("choicesParent is null! Cannot create choice display.");
+                return;
+            }
 
-            // Create choice text object directly
+            // EXACT COPY of working CreateObjectiveUI() pattern from U3DQuestManager
             GameObject choiceObj = new GameObject($"Choice_{choice.choiceID}");
             choiceObj.transform.SetParent(choicesParent, false);
             choiceObj.layer = LayerMask.NameToLayer("UI");
 
-            // Add RectTransform and position manually
             RectTransform choiceRect = choiceObj.AddComponent<RectTransform>();
+            choiceRect.sizeDelta = new Vector2(0, 35); // Same as working objective UI
+
+            TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
+            choiceText.fontSize = 24; // EXACT same as working CreateObjectiveUI()
+            choiceText.color = Color.white;
+            choiceText.text = choice.GetDisplayText();
+            choiceText.alignment = TextAlignmentOptions.MidlineLeft;
+            choiceText.raycastTarget = false;
+
+            // Position manually (vertical stacking)
             float yPosition = -40f * choiceDisplays.Count;
             choiceRect.anchorMin = new Vector2(0f, 1f);
             choiceRect.anchorMax = new Vector2(1f, 1f);
             choiceRect.anchoredPosition = new Vector2(0f, yPosition);
-            choiceRect.sizeDelta = new Vector2(0f, 40f);
-
-            // Create TextMeshPro component directly
-            TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
-            choiceText.text = choice.GetDisplayText();
-            choiceText.fontSize = 32;
-            choiceText.color = Color.white;
-            choiceText.alignment = TextAlignmentOptions.MidlineLeft;
-            choiceText.raycastTarget = false;
 
             choiceDisplays.Add(choiceText);
 
-            Debug.Log($"Created choice display: {choiceText.text}");
+            Debug.Log($"Created choice display using working pattern: {choiceText.text}");
         }
 
         public void AcceptQuest()
@@ -418,7 +422,8 @@ namespace U3D
         }
 
         /// <summary>
-        /// FIXED: Create dialog UI using Unity DefaultControls with direct TextMeshPro creation
+        /// FIXED: Create dialog UI using WORKING Quest system pattern
+        /// Following U3DQuestManager.CreateObjectiveUI() pattern exactly
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -434,7 +439,7 @@ namespace U3D
             canvasObj.transform.localPosition = Vector3.up * 2f;
             canvasObj.transform.localScale = Vector3.one * 0.01f;
 
-            // Use Unity's DefaultControls to create background panel
+            // Use Unity's DefaultControls for background panel (working pattern)
             DefaultControls.Resources uiResources = new DefaultControls.Resources();
             GameObject panelObj = DefaultControls.CreatePanel(uiResources);
             panelObj.name = "DialogPanel";
@@ -446,7 +451,7 @@ namespace U3D
             RectTransform panelRect = panelObj.GetComponent<RectTransform>();
             panelRect.sizeDelta = new Vector2(400, 350);
 
-            // Create giver name text - DIRECT TextMeshPro creation
+            // Create giver name - FOLLOWING WORKING CreateObjectiveUI() PATTERN
             GameObject nameObj = new GameObject("GiverName");
             nameObj.transform.SetParent(panelObj.transform, false);
             nameObj.layer = LayerMask.NameToLayer("UI");
@@ -459,13 +464,13 @@ namespace U3D
 
             giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
-            giverNameText.fontSize = 36;
+            giverNameText.fontSize = 36; // Working Quest system font size
             giverNameText.fontStyle = FontStyles.Bold;
             giverNameText.color = Color.white;
             giverNameText.alignment = TextAlignmentOptions.Center;
             giverNameText.raycastTarget = false;
 
-            // Create description text - DIRECT TextMeshPro creation
+            // Create description - FOLLOWING WORKING CreateObjectiveUI() PATTERN
             GameObject descObj = new GameObject("QuestDescription");
             descObj.transform.SetParent(panelObj.transform, false);
             descObj.layer = LayerMask.NameToLayer("UI");
@@ -478,17 +483,16 @@ namespace U3D
 
             questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
-            questDescriptionText.fontSize = 28;
+            questDescriptionText.fontSize = 24; // Working Quest system font size
             questDescriptionText.color = Color.white;
             questDescriptionText.alignment = TextAlignmentOptions.Center;
             questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
             questDescriptionText.raycastTarget = false;
 
-            // Create choices parent as simple container
+            // Create choices container - FOLLOWING WORKING CreateObjectiveUI() PATTERN
             GameObject choicesObj = new GameObject("Choices");
             choicesObj.transform.SetParent(panelObj.transform, false);
             choicesObj.layer = LayerMask.NameToLayer("UI");
-            choicesParent = choicesObj.transform;
 
             RectTransform choicesRect = choicesObj.AddComponent<RectTransform>();
             choicesRect.anchorMin = new Vector2(0, 0.05f);
@@ -496,7 +500,16 @@ namespace U3D
             choicesRect.offsetMin = new Vector2(10, 0);
             choicesRect.offsetMax = new Vector2(-10, 0);
 
-            Debug.Log($"Created default dialog UI for {giverName} using DefaultControls with key protection");
+            // CRITICAL FIX: Assign the reference immediately (was missing!)
+            choicesParent = choicesObj.transform;
+
+            // CRITICAL FIX: Keep dialog visible for testing
+            dialogCanvas.gameObject.SetActive(true);
+
+            // CRITICAL FIX: Create the choice displays immediately
+            UpdateChoicesDisplay();
+
+            Debug.Log($"Created default dialog UI for {giverName} using working Quest pattern - choices parent assigned: {choicesParent != null}");
         }
 
         [ContextMenu("Reset Quest Giver")]
