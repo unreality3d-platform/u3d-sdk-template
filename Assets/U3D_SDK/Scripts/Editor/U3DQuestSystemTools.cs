@@ -8,6 +8,7 @@ namespace U3D.Editor
 {
     /// <summary>
     /// Editor tools for creating quest system components with Unity 6+ default setup
+    /// UPDATED: Now includes automatic interaction choice setup
     /// </summary>
     public static class U3DQuestSystemTools
     {
@@ -168,7 +169,7 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Create a quest giver NPC
+        /// Create a quest giver NPC with automatic setup - UPDATED for choice system
         /// </summary>
         public static void CreateQuestGiver()
         {
@@ -190,6 +191,22 @@ namespace U3D.Editor
             U3DQuestGiver questGiver = giverObj.AddComponent<U3DQuestGiver>();
             questGiver.giverName = "Quest Giver";
 
+            // AUTOMATIC SETUP: Default interaction choice system
+            // Uses SerializedObject to set up default "Accept [E]" choice
+            SerializedObject serializedGiver = new SerializedObject(questGiver);
+            SerializedProperty choicesProperty = serializedGiver.FindProperty("interactionChoices");
+
+            // Clear any existing choices and add default
+            choicesProperty.ClearArray();
+            choicesProperty.InsertArrayElementAtIndex(0);
+
+            SerializedProperty firstChoice = choicesProperty.GetArrayElementAtIndex(0);
+            firstChoice.FindPropertyRelative("choiceLabel").stringValue = "Accept";
+            firstChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.E;
+            firstChoice.FindPropertyRelative("choiceID").stringValue = "accept";
+
+            serializedGiver.ApplyModifiedProperties();
+
             // Add interaction collider
             SphereCollider interactionCollider = giverObj.AddComponent<SphereCollider>();
             interactionCollider.isTrigger = true;
@@ -204,7 +221,7 @@ namespace U3D.Editor
             Selection.activeGameObject = giverObj;
             EditorGUIUtility.PingObject(giverObj);
 
-            Debug.Log("✅ Quest Giver created! Assign a quest to give in the Inspector.");
+            Debug.Log("✅ Quest Giver created with default 'Accept [E]' interaction! Assign a quest and customize choices in the Inspector.");
         }
 
         /// <summary>
@@ -274,6 +291,128 @@ namespace U3D.Editor
 
                 Debug.Log($"✅ Added Quest Trigger components to {selectedObjects.Length} object(s). Connect them to Quest Objectives in the Inspector.");
             }
+        }
+
+        /// <summary>
+        /// Create a quest giver with Accept/Decline choices - Quick setup option
+        /// </summary>
+        public static void CreateQuestGiverWithChoices()
+        {
+            GameObject giverObj = new GameObject("Quest Giver (Multiple Choice)");
+
+            // Add visual representation (cube)
+            GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visual.name = "Visual";
+            visual.transform.SetParent(giverObj.transform);
+            visual.transform.localPosition = Vector3.zero;
+
+            // Color it differently
+            Renderer renderer = visual.GetComponent<Renderer>();
+            Material material = new Material(Shader.Find("Standard"));
+            material.color = Color.cyan;
+            renderer.material = material;
+
+            // Add quest giver component
+            U3DQuestGiver questGiver = giverObj.AddComponent<U3DQuestGiver>();
+            questGiver.giverName = "Quest Giver";
+
+            // Set up Accept/Decline choices
+            SerializedObject serializedGiver = new SerializedObject(questGiver);
+            SerializedProperty choicesProperty = serializedGiver.FindProperty("interactionChoices");
+
+            choicesProperty.ClearArray();
+
+            // Add Accept choice
+            choicesProperty.InsertArrayElementAtIndex(0);
+            SerializedProperty acceptChoice = choicesProperty.GetArrayElementAtIndex(0);
+            acceptChoice.FindPropertyRelative("choiceLabel").stringValue = "Accept";
+            acceptChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.E;
+            acceptChoice.FindPropertyRelative("choiceID").stringValue = "accept";
+
+            // Add Decline choice
+            choicesProperty.InsertArrayElementAtIndex(1);
+            SerializedProperty declineChoice = choicesProperty.GetArrayElementAtIndex(1);
+            declineChoice.FindPropertyRelative("choiceLabel").stringValue = "Decline";
+            declineChoice.FindPropertyRelative("choiceKey").enumValueIndex = (int)KeyCode.X;
+            declineChoice.FindPropertyRelative("choiceID").stringValue = "decline";
+
+            serializedGiver.ApplyModifiedProperties();
+
+            // Add interaction collider
+            SphereCollider interactionCollider = giverObj.AddComponent<SphereCollider>();
+            interactionCollider.isTrigger = true;
+            interactionCollider.radius = 3f;
+
+            // Position nicely in scene
+            if (SceneView.lastActiveSceneView != null)
+            {
+                giverObj.transform.position = SceneView.lastActiveSceneView.pivot;
+            }
+
+            Selection.activeGameObject = giverObj;
+            EditorGUIUtility.PingObject(giverObj);
+
+            Debug.Log("✅ Quest Giver created with Accept/Decline choices! Assign a quest in the Inspector.");
+        }
+
+        /// <summary>
+        /// Create a quiz-style quest giver with numbered choices - Quick setup option
+        /// </summary>
+        public static void CreateQuizQuestGiver()
+        {
+            GameObject giverObj = new GameObject("Quiz Quest Giver");
+
+            // Add visual representation (cube)
+            GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visual.name = "Visual";
+            visual.transform.SetParent(giverObj.transform);
+            visual.transform.localPosition = Vector3.zero;
+
+            // Color it differently
+            Renderer renderer = visual.GetComponent<Renderer>();
+            Material material = new Material(Shader.Find("Standard"));
+            material.color = Color.magenta;
+            renderer.material = material;
+
+            // Add quest giver component
+            U3DQuestGiver questGiver = giverObj.AddComponent<U3DQuestGiver>();
+            questGiver.giverName = "Quiz Master";
+
+            // Set up quiz-style numbered choices
+            SerializedObject serializedGiver = new SerializedObject(questGiver);
+            SerializedProperty choicesProperty = serializedGiver.FindProperty("interactionChoices");
+
+            choicesProperty.ClearArray();
+
+            string[] labels = { "Option A", "Option B", "Option C" };
+            KeyCode[] keys = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3 };
+
+            for (int i = 0; i < 3; i++)
+            {
+                choicesProperty.InsertArrayElementAtIndex(i);
+                SerializedProperty choice = choicesProperty.GetArrayElementAtIndex(i);
+                choice.FindPropertyRelative("choiceLabel").stringValue = labels[i];
+                choice.FindPropertyRelative("choiceKey").enumValueIndex = (int)keys[i];
+                choice.FindPropertyRelative("choiceID").stringValue = $"option_{i + 1}";
+            }
+
+            serializedGiver.ApplyModifiedProperties();
+
+            // Add interaction collider
+            SphereCollider interactionCollider = giverObj.AddComponent<SphereCollider>();
+            interactionCollider.isTrigger = true;
+            interactionCollider.radius = 3f;
+
+            // Position nicely in scene
+            if (SceneView.lastActiveSceneView != null)
+            {
+                giverObj.transform.position = SceneView.lastActiveSceneView.pivot;
+            }
+
+            Selection.activeGameObject = giverObj;
+            EditorGUIUtility.PingObject(giverObj);
+
+            Debug.Log("✅ Quiz Quest Giver created with 3 numbered options! Perfect for quiz-style interactions.");
         }
     }
 }

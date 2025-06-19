@@ -1,12 +1,15 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.InputSystem;
+using System.Collections.Generic;
+using UnityEngine.Events;
 
 namespace U3D
 {
     /// <summary>
     /// NPC or object that gives quests to players.
-    /// Uses Unity's built-in Canvas and UI components for familiar creator workflow.
+    /// Uses Unity's built-in Canvas and UI components with new interaction choice system.
     /// </summary>
     [AddComponentMenu("U3D/Quest System/U3D Quest Giver")]
     public class U3DQuestGiver : MonoBehaviour
@@ -25,27 +28,25 @@ namespace U3D
         [Tooltip("How close the player needs to be to interact (0 = no distance limit)")]
         [SerializeField] private float interactionRange = 3f;
 
-        [Tooltip("Key players press to interact (leave empty to use click/touch)")]
-        [SerializeField] private KeyCode interactionKey = KeyCode.E;
-
         [Tooltip("Should interaction happen automatically when player gets close?")]
         [SerializeField] private bool autoInteract = false;
 
+        [Header("Interaction Choices")]
+        [Tooltip("Available interaction choices for this quest giver. Default is 'Accept [E]'")]
+        [SerializeField] private List<U3DInteractionChoice> interactionChoices = new List<U3DInteractionChoice>();
+
         [Header("UI Dialog")]
-        [Tooltip("Canvas for quest dialog UI. Will create default if not assigned")]
+        [Tooltip("Canvas for quest dialog UI. An unstyled Dialogue Canvas will be created at runtime if one is not assigned.")]
         [SerializeField] private Canvas dialogCanvas;
 
-        [Tooltip("TextMeshPro component for quest giver's name")]
+        [Tooltip("TextMeshPro component for quest giver's name. Auto-created if not assigned.")]
         [SerializeField] private TextMeshProUGUI giverNameText;
 
-        [Tooltip("TextMeshPro component for quest description")]
+        [Tooltip("TextMeshPro component for quest description. Auto-created if not assigned.")]
         [SerializeField] private TextMeshProUGUI questDescriptionText;
 
-        [Tooltip("Button to accept the quest")]
-        [SerializeField] private Button acceptQuestButton;
-
-        [Tooltip("Button to decline/close dialog")]
-        [SerializeField] private Button declineButton;
+        [Tooltip("Parent object for interaction choice display. Auto-created if not assigned.")]
+        [SerializeField] private Transform choicesParent;
 
         [Header("Visual Indicators")]
         [Tooltip("GameObject shown when quest is available (like an exclamation mark)")]
@@ -70,9 +71,23 @@ namespace U3D
         [TextArea(2, 4)]
         [SerializeField] private string questCompletedText = "Thank you for completing my quest!";
 
+        [Header("Events")]
+        [Tooltip("Called when a choice is selected")]
+        public U3DInteractionChoiceEvent OnChoiceSelected;
+
         private Transform playerTransform;
         private bool playerInRange = false;
         private bool questGiven = false;
+        private List<TextMeshProUGUI> choiceDisplays = new List<TextMeshProUGUI>();
+
+        private void Awake()
+        {
+            // Initialize default choices if none are set
+            if (interactionChoices.Count == 0)
+            {
+                interactionChoices.Add(new U3DInteractionChoice(KeyCode.E, "Accept", "accept"));
+            }
+        }
 
         private void Start()
         {
@@ -94,7 +109,7 @@ namespace U3D
         private void Update()
         {
             CheckPlayerProximity();
-            HandleInteraction();
+            HandleInteractionChoices();
         }
 
         /// <summary>
@@ -123,24 +138,67 @@ namespace U3D
         }
 
         /// <summary>
-        /// Handle player input for interaction
+        /// Handle input for interaction choices - UPDATED for choice system
         /// </summary>
-        private void HandleInteraction()
+        private void HandleInteractionChoices()
         {
             if (!playerInRange || !CanGiveQuest()) return;
 
-            // Check for interaction input
-            bool interactPressed = false;
-
-            if (interactionKey != KeyCode.None)
-                interactPressed = Input.GetKeyDown(interactionKey);
-            else
-                interactPressed = Input.GetMouseButtonDown(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began);
-
-            if (interactPressed)
+            // Check if dialog is open - only process choices when dialog is visible
+            if (dialogCanvas != null && dialogCanvas.gameObject.activeSelf)
             {
-                StartInteraction();
+                foreach (U3DInteractionChoice choice in interactionChoices)
+                {
+                    if (choice.WasKeyPressed())
+                    {
+                        HandleChoiceSelected(choice);
+                        return;
+                    }
+                }
             }
+            else
+            {
+                // Check for any interaction key to open dialog
+                foreach (U3DInteractionChoice choice in interactionChoices)
+                {
+                    if (choice.WasKeyPressed())
+                    {
+                        StartInteraction();
+                        return;
+                    }
+                }
+
+                // Fallback: mouse/touch input to open dialog
+                if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+                {
+                    StartInteraction();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle when a specific choice is selected
+        /// </summary>
+        private void HandleChoiceSelected(U3DInteractionChoice choice)
+        {
+            OnChoiceSelected?.Invoke(choice);
+
+            // Handle built-in quest logic
+            switch (choice.choiceID.ToLower())
+            {
+                case "accept":
+                    AcceptQuest();
+                    break;
+                case "decline":
+                    CloseDialog();
+                    break;
+                default:
+                    // Custom choice - just close dialog and let events handle it
+                    CloseDialog();
+                    break;
+            }
+
+            Debug.Log($"Choice selected: {choice.choiceLabel} [{choice.choiceKey}]");
         }
 
         /// <summary>
@@ -168,7 +226,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Show the quest dialog UI
+        /// Show the quest dialog UI with choices
         /// </summary>
         private void ShowDialog(string dialogText)
         {
@@ -182,41 +240,93 @@ namespace U3D
                 if (questDescriptionText != null)
                     questDescriptionText.text = dialogText;
 
-                // Configure buttons based on quest state
-                ConfigureDialogButtons();
+                // Update choices display
+                UpdateChoicesDisplay();
             }
         }
 
         /// <summary>
-        /// Configure dialog buttons based on current quest state
+        /// Update the choices display in the dialog
         /// </summary>
-        private void ConfigureDialogButtons()
+        private void UpdateChoicesDisplay()
         {
-            if (acceptQuestButton != null)
+            if (choicesParent == null) return;
+
+            // Clear existing choice displays
+            foreach (TextMeshProUGUI choiceDisplay in choiceDisplays)
             {
-                bool canAcceptQuest = !questToGive.IsActive && !questToGive.IsCompleted && (!questGiven || allowRepeatQuests);
-                acceptQuestButton.gameObject.SetActive(canAcceptQuest);
+                if (choiceDisplay != null)
+                    DestroyImmediate(choiceDisplay.gameObject);
+            }
+            choiceDisplays.Clear();
 
-                if (canAcceptQuest)
+            // Show appropriate choices based on quest state
+            List<U3DInteractionChoice> availableChoices = GetAvailableChoices();
+
+            // Create choice displays
+            foreach (U3DInteractionChoice choice in availableChoices)
+            {
+                CreateChoiceDisplay(choice);
+            }
+        }
+
+        /// <summary>
+        /// Get choices available based on current quest state
+        /// </summary>
+        private List<U3DInteractionChoice> GetAvailableChoices()
+        {
+            List<U3DInteractionChoice> available = new List<U3DInteractionChoice>();
+
+            if (questToGive.IsCompleted || questToGive.IsActive)
+            {
+                // Just show close option
+                available.Add(new U3DInteractionChoice(KeyCode.E, "Close", "close"));
+            }
+            else
+            {
+                // Show configured choices for quest offering
+                available.AddRange(interactionChoices);
+
+                // Add decline option if not already present
+                bool hasDecline = false;
+                foreach (var choice in interactionChoices)
                 {
-                    acceptQuestButton.onClick.RemoveAllListeners();
-                    acceptQuestButton.onClick.AddListener(AcceptQuest);
+                    if (choice.choiceID.ToLower() == "decline")
+                    {
+                        hasDecline = true;
+                        break;
+                    }
+                }
 
-                    TextMeshProUGUI buttonText = acceptQuestButton.GetComponentInChildren<TextMeshProUGUI>();
-                    if (buttonText != null)
-                        buttonText.text = "Accept Quest";
+                if (!hasDecline)
+                {
+                    available.Add(new U3DInteractionChoice(KeyCode.X, "Decline", "decline"));
                 }
             }
 
-            if (declineButton != null)
-            {
-                declineButton.onClick.RemoveAllListeners();
-                declineButton.onClick.AddListener(CloseDialog);
+            return available;
+        }
 
-                TextMeshProUGUI buttonText = declineButton.GetComponentInChildren<TextMeshProUGUI>();
-                if (buttonText != null)
-                    buttonText.text = questToGive.IsActive || questToGive.IsCompleted ? "Close" : "Decline";
-            }
+        /// <summary>
+        /// Create a choice display UI element
+        /// </summary>
+        private void CreateChoiceDisplay(U3DInteractionChoice choice)
+        {
+            GameObject choiceObj = new GameObject($"Choice_{choice.choiceID}");
+            choiceObj.transform.SetParent(choicesParent, false);
+            choiceObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform choiceRect = choiceObj.AddComponent<RectTransform>();
+            choiceRect.sizeDelta = new Vector2(0, 35);
+
+            TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
+            choiceText.text = choice.GetDisplayText();
+            choiceText.fontSize = 32; // Large, readable font
+            choiceText.color = Color.white;
+            choiceText.alignment = TextAlignmentOptions.MidlineLeft;
+            choiceText.raycastTarget = false;
+
+            choiceDisplays.Add(choiceText);
         }
 
         /// <summary>
@@ -293,8 +403,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// Create a dialog UI using Unity's DefaultControls method (same working system as QuestSystemTools)
-        /// Uses TextMeshPro components with larger font sizes for better readability
+        /// Create a dialog UI using Unity's DefaultControls method - UPDATED for choices
         /// </summary>
         private void CreateDefaultDialogUI()
         {
@@ -305,12 +414,12 @@ namespace U3D
             dialogCanvas.renderMode = RenderMode.WorldSpace;
             dialogCanvas.worldCamera = Camera.main;
 
-            // Add GraphicRaycaster for button interaction
+            // Add GraphicRaycaster for interaction
             canvasObj.AddComponent<GraphicRaycaster>();
 
             // Position canvas above quest giver
             canvasObj.transform.localPosition = Vector3.up * 2f;
-            canvasObj.transform.localScale = Vector3.one * 0.01f; // Scale down for world space
+            canvasObj.transform.localScale = Vector3.one * 0.01f;
 
             // Create background panel
             GameObject panelObj = new GameObject("DialogPanel");
@@ -319,118 +428,58 @@ namespace U3D
             panelImage.color = new Color(0, 0, 0, 0.8f);
 
             RectTransform panelRect = panelObj.GetComponent<RectTransform>();
-            panelRect.sizeDelta = new Vector2(400, 300);
+            panelRect.sizeDelta = new Vector2(400, 350); // Taller for choices
 
-            // Create giver name text using TextMeshPro with larger font
+            // Create giver name text
             GameObject nameObj = new GameObject("GiverName");
             nameObj.transform.SetParent(panelObj.transform, false);
             giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
-            giverNameText.fontSize = 36; // INCREASED from 24
+            giverNameText.fontSize = 36;
             giverNameText.fontStyle = FontStyles.Bold;
             giverNameText.color = Color.white;
             giverNameText.alignment = TextAlignmentOptions.Center;
 
             RectTransform nameRect = nameObj.GetComponent<RectTransform>();
-            nameRect.anchorMin = new Vector2(0, 0.7f);
+            nameRect.anchorMin = new Vector2(0, 0.8f);
             nameRect.anchorMax = new Vector2(1, 1);
             nameRect.offsetMin = Vector2.zero;
             nameRect.offsetMax = Vector2.zero;
 
-            // Create description text using TextMeshPro with larger font
+            // Create description text
             GameObject descObj = new GameObject("QuestDescription");
             descObj.transform.SetParent(panelObj.transform, false);
             questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
-            questDescriptionText.fontSize = 36; // INCREASED from 16
+            questDescriptionText.fontSize = 28;
             questDescriptionText.color = Color.white;
             questDescriptionText.alignment = TextAlignmentOptions.Center;
             questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
 
             RectTransform descRect = descObj.GetComponent<RectTransform>();
-            descRect.anchorMin = new Vector2(0, 0.3f);
-            descRect.anchorMax = new Vector2(1, 0.7f);
+            descRect.anchorMin = new Vector2(0, 0.4f);
+            descRect.anchorMax = new Vector2(1, 0.8f);
             descRect.offsetMin = new Vector2(10, 0);
             descRect.offsetMax = new Vector2(-10, 0);
 
-            // Create accept button using Unity's DefaultControls method (same working system)
-            DefaultControls.Resources uiResources = new DefaultControls.Resources();
-            GameObject acceptObj = DefaultControls.CreateButton(uiResources);
-            acceptObj.name = "AcceptButton";
-            acceptObj.transform.SetParent(panelObj.transform, false);
-            acceptQuestButton = acceptObj.GetComponent<Button>();
+            // Create choices container
+            GameObject choicesObj = new GameObject("Choices");
+            choicesObj.transform.SetParent(panelObj.transform, false);
+            choicesParent = choicesObj.transform;
 
-            // Configure accept button
-            Image acceptImage = acceptObj.GetComponent<Image>();
-            acceptImage.color = new Color(0.2f, 0.8f, 0.2f, 1f);
+            RectTransform choicesRect = choicesObj.GetComponent<RectTransform>();
+            choicesRect.anchorMin = new Vector2(0, 0.05f);
+            choicesRect.anchorMax = new Vector2(1, 0.4f);
+            choicesRect.offsetMin = new Vector2(10, 0);
+            choicesRect.offsetMax = new Vector2(-10, 0);
 
-            RectTransform acceptRect = acceptObj.GetComponent<RectTransform>();
-            acceptRect.anchorMin = new Vector2(0.1f, 0.05f);
-            acceptRect.anchorMax = new Vector2(0.45f, 0.25f);
-            acceptRect.offsetMin = Vector2.zero;
-            acceptRect.offsetMax = Vector2.zero;
-
-            // Update button text to TextMeshPro with larger font
-            Transform acceptTextTransform = acceptObj.transform.Find("Text");
-            if (acceptTextTransform != null)
-            {
-                // Remove legacy Text component
-                Text legacyText = acceptTextTransform.GetComponent<Text>();
-                if (legacyText != null)
-                    DestroyImmediate(legacyText);
-
-                // Add TextMeshPro component
-                TextMeshProUGUI acceptText = acceptTextTransform.gameObject.AddComponent<TextMeshProUGUI>();
-                acceptText.text = "Accept";
-                acceptText.fontSize = 24; // INCREASED from 14
-                acceptText.color = Color.white;
-                acceptText.alignment = TextAlignmentOptions.Center;
-
-                RectTransform acceptTextRect = acceptTextTransform.GetComponent<RectTransform>();
-                acceptTextRect.anchorMin = Vector2.zero;
-                acceptTextRect.anchorMax = Vector2.one;
-                acceptTextRect.offsetMin = Vector2.zero;
-                acceptTextRect.offsetMax = Vector2.zero;
-            }
-
-            // Create decline button using Unity's DefaultControls method (same working system)
-            GameObject declineObj = DefaultControls.CreateButton(uiResources);
-            declineObj.name = "DeclineButton";
-            declineObj.transform.SetParent(panelObj.transform, false);
-            declineButton = declineObj.GetComponent<Button>();
-
-            // Configure decline button
-            Image declineImage = declineObj.GetComponent<Image>();
-            declineImage.color = new Color(0.8f, 0.2f, 0.2f, 1f);
-
-            RectTransform declineRect = declineObj.GetComponent<RectTransform>();
-            declineRect.anchorMin = new Vector2(0.55f, 0.05f);
-            declineRect.anchorMax = new Vector2(0.9f, 0.25f);
-            declineRect.offsetMin = Vector2.zero;
-            declineRect.offsetMax = Vector2.zero;
-
-            // Update button text to TextMeshPro with larger font
-            Transform declineTextTransform = declineObj.transform.Find("Text");
-            if (declineTextTransform != null)
-            {
-                // Remove legacy Text component
-                Text legacyText = declineTextTransform.GetComponent<Text>();
-                if (legacyText != null)
-                    DestroyImmediate(legacyText);
-
-                // Add TextMeshPro component
-                TextMeshProUGUI declineText = declineTextTransform.gameObject.AddComponent<TextMeshProUGUI>();
-                declineText.text = "Decline";
-                declineText.fontSize = 24; // INCREASED from 14
-                declineText.color = Color.white;
-                declineText.alignment = TextAlignmentOptions.Center;
-
-                RectTransform declineTextRect = declineTextTransform.GetComponent<RectTransform>();
-                declineTextRect.anchorMin = Vector2.zero;
-                declineTextRect.anchorMax = Vector2.one;
-                declineTextRect.offsetMin = Vector2.zero;
-                declineTextRect.offsetMax = Vector2.zero;
-            }
+            // Add vertical layout for choices
+            VerticalLayoutGroup choicesLayout = choicesObj.AddComponent<VerticalLayoutGroup>();
+            choicesLayout.spacing = 5;
+            choicesLayout.childControlWidth = true;
+            choicesLayout.childControlHeight = false;
+            choicesLayout.childForceExpandWidth = true;
+            choicesLayout.childAlignment = TextAnchor.MiddleLeft;
         }
 
         /// <summary>
