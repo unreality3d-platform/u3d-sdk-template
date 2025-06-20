@@ -17,7 +17,7 @@ public class ProjectStartupConfiguration
     {
         if (!EditorPrefs.GetBool(PREF_KEY, false))
         {
-            // Set build target to WebGL
+            // Set build target to WebGL - Unity 6 compatible
             EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL);
 
             // Open startup scene
