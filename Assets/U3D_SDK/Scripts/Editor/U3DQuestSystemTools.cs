@@ -208,6 +208,13 @@ namespace U3D.Editor
             Selection.activeGameObject = giverObj;
             EditorGUIUtility.PingObject(giverObj);
 
+            // Auto-create dialog position transform
+            GameObject dialogPos = new GameObject("Dialog Position");
+            dialogPos.transform.SetParent(giverObj.transform);
+            dialogPos.transform.localPosition = Vector3.up * 2f;
+            dialogPos.transform.localScale = Vector3.one * 0.01f;
+            dialogPos.AddComponent<U3DDialogPositionGizmo>(); // Add the gizmo component
+
             Debug.Log("✅ Quest Giver created with default Single interaction mode! Assign a quest and configure interaction choices in the Inspector.");
         }
 

@@ -57,6 +57,7 @@ namespace U3D.Editor
         private SerializedProperty giverNameText;
         private SerializedProperty questDescriptionText;
         private SerializedProperty choicesParent;
+        private SerializedProperty dialogPositionTransform;
 
         private void OnEnable()
         {
@@ -71,6 +72,7 @@ namespace U3D.Editor
             giverNameText = serializedObject.FindProperty("giverNameText");
             questDescriptionText = serializedObject.FindProperty("questDescriptionText");
             choicesParent = serializedObject.FindProperty("choicesParent");
+            dialogPositionTransform = serializedObject.FindProperty("dialogPositionTransform");
         }
 
         public override void OnInspectorGUI()
@@ -197,6 +199,45 @@ namespace U3D.Editor
             EditorGUILayout.PropertyField(questDescriptionText);
             EditorGUILayout.PropertyField(choicesParent);
             EditorGUI.indentLevel--;
+
+            // Dialog Position Control
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("Dialog Position", EditorStyles.boldLabel);
+
+            EditorGUILayout.HelpBox(
+                "Use the green wireframe box in Scene View to position the dialog. The dialog transform is automatically managed.",
+                MessageType.Info);
+
+            // Auto-manage dialog position transform (hidden from user)
+            Transform dialogTransform = questGiver.transform.Find("Dialog Position");
+            if (dialogTransform == null)
+            {
+                GameObject posTransform = new GameObject("Dialog Position");
+                posTransform.transform.SetParent(questGiver.transform);
+                posTransform.transform.localPosition = Vector3.up * 2f;
+                posTransform.transform.localRotation = Quaternion.identity;
+                posTransform.transform.localScale = Vector3.one * 0.01f;
+                posTransform.AddComponent<U3DDialogPositionGizmo>(); // Add the gizmo component
+
+                dialogPositionTransform.objectReferenceValue = posTransform.transform;
+                EditorUtility.SetDirty(target);
+            }
+            else
+            {
+                // Auto-assign the found transform and ensure it has the gizmo component
+                if (dialogPositionTransform.objectReferenceValue != dialogTransform)
+                {
+                    dialogPositionTransform.objectReferenceValue = dialogTransform;
+                    EditorUtility.SetDirty(target);
+                }
+
+                // Add gizmo component if missing
+                if (dialogTransform.GetComponent<U3DDialogPositionGizmo>() == null)
+                {
+                    dialogTransform.gameObject.AddComponent<U3DDialogPositionGizmo>();
+                    EditorUtility.SetDirty(dialogTransform);
+                }
+            }
 
             // PRESERVED: Your working quest status display
             if (questToGive.objectReferenceValue != null)

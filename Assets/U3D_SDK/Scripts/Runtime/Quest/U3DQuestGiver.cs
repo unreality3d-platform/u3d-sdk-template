@@ -75,6 +75,9 @@ namespace U3D
         [Tooltip("Parent object for interaction choice display. Auto-created if not assigned.")]
         [SerializeField] private Transform choicesParent;
 
+        [Tooltip("Transform that defines where the dialog will appear. Dialog will be created here if assigned, otherwise 2 units above the Quest Giver.")]
+        [SerializeField] private Transform dialogPositionTransform;
+
         [Header("Visual Indicators")]
         [Tooltip("GameObject shown when quest is available (like an exclamation mark)")]
         [SerializeField] private GameObject questAvailableIndicator;
@@ -400,10 +403,20 @@ namespace U3D
             // REMOVED CanvasScaler - not needed for WorldSpace
             canvasObj.AddComponent<GraphicRaycaster>();
 
-            // ADDED: Position canvas above quest giver and scale for world space
-            canvasObj.transform.SetParent(transform); // Parent to quest giver
-            canvasObj.transform.localPosition = Vector3.up * 2f; // Above quest giver
-            canvasObj.transform.localScale = Vector3.one * 0.01f; // Scale down for world space
+            // ADDED: Position canvas using dialogPositionTransform if available, otherwise above quest giver
+            Transform dialogTransform = transform.Find("Dialog Position");
+            if (dialogTransform != null)
+            {
+                canvasObj.transform.position = dialogTransform.position;
+                canvasObj.transform.rotation = dialogTransform.rotation;
+                canvasObj.transform.localScale = dialogTransform.localScale;
+            }
+            else
+            {
+                canvasObj.transform.position = transform.position + (transform.rotation * Vector3.up * 2f);
+                canvasObj.transform.rotation = transform.rotation;
+                canvasObj.transform.localScale = Vector3.one * 0.01f;
+            }
 
             GameObject panelObj = new GameObject("DialogPanel");
             panelObj.transform.SetParent(canvasObj.transform, false);
