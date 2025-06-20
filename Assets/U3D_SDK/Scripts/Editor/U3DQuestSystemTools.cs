@@ -169,7 +169,7 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Create a quest giver NPC with automatic setup - UPDATED for new mutually exclusive choice system
+        /// Create a quest giver NPC with automatic setup - UPDATED for URP Lit magenta material
         /// </summary>
         public static void CreateQuestGiver()
         {
@@ -181,18 +181,15 @@ namespace U3D.Editor
             visual.transform.SetParent(giverObj.transform);
             visual.transform.localPosition = Vector3.zero;
 
-            // Color it differently
+            // UPDATED: Use URP Lit shader with magenta color
             Renderer renderer = visual.GetComponent<Renderer>();
-            Material material = new Material(Shader.Find("Standard"));
-            material.color = Color.yellow;
+            Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            material.color = Color.magenta;
             renderer.material = material;
 
             // Add quest giver component
             U3DQuestGiver questGiver = giverObj.AddComponent<U3DQuestGiver>();
             questGiver.giverName = "Quest Giver";
-
-            // The new system uses default Single mode with Accept choice automatically
-            // No need to manually configure choices - they're set up in the defaults
 
             // Add interaction collider
             SphereCollider interactionCollider = giverObj.AddComponent<SphereCollider>();
@@ -208,14 +205,7 @@ namespace U3D.Editor
             Selection.activeGameObject = giverObj;
             EditorGUIUtility.PingObject(giverObj);
 
-            // Auto-create dialog position transform
-            GameObject dialogPos = new GameObject("Dialog Position");
-            dialogPos.transform.SetParent(giverObj.transform);
-            dialogPos.transform.localPosition = Vector3.up * 2f;
-            dialogPos.transform.localScale = Vector3.one * 0.01f;
-            dialogPos.AddComponent<U3DDialogPositionGizmo>(); // Add the gizmo component
-
-            Debug.Log("✅ Quest Giver created with default Single interaction mode! Assign a quest and configure interaction choices in the Inspector.");
+            Debug.Log("✅ Quest Giver created with URP Lit magenta material! Assign a quest and configure interaction choices in the Inspector.");
         }
 
         /// <summary>

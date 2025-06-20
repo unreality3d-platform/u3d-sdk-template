@@ -4,8 +4,8 @@ using UnityEditor;
 namespace U3D.Editor
 {
     /// <summary>
-    /// Custom property drawer for U3DInteractionChoice to make it display nicely in Inspector
-    /// PRESERVED: Your working property drawer
+    /// Custom property drawer for U3DInteractionChoice to display cleanly in Inspector
+    /// Shows Label and Key fields side by side, hides choiceID
     /// </summary>
     [CustomPropertyDrawer(typeof(U3DInteractionChoice))]
     public class U3DInteractionChoiceDrawer : PropertyDrawer
@@ -14,7 +14,7 @@ namespace U3D.Editor
         {
             EditorGUI.BeginProperty(position, label, property);
 
-            // Calculate rects for key and label fields
+            // Calculate rects for label and key fields
             float labelWidth = position.width * 0.6f;
             float keyWidth = position.width * 0.35f;
             float spacing = 5f;
@@ -22,11 +22,11 @@ namespace U3D.Editor
             Rect labelRect = new Rect(position.x, position.y, labelWidth, position.height);
             Rect keyRect = new Rect(position.x + labelWidth + spacing, position.y, keyWidth - spacing, position.height);
 
-            // Get properties - REMOVED choiceID to hide it as requested
+            // Get properties
             SerializedProperty choiceLabel = property.FindPropertyRelative("choiceLabel");
             SerializedProperty choiceKey = property.FindPropertyRelative("choiceKey");
 
-            // Draw fields without labels (we'll show custom labels)
+            // Draw fields without labels for clean appearance
             EditorGUI.PropertyField(labelRect, choiceLabel, GUIContent.none);
             EditorGUI.PropertyField(keyRect, choiceKey, GUIContent.none);
 
@@ -41,38 +41,26 @@ namespace U3D.Editor
 
     /// <summary>
     /// Custom Editor for U3DQuestGiver to enhance Inspector experience
-    /// MODIFIED: Added radio button interface for mutually exclusive choices
+    /// MODIFIED: Removed Dialog Position section, reordered Interaction Choices above Creator Events
     /// </summary>
     [CustomEditor(typeof(U3DQuestGiver))]
     public class U3DQuestGiverEditor : UnityEditor.Editor
     {
-        // ADDED: New properties for mutually exclusive system
         private SerializedProperty questToGive;
         private SerializedProperty interactionMode;
         private SerializedProperty singleChoice;
         private SerializedProperty acceptChoice;
         private SerializedProperty declineChoice;
         private SerializedProperty multipleChoices;
-        private SerializedProperty dialogCanvas;
-        private SerializedProperty giverNameText;
-        private SerializedProperty questDescriptionText;
-        private SerializedProperty choicesParent;
-        private SerializedProperty dialogPositionTransform;
 
         private void OnEnable()
         {
             questToGive = serializedObject.FindProperty("questToGive");
-            // ADDED: New interaction mode properties
             interactionMode = serializedObject.FindProperty("interactionMode");
             singleChoice = serializedObject.FindProperty("singleChoice");
             acceptChoice = serializedObject.FindProperty("acceptChoice");
             declineChoice = serializedObject.FindProperty("declineChoice");
             multipleChoices = serializedObject.FindProperty("multipleChoices");
-            dialogCanvas = serializedObject.FindProperty("dialogCanvas");
-            giverNameText = serializedObject.FindProperty("giverNameText");
-            questDescriptionText = serializedObject.FindProperty("questDescriptionText");
-            choicesParent = serializedObject.FindProperty("choicesParent");
-            dialogPositionTransform = serializedObject.FindProperty("dialogPositionTransform");
         }
 
         public override void OnInspectorGUI()
@@ -81,7 +69,7 @@ namespace U3D.Editor
 
             U3DQuestGiver questGiver = (U3DQuestGiver)target;
 
-            // Draw default properties first - MODIFIED: Exclude new properties
+            // Draw default properties first - MODIFIED: Exclude interaction choices and UI references
             DrawPropertiesExcluding(serializedObject,
                 "interactionMode",
                 "singleChoice",
@@ -91,9 +79,13 @@ namespace U3D.Editor
                 "dialogCanvas",
                 "giverNameText",
                 "questDescriptionText",
-                "choicesParent");
+                "choicesParent",
+                "dialogPositionTransform",
+                "OnChoiceSelected",
+                "OnPlayerEnterRangeEvent",
+                "OnPlayerExitRangeEvent");
 
-            // ADDED: Custom section for mutually exclusive interaction choices
+            // ADDED: Custom section for mutually exclusive interaction choices - MOVED ABOVE Creator Events
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Interaction Choices", EditorStyles.boldLabel);
 
@@ -145,7 +137,7 @@ namespace U3D.Editor
                 EditorGUI.indentLevel++;
                 SerializedProperty acceptLabel = acceptChoice.FindPropertyRelative("choiceLabel");
                 SerializedProperty acceptKey = acceptChoice.FindPropertyRelative("choiceKey");
-                SerializedProperty declineLabel = declineChoice.FindPropertyRelative("choiceLabel");
+                SerializedProperty declineLabel = declineChoice.FindPropertyRelative("declineLabel");
                 SerializedProperty declineKey = declineChoice.FindPropertyRelative("choiceKey");
 
                 EditorGUILayout.LabelField("Accept Choice", EditorStyles.boldLabel);
@@ -184,71 +176,19 @@ namespace U3D.Editor
 
             EditorGUILayout.EndVertical();
 
-            // PRESERVED: Your working UI References section
+            // ADDED: Creator Events section - NOW APPEARS AFTER Interaction Choices
             EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("UI References (Optional)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Creator Events", EditorStyles.boldLabel);
 
-            EditorGUILayout.HelpBox(
-                "These UI fields are optional. An unstyled Dialogue Canvas will be created at runtime if not assigned. " +
-                "Assign your own UI elements here only if you want to customize the appearance.",
-                MessageType.Info);
+            SerializedProperty OnChoiceSelected = serializedObject.FindProperty("OnChoiceSelected");
+            SerializedProperty OnPlayerEnterRangeEvent = serializedObject.FindProperty("OnPlayerEnterRangeEvent");
+            SerializedProperty OnPlayerExitRangeEvent = serializedObject.FindProperty("OnPlayerExitRangeEvent");
 
-            EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(dialogCanvas);
-            EditorGUILayout.PropertyField(giverNameText);
-            EditorGUILayout.PropertyField(questDescriptionText);
-            EditorGUILayout.PropertyField(choicesParent);
-            EditorGUI.indentLevel--;
+            EditorGUILayout.PropertyField(OnChoiceSelected);
+            EditorGUILayout.PropertyField(OnPlayerEnterRangeEvent);
+            EditorGUILayout.PropertyField(OnPlayerExitRangeEvent);
 
-            // Dialog Position Control
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("Dialog Position", EditorStyles.boldLabel);
 
-            EditorGUILayout.HelpBox(
-                "Use the green wireframe box in Scene View to position the dialog. The dialog transform is automatically managed.",
-                MessageType.Info);
-
-            // Auto-manage dialog position transform (hidden from user)
-            Transform dialogTransform = questGiver.transform.Find("Dialog Position");
-            if (dialogTransform == null)
-            {
-                GameObject posTransform = new GameObject("Dialog Position");
-                posTransform.transform.SetParent(questGiver.transform);
-                posTransform.transform.localPosition = Vector3.up * 2f;
-                posTransform.transform.localRotation = Quaternion.identity;
-                posTransform.transform.localScale = Vector3.one * 0.01f;
-                posTransform.AddComponent<U3DDialogPositionGizmo>(); // Add the gizmo component
-
-                dialogPositionTransform.objectReferenceValue = posTransform.transform;
-                EditorUtility.SetDirty(target);
-            }
-            else
-            {
-                // Auto-assign the found transform and ensure it has the gizmo component
-                if (dialogPositionTransform.objectReferenceValue != dialogTransform)
-                {
-                    dialogPositionTransform.objectReferenceValue = dialogTransform;
-                    EditorUtility.SetDirty(target);
-                }
-
-                // Add gizmo component if missing
-                if (dialogTransform.GetComponent<U3DDialogPositionGizmo>() == null)
-                {
-                    dialogTransform.gameObject.AddComponent<U3DDialogPositionGizmo>();
-                    EditorUtility.SetDirty(dialogTransform);
-                }
-            }
-
-            // PRESERVED: Your working quest status display
-            if (questToGive.objectReferenceValue != null)
-            {
-                EditorGUILayout.Space(10);
-                U3DQuest quest = questToGive.objectReferenceValue as U3DQuest;
-                if (quest != null)
-                {
-                    EditorGUILayout.HelpBox($"Quest: {quest.questTitle}", MessageType.None);
-                }
-            }
 
             serializedObject.ApplyModifiedProperties();
         }
