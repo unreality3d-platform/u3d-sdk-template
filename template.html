@@ -504,6 +504,15 @@
             loadingElement.style.display = 'block';
         }
 
+        function updateUnityStatus(message) {
+            console.log('Unity Status:', message);
+            if (unityInstance) {
+                unityInstance.SendMessage('FirebaseIntegration', 'UpdateStatus', message);
+            }
+        }
+
+        // ========== EXISTING PAYPAL INTEGRATION FUNCTIONS (UNCHANGED) ==========
+
         // Unity-Firebase Bridge Functions (Called from Unity via DllImport)
         window.UnityRequestPayment = function(contentId, amount) {
             console.log('Unity requested payment:', contentId, amount);
@@ -577,16 +586,22 @@
                     if (result.data.hasAccess) {
                         console.log('User has access to content');
                         if (unityInstance) {
-                            unityInstance.SendMessage('FirebaseIntegration', 'OnContentAccessGranted', 'true');
+                            unityInstance.SendMessage('FirebaseIntegration', 'OnAccessCheckComplete', 'true');
                         }
                     } else {
                         console.log('User does not have access, showing payment options');
+                        if (unityInstance) {
+                            unityInstance.SendMessage('FirebaseIntegration', 'OnAccessCheckComplete', 'false');
+                        }
                         showAuthOverlay();
                     }
                 })
                 .catch((error) => {
                     console.error('Content access check failed:', error);
                     console.log('Access check failed, showing auth overlay as fallback');
+                    if (unityInstance) {
+                        unityInstance.SendMessage('FirebaseIntegration', 'OnAccessCheckComplete', 'false');
+                    }
                     showAuthOverlay();
                 });
         };
@@ -596,6 +611,9 @@
 
             if (!currentUser) {
                 console.log('No user authenticated for test function');
+                if (unityInstance) {
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnTestComplete', 'No user authenticated');
+                }
                 return;
             }
 
@@ -606,15 +624,166 @@
                 .then((result) => {
                     console.log('Test function result:', result.data);
                     if (unityInstance) {
-                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestFunctionComplete', JSON.stringify(result.data));
+                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestComplete', JSON.stringify(result.data));
                     }
                 })
                 .catch((error) => {
                     console.error('Test function failed:', error);
                     if (unityInstance) {
-                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestFunctionComplete', JSON.stringify({error: error.message}));
+                        unityInstance.SendMessage('FirebaseIntegration', 'OnTestComplete', JSON.stringify({error: error.message}));
                     }
                 });
+        };
+
+        // ========== NEW PHOTON FUSION INTEGRATION FUNCTIONS ==========
+
+        // Get Photon Fusion token for multiplayer access
+        window.UnityGetPhotonToken = async function(roomName, contentId) {
+            if (!currentUser) {
+                showAuthOverlay();
+                return;
+            }
+
+            try {
+                updateUnityStatus('Requesting multiplayer access...');
+
+                const getPhotonToken = functions.httpsCallable('getPhotonFusionToken');
+                const result = await getPhotonToken({
+                    roomName: roomName,
+                    contentId: contentId
+                });
+
+                console.log('Photon token received:', result.data);
+
+                // Send token data to Unity
+                if (unityInstance) {
+                    const tokenData = JSON.stringify({
+                        appId: result.data.appId,
+                        region: result.data.region,
+                        maxPlayers: result.data.maxPlayers
+                    });
+
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived', tokenData);
+                }
+
+            } catch (error) {
+                console.error('Photon token request failed:', error);
+
+                let errorMessage = 'Multiplayer access failed';
+                if (error.code === 'permission-denied') {
+                    errorMessage = 'Content purchase required for multiplayer';
+                } else if (error.code === 'unauthenticated') {
+                    errorMessage = 'Please log in to access multiplayer';
+                }
+
+                updateUnityStatus(errorMessage);
+
+                if (unityInstance) {
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived',
+                        JSON.stringify({ error: errorMessage }));
+                }
+            }
+        };
+
+        // Create new multiplayer session
+        window.UnityCreateMultiplayerSession = async function(contentId, sessionName, maxPlayers) {
+            if (!currentUser) {
+                showAuthOverlay();
+                return;
+            }
+
+            try {
+                updateUnityStatus('Creating multiplayer session...');
+
+                const createSession = functions.httpsCallable('createMultiplayerSession');
+                const result = await createSession({
+                    contentId: contentId,
+                    sessionName: sessionName,
+                    maxPlayers: parseInt(maxPlayers) || 10
+                });
+
+                console.log('Session created:', result.data);
+
+                // Notify Unity of successful session creation
+                if (unityInstance) {
+                    const sessionData = JSON.stringify({
+                        sessionId: result.data.sessionId,
+                        roomName: result.data.roomName,
+                        maxPlayers: result.data.maxPlayers,
+                        status: result.data.status
+                    });
+
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated', sessionData);
+                }
+
+            } catch (error) {
+                console.error('Session creation failed:', error);
+
+                let errorMessage = 'Session creation failed';
+                if (error.code === 'permission-denied') {
+                    errorMessage = 'Content purchase required';
+                } else if (error.code === 'unauthenticated') {
+                    errorMessage = 'Please log in to create sessions';
+                }
+
+                updateUnityStatus(errorMessage);
+
+                if (unityInstance) {
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated',
+                        JSON.stringify({ error: errorMessage }));
+                }
+            }
+        };
+
+        // Join existing multiplayer session
+        window.UnityJoinMultiplayerSession = async function(roomName) {
+            if (!currentUser) {
+                showAuthOverlay();
+                return;
+            }
+
+            try {
+                updateUnityStatus('Joining multiplayer session...');
+
+                const joinSession = functions.httpsCallable('joinMultiplayerSession');
+                const result = await joinSession({
+                    roomName: roomName
+                });
+
+                console.log('Session joined:', result.data);
+
+                // Notify Unity of successful session join
+                if (unityInstance) {
+                    const joinData = JSON.stringify({
+                        sessionId: result.data.sessionId,
+                        roomName: result.data.roomName,
+                        currentPlayers: result.data.currentPlayers,
+                        maxPlayers: result.data.maxPlayers,
+                        status: result.data.status
+                    });
+
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse', joinData);
+                }
+
+            } catch (error) {
+                console.error('Session join failed:', error);
+
+                let errorMessage = 'Failed to join session';
+                if (error.code === 'not-found') {
+                    errorMessage = 'Session not found or full';
+                } else if (error.code === 'permission-denied') {
+                    errorMessage = 'Content purchase required';
+                } else if (error.code === 'unauthenticated') {
+                    errorMessage = 'Please log in to join sessions';
+                }
+
+                updateUnityStatus(errorMessage);
+
+                if (unityInstance) {
+                    unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse',
+                        JSON.stringify({ error: errorMessage }));
+                }
+            }
         };
 
         // Handle OAuth callbacks (PayPal, Google, etc.)
@@ -695,7 +864,7 @@
             });
         }
 
-        console.log('Unity WebGL Template loaded - Fullscreen Responsive Mode');
+        console.log('Unity WebGL Template loaded - Fullscreen Responsive Mode with Photon Fusion Integration');
     </script>
 </body>
 </html>

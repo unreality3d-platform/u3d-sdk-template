@@ -1,9 +1,10 @@
 using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Fusion;
 
 [RequireComponent(typeof(CharacterController), typeof(PlayerInput))]
-public class U3DPlayerController : MonoBehaviour
+public class U3DPlayerController : NetworkBehaviour
 {
     [Header("Basic Movement")]
     [SerializeField] private bool enableMovement = true;
