@@ -334,7 +334,7 @@ namespace U3D
 
             TextMeshProUGUI choiceText = choiceObj.AddComponent<TextMeshProUGUI>();
             choiceText.text = $"{choice.choiceLabel} [{choice.choiceKey}]";
-            choiceText.fontSize = 28; // PRESERVED: Your working font size
+            choiceText.fontSize = 24; 
             choiceText.color = Color.white;
             choiceText.alignment = TextAlignmentOptions.Center;
             choiceText.raycastTarget = false;
@@ -386,31 +386,31 @@ namespace U3D
             return true; // Can give quest
         }
 
-        // PRESERVED: Your working CreateDefaultDialogUI method with all original font sizes and UI creation
+        // FIXED: CreateDefaultDialogUI to use WorldSpace instead of ScreenSpace
         private void CreateDefaultDialogUI()
         {
             GameObject canvasObj = new GameObject("QuestGiver_Dialog");
             canvasObj.layer = LayerMask.NameToLayer("UI");
 
             dialogCanvas = canvasObj.AddComponent<Canvas>();
-            dialogCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            dialogCanvas.renderMode = RenderMode.WorldSpace; // CHANGED FROM ScreenSpaceOverlay
+            dialogCanvas.worldCamera = Camera.main; // ADDED for WorldSpace
             dialogCanvas.sortingOrder = 100;
 
-            CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-
+            // REMOVED CanvasScaler - not needed for WorldSpace
             canvasObj.AddComponent<GraphicRaycaster>();
+
+            // ADDED: Position canvas above quest giver and scale for world space
+            canvasObj.transform.SetParent(transform); // Parent to quest giver
+            canvasObj.transform.localPosition = Vector3.up * 2f; // Above quest giver
+            canvasObj.transform.localScale = Vector3.one * 0.01f; // Scale down for world space
 
             GameObject panelObj = new GameObject("DialogPanel");
             panelObj.transform.SetParent(canvasObj.transform, false);
             panelObj.layer = LayerMask.NameToLayer("UI");
 
             RectTransform panelRect = panelObj.AddComponent<RectTransform>();
-            panelRect.anchorMin = new Vector2(0.2f, 0.1f);
-            panelRect.anchorMax = new Vector2(0.8f, 0.9f);
-            panelRect.offsetMin = Vector2.zero;
-            panelRect.offsetMax = Vector2.zero;
+            panelRect.sizeDelta = new Vector2(400, 350); // CHANGED from anchor-based sizing to fixed size
 
             Image panelImage = panelObj.AddComponent<Image>();
             panelImage.color = new Color(0, 0, 0, 0.8f);
@@ -428,8 +428,8 @@ namespace U3D
 
             giverNameText = nameObj.AddComponent<TextMeshProUGUI>();
             giverNameText.text = giverName;
-            giverNameText.fontSize = 48; // PRESERVED: Your working font size
-            giverNameText.color = Color.yellow;
+            giverNameText.fontSize = 54; // Keep existing font size
+            giverNameText.color = Color.white;
             giverNameText.alignment = TextAlignmentOptions.Center;
             giverNameText.raycastTarget = false;
 
@@ -445,7 +445,7 @@ namespace U3D
 
             questDescriptionText = descObj.AddComponent<TextMeshProUGUI>();
             questDescriptionText.text = questOfferText;
-            questDescriptionText.fontSize = 36; // PRESERVED: Your working font size
+            questDescriptionText.fontSize = 42; // Keep existing font size
             questDescriptionText.color = Color.white;
             questDescriptionText.alignment = TextAlignmentOptions.Center;
             questDescriptionText.textWrappingMode = TextWrappingModes.Normal;
@@ -467,7 +467,7 @@ namespace U3D
             dialogCanvas.gameObject.SetActive(true);
             UpdateChoicesDisplay(); // PRESERVED: Immediately creates the choice displays
 
-            Debug.Log($"Created default dialog UI for {giverName} using working Quest pattern - choices parent assigned: {choicesParent != null}");
+            Debug.Log($"Created default dialog UI for {giverName} using WorldSpace canvas - choices parent assigned: {choicesParent != null}");
         }
 
         [ContextMenu("Reset Quest Giver")]
