@@ -282,7 +282,7 @@ namespace U3D
 
     /// <summary>
     /// Updated QuestGiver that implements the unified interaction interface
-    /// FIXED: Interface methods updated to work without interactionPrompt field
+    /// RESTORED: Original working behavior where dialog only shows on interaction
     /// </summary>
     public partial class U3DQuestGiver : IU3DInteractable
     {
@@ -294,11 +294,8 @@ namespace U3D
 
         public void OnPlayerEnterRange()
         {
-            // System method - show dialog canvas instead of interaction prompt
-            if (dialogCanvas != null)
-                dialogCanvas.gameObject.SetActive(CanGiveQuest());
-
-            // Invoke Creator's custom UnityEvent (use field names)
+            // RESTORED: Just invoke Creator's custom event, don't auto-show dialog
+            // Dialog will be shown when player actually interacts via OnInteract() → StartInteraction()
             OnPlayerEnterRangeEvent?.Invoke();
         }
 

@@ -18,6 +18,11 @@ namespace U3D
         private static Dictionary<KeyCode, string> reservedKeys = new Dictionary<KeyCode, string>();
 
         /// <summary>
+        /// The interact key configured in PlayerController (cached for Quest system)
+        /// </summary>
+        private static KeyCode playerInteractKey = KeyCode.E;
+
+        /// <summary>
         /// Recommended alternative keys for different interaction systems
         /// </summary>
         private static readonly Dictionary<KeyCode, List<KeyCode>> keyAlternatives = new Dictionary<KeyCode, List<KeyCode>>()
@@ -51,10 +56,49 @@ namespace U3D
                 if (inputActions != null)
                 {
                     ScanInputActionsForKeys(inputActions);
+                    CachePlayerInteractKey(inputActions);
                 }
             }
 
-            Debug.Log($"U3DKeyManager: Tracked {reservedKeys.Count} reserved keys from PlayerController");
+            Debug.Log($"U3DKeyManager: Tracked {reservedKeys.Count} reserved keys from PlayerController. Interact key: {playerInteractKey}");
+        }
+
+        /// <summary>
+        /// Cache the interact key from PlayerController for Quest system
+        /// </summary>
+        private static void CachePlayerInteractKey(InputActionAsset inputActions)
+        {
+            foreach (var actionMap in inputActions.actionMaps)
+            {
+                foreach (var action in actionMap.actions)
+                {
+                    if (action.name.ToLower().Contains("interact") || action.name.ToLower().Contains("use"))
+                    {
+                        foreach (var binding in action.bindings)
+                        {
+                            if (binding.path.StartsWith("<Keyboard>/"))
+                            {
+                                KeyCode keyCode = GetKeyCodeFromPath(binding.path);
+                                if (keyCode != KeyCode.None)
+                                {
+                                    playerInteractKey = keyCode;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            playerInteractKey = KeyCode.E;
+        }
+
+        /// <summary>
+        /// Get the interact key configured in PlayerController
+        /// </summary>
+        public static KeyCode GetPlayerInteractionKey()
+        {
+            return playerInteractKey;
         }
 
         /// <summary>
