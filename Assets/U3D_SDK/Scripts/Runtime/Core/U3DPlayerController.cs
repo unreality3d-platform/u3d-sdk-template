@@ -213,6 +213,25 @@ public class U3DPlayerController : NetworkBehaviour
                     break;
             }
         }
+
+        else
+        {
+            // CREATE NAMETAG FOR REMOTE PLAYERS ONLY
+            CreateNametag();
+        }
+    }
+
+    // Add this new method to your U3DPlayerController class:
+    void CreateNametag()
+    {
+        // Create nametag anchor above player head
+        var nametagAnchor = new GameObject("NametagAnchor");
+        nametagAnchor.transform.SetParent(transform);
+        nametagAnchor.transform.localPosition = Vector3.up * 2.5f; // Above player head
+
+        // Add and initialize nametag component
+        var nametag = nametagAnchor.AddComponent<U3D.Networking.U3DPlayerNametag>();
+        nametag.Initialize(this);
     }
 
     void Update()

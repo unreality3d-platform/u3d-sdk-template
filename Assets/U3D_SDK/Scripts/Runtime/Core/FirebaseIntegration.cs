@@ -423,18 +423,21 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
     {
         if (_currentUserInfo == null) return;
 
-        // Find local networked player and update info
-        var networkedPlayers = FindObjectsByType<U3DNetworkedPlayer>(FindObjectsSortMode.None);
+        // Find local player controller and update info
+        var playerControllers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
 
-        foreach (var player in networkedPlayers)
+        foreach (var player in playerControllers)
         {
-            if (player.Object != null && player.Object.HasInputAuthority)
+            var networkObject = player.GetComponent<NetworkObject>();
+            if (networkObject != null && networkObject.HasInputAuthority)
             {
                 string displayName = !string.IsNullOrEmpty(_currentUserInfo.displayName)
                     ? _currentUserInfo.displayName
                     : $"Player{UnityEngine.Random.Range(1000, 9999)}";
 
-                player.SetPlayerInfo(displayName, _currentUserInfo.userType, _currentUserInfo.paypalConnected);
+                // SetPlayerInfo method needs to be added to U3DPlayerController
+                // For now, just log the info
+                Debug.Log($"Would set player info: {displayName}, {_currentUserInfo.userType}, PayPal: {_currentUserInfo.paypalConnected}");
                 break;
             }
         }

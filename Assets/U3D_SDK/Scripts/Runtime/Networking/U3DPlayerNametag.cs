@@ -24,8 +24,8 @@ namespace U3D.Networking
         [SerializeField] private Image paypalBadge;
         [SerializeField] private CanvasGroup canvasGroup;
 
-        // Runtime references
-        private U3DNetworkedPlayer _networkedPlayer;
+        // Runtime references  
+        private U3DPlayerController _playerController;
         private Camera _localPlayerCamera;
         private RectTransform _nametagRect;
 
@@ -33,9 +33,9 @@ namespace U3D.Networking
         private bool _isInitialized = false;
         private float _currentAlpha = 1f;
 
-        public void Initialize(U3DNetworkedPlayer networkedPlayer)
+        public void Initialize(U3DPlayerController playerController)
         {
-            _networkedPlayer = networkedPlayer;
+            _playerController = playerController;
             CreateNametagUI();
             FindLocalPlayerCamera();
             _isInitialized = true;
@@ -165,7 +165,7 @@ namespace U3D.Networking
 
         void Update()
         {
-            if (!_isInitialized || _networkedPlayer == null || _localPlayerCamera == null)
+            if (!_isInitialized || _playerController == null || _localPlayerCamera == null)
                 return;
 
             // Update nametag position and rotation
@@ -177,7 +177,7 @@ namespace U3D.Networking
         void UpdatePosition()
         {
             // Position nametag above player with world offset
-            transform.position = _networkedPlayer.transform.position + worldOffset;
+            transform.position = _playerController.transform.position + worldOffset;
         }
 
         void UpdateVisibility()
@@ -247,25 +247,25 @@ namespace U3D.Networking
         /// </summary>
         public void UpdateDisplay()
         {
-            if (_networkedPlayer == null) return;
+            if (_playerController == null) return;
 
-            // Update player name
+            // Update player name - placeholder until networking info is available
             if (playerNameText != null)
             {
-                playerNameText.text = _networkedPlayer.GetDisplayName();
+                playerNameText.text = "Player"; // Will be updated when networking is integrated
             }
 
-            // Update user type
+            // Update user type - placeholder
             if (userTypeText != null)
             {
-                userTypeText.text = _networkedPlayer.GetUserTypeDisplayName();
-                userTypeText.color = _networkedPlayer.GetUserTypeColor();
+                userTypeText.text = "Visitor";
+                userTypeText.color = Color.white;
             }
 
-            // Update PayPal badge visibility
+            // Update PayPal badge visibility - placeholder
             if (paypalBadge != null)
             {
-                paypalBadge.gameObject.SetActive(_networkedPlayer.PayPalConnected);
+                paypalBadge.gameObject.SetActive(false);
             }
         }
 

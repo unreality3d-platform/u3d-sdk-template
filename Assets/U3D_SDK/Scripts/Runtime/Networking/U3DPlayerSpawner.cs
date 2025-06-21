@@ -306,9 +306,9 @@ namespace U3D.Networking
             _currentPlayerPositions.Clear();
 
             // Find all networked players
-            var networkedPlayers = FindObjectsByType<U3DNetworkedPlayer>(FindObjectsSortMode.None);
+            var playerControllers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
 
-            foreach (var player in networkedPlayers)
+            foreach (var player in playerControllers)
             {
                 _currentPlayerPositions.Add(player.transform.position);
             }
