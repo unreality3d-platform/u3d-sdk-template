@@ -48,15 +48,30 @@ public class U3DPlayerController : NetworkBehaviour
     [SerializeField] private bool enableJumping = true;
     [SerializeField] private KeyCode jumpKey = KeyCode.Space;
     [SerializeField] private float jumpHeight = 2f;
-    [SerializeField] private float[] additionalJumps = new float[] { 4f }; 
+    [SerializeField] private float[] additionalJumps = new float[] { 4f };
 
     [Header("Interaction")]
     [SerializeField] private KeyCode interactKey = KeyCode.E;
+
+    [Header("Network Synchronization")]
+    [SerializeField] private float networkSendRate = 20f; // WebGL optimized
+    [SerializeField] private float positionThreshold = 0.1f;
+    [SerializeField] private float rotationThreshold = 1f;
 
     // Hidden zoom settings with default values
     [HideInInspector][SerializeField] private float zoomFOV = 30f;
     [HideInInspector][SerializeField] private float defaultFOV = 60f;
     [HideInInspector][SerializeField] private float zoomSpeed = 5f;
+
+    // Networked Properties for Multiplayer
+    [Networked] public Vector3 NetworkPosition { get; set; }
+    [Networked] public Quaternion NetworkRotation { get; set; }
+    [Networked] public bool NetworkIsMoving { get; set; }
+    [Networked] public bool NetworkIsSprinting { get; set; }
+    [Networked] public bool NetworkIsCrouching { get; set; }
+    [Networked] public bool NetworkIsFlying { get; set; }
+    [Networked] public float NetworkCameraPitch { get; set; }
+    [Networked] public bool NetworkIsInteracting { get; set; }
 
     // Core Components
     private CharacterController characterController;
@@ -86,6 +101,12 @@ public class U3DPlayerController : NetworkBehaviour
     private float originalCameraHeight;
     private float crouchCameraOffset = -0.5f;
 
+    // Network State
+    private bool _isLocalPlayer;
+    private float _lastNetworkSendTime;
+    private Vector3 _lastSentPosition;
+    private Quaternion _lastSentRotation;
+
     // Input Actions (cached for performance)
     private InputAction moveAction;
     private InputAction lookAction;
@@ -98,6 +119,20 @@ public class U3DPlayerController : NetworkBehaviour
     private InputAction perspectiveSwitchAction;
     private InputAction interactAction;
     private InputAction teleportAction;
+
+    public override void Spawned()
+    {
+        // Determine if this is the local player
+        _isLocalPlayer = Object.HasInputAuthority;
+
+        // Initialize components
+        InitializeComponents();
+
+        // Configure for local vs remote player
+        ConfigurePlayerForNetworking();
+
+        Debug.Log($"Player spawned - Local: {_isLocalPlayer}");
+    }
 
     void Awake()
     {
@@ -125,43 +160,139 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Cache input actions for performance
         CacheInputActions();
+    }
 
-        // Lock cursor for FPS controls
+    void InitializeComponents()
+    {
+        if (!_isLocalPlayer) return;
+
+        // Lock cursor for FPS controls (local player only)
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
 
+    void ConfigurePlayerForNetworking()
+    {
+        if (_isLocalPlayer)
+        {
+            // Local player - enable all controls
+            if (playerInput != null)
+                playerInput.enabled = true;
+            if (playerCamera != null)
+                playerCamera.enabled = true;
+        }
+        else
+        {
+            // Remote player - disable input and camera
+            if (playerInput != null)
+                playerInput.enabled = false;
+            if (playerCamera != null)
+                playerCamera.enabled = false;
+
+            // Disable character controller for remote players (we'll interpolate position)
+            if (characterController != null)
+                characterController.enabled = false;
+        }
+    }
+
     void Start()
     {
-        // Set initial perspective based on mode
-        switch (perspectiveMode)
+        // Set initial perspective based on mode (local player only)
+        if (_isLocalPlayer)
         {
-            case PerspectiveMode.FirstPersonOnly:
-                SetFirstPerson();
-                break;
-            case PerspectiveMode.ThirdPersonOnly:
-                SetThirdPerson();
-                break;
-            case PerspectiveMode.SmoothScroll:
-                SetFirstPerson(); // Start in first person
-                break;
+            switch (perspectiveMode)
+            {
+                case PerspectiveMode.FirstPersonOnly:
+                    SetFirstPerson();
+                    break;
+                case PerspectiveMode.ThirdPersonOnly:
+                    SetThirdPerson();
+                    break;
+                case PerspectiveMode.SmoothScroll:
+                    SetFirstPerson(); // Start in first person
+                    break;
+            }
         }
     }
 
     void Update()
     {
-        HandleGroundCheck();
-        HandleMovement();
-        HandleLook();
-        HandlePerspectiveSwitch();
-        HandleZoom();
-        HandleTeleport();
-        HandleCameraPositioning();
-        ApplyGravity();
+        if (_isLocalPlayer)
+        {
+            HandleGroundCheck();
+            HandleMovement();
+            HandleLook();
+            HandlePerspectiveSwitch();
+            HandleZoom();
+            HandleTeleport();
+            HandleCameraPositioning();
+            ApplyGravity();
+        }
+    }
+
+    public override void FixedUpdateNetwork()
+    {
+        if (!_isLocalPlayer) return;
+
+        // Send network updates only when needed
+        bool shouldSendUpdate = false;
+
+        // Check if position changed significantly
+        if (Vector3.Distance(transform.position, _lastSentPosition) > positionThreshold)
+        {
+            NetworkPosition = transform.position;
+            _lastSentPosition = transform.position;
+            shouldSendUpdate = true;
+        }
+
+        // Check if rotation changed significantly
+        if (Quaternion.Angle(transform.rotation, _lastSentRotation) > rotationThreshold)
+        {
+            NetworkRotation = transform.rotation;
+            _lastSentRotation = transform.rotation;
+            shouldSendUpdate = true;
+        }
+
+        // Sync movement states
+        NetworkIsMoving = velocity.magnitude > 0.1f;
+        NetworkIsSprinting = isSprinting;
+        NetworkIsCrouching = isCrouching;
+        NetworkIsFlying = isFlying;
+
+        // Sync camera pitch for remote players to see where player is looking
+        if (playerCamera != null)
+        {
+            NetworkCameraPitch = playerCamera.transform.localEulerAngles.x;
+        }
+
+        // Rate limiting for WebGL performance
+        if (shouldSendUpdate)
+        {
+            _lastNetworkSendTime = Time.time;
+        }
+    }
+
+    public override void Render()
+    {
+        if (_isLocalPlayer) return;
+
+        // Interpolate remote player position and rotation
+        transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 10f);
+        transform.rotation = Quaternion.Lerp(transform.rotation, NetworkRotation, Time.deltaTime * 10f);
+
+        // Apply camera pitch for remote players (head movement)
+        if (playerCamera != null)
+        {
+            Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
+            cameraRotation.x = NetworkCameraPitch;
+            playerCamera.transform.localEulerAngles = cameraRotation;
+        }
     }
 
     void CacheInputActions()
     {
+        if (playerInput == null) return;
+
         var actionMap = playerInput.actions.FindActionMap("Player");
         if (actionMap == null)
         {
@@ -184,6 +315,8 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleGroundCheck()
     {
+        if (!_isLocalPlayer) return;
+
         isGrounded = characterController.isGrounded;
 
         if (isGrounded && velocity.y < 0)
@@ -195,7 +328,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleMovement()
     {
-        if (!enableMovement) return;
+        if (!enableMovement || !_isLocalPlayer) return;
 
         // Get movement input
         moveInput = moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
@@ -246,7 +379,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleLook()
     {
-        if (!enableMovement) return;
+        if (!enableMovement || !_isLocalPlayer) return;
 
         // Get look input
         lookInput = lookAction?.ReadValue<Vector2>() ?? Vector2.zero;
@@ -279,7 +412,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandlePerspectiveSwitch()
     {
-        if (perspectiveMode != PerspectiveMode.SmoothScroll) return;
+        if (perspectiveMode != PerspectiveMode.SmoothScroll || !_isLocalPlayer) return;
 
         float scrollInput = perspectiveSwitchAction?.ReadValue<float>() ?? 0f;
 
@@ -295,7 +428,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleZoom()
     {
-        if (!enableViewZoom) return;
+        if (!enableViewZoom || !_isLocalPlayer) return;
 
         bool isZoomPressed = zoomAction?.IsPressed() == true;
 
@@ -316,7 +449,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleTeleport()
     {
-        if (!enableTeleport) return;
+        if (!enableTeleport || !_isLocalPlayer) return;
 
         // Only teleport when MultiTap interaction is performed (double-click completed)
         if (teleportAction?.WasPerformedThisFrame() == true)
@@ -345,7 +478,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleCameraPositioning()
     {
-        if (!enableSmoothTransitions) return;
+        if (!enableSmoothTransitions || !_isLocalPlayer) return;
 
         Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
 
@@ -390,7 +523,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void ApplyGravity()
     {
-        if (isFlying || isGrounded) return;
+        if (isFlying || isGrounded || !_isLocalPlayer) return;
 
         velocity.y += gravity * Time.deltaTime;
         characterController.Move(velocity * Time.deltaTime);
@@ -431,7 +564,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnJump(InputAction.CallbackContext context)
     {
-        if (!enableJumping || !context.performed) return;
+        if (!enableJumping || !context.performed || !_isLocalPlayer) return;
 
         if (isFlying)
         {
@@ -465,14 +598,14 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnSprint(InputAction.CallbackContext context)
     {
-        if (!enableSprintToggle || !context.performed) return;
+        if (!enableSprintToggle || !context.performed || !_isLocalPlayer) return;
 
         isSprinting = !isSprinting; // Toggle sprint
     }
 
     public void OnCrouch(InputAction.CallbackContext context)
     {
-        if (!enableCrouchToggle || !context.performed) return;
+        if (!enableCrouchToggle || !context.performed || !_isLocalPlayer) return;
 
         isCrouching = !isCrouching; // Toggle crouch
 
@@ -496,7 +629,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnFly(InputAction.CallbackContext context)
     {
-        if (!enableFlying || !context.performed) return;
+        if (!enableFlying || !context.performed || !_isLocalPlayer) return;
 
         isFlying = !isFlying; // Toggle flying
 
@@ -508,7 +641,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnAutoRun(InputAction.CallbackContext context)
     {
-        if (!enableAutoRun || !context.performed) return;
+        if (!enableAutoRun || !context.performed || !_isLocalPlayer) return;
 
         isAutoRunning = !isAutoRunning; // Toggle auto-run
     }
@@ -520,14 +653,27 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnInteract(InputAction.CallbackContext context)
     {
-        if (!context.performed) return;
+        if (!context.performed || !_isLocalPlayer) return;
 
+        // Set network interaction flag
+        NetworkIsInteracting = true;
+
+        // Trigger local interaction
         U3DInteractionManager.Instance?.OnPlayerInteract();
+
+        // Reset flag after short duration
+        StartCoroutine(ResetInteractionFlag());
+    }
+
+    System.Collections.IEnumerator ResetInteractionFlag()
+    {
+        yield return new WaitForSeconds(0.5f);
+        NetworkIsInteracting = false;
     }
 
     public void OnPause(InputAction.CallbackContext context)
     {
-        if (!context.performed) return;
+        if (!context.performed || !_isLocalPlayer) return;
 
         // Pause logic will be implemented in future phases
         Debug.Log("Pause pressed - placeholder for future implementation");
@@ -535,7 +681,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void OnTeleport(InputAction.CallbackContext context)
     {
-        if (!enableTeleport || !context.performed) return;
+        if (!enableTeleport || !context.performed || !_isLocalPlayer) return;
 
         PerformTeleport();
     }
@@ -549,10 +695,13 @@ public class U3DPlayerController : NetworkBehaviour
     public bool IsFirstPerson => isFirstPerson;
     public Vector3 Velocity => velocity;
     public float CurrentSpeed => GetCurrentSpeed();
+    public bool IsLocalPlayer => _isLocalPlayer;
 
     // Methods for networking preparation
     public void SetPosition(Vector3 position)
     {
+        if (!_isLocalPlayer) return;
+
         characterController.enabled = false;
         transform.position = position;
         characterController.enabled = true;
@@ -560,11 +709,15 @@ public class U3DPlayerController : NetworkBehaviour
 
     public void SetRotation(float yRotation)
     {
+        if (!_isLocalPlayer) return;
+
         transform.rotation = Quaternion.Euler(0, yRotation, 0);
     }
 
     public void SetCameraPitch(float pitch)
     {
+        if (!_isLocalPlayer) return;
+
         cameraPitch = pitch;
     }
 }
