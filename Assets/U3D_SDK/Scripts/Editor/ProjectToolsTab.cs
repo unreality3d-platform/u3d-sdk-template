@@ -23,42 +23,52 @@ namespace U3D.Editor
         public void Initialize()
         {
             InitializeToolCategories();
-            InitializeStyles();
         }
 
         private void InitializeStyles()
         {
             if (stylesInitialized) return;
 
-            // Match ONLY the color settings from your main window
-            subtabButtonStyle = new GUIStyle(EditorStyles.miniButton)
+            try
             {
-                normal = {
-                    textColor = Color.white
-                },
-                hover = {
-                    textColor = Color.white
-                },
-                onNormal = {
-                    textColor = Color.white
-                }
-            };
+                // Only create styles if EditorStyles is ready
+                if (EditorStyles.miniButton == null) return;
 
-            activeSubtabButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
+                // Match ONLY the color settings from your main window
+                subtabButtonStyle = new GUIStyle(EditorStyles.miniButton)
+                {
+                    normal = {
+                textColor = Color.white
+            },
+                    hover = {
+                textColor = Color.white
+            },
+                    onNormal = {
+                textColor = Color.white
+            }
+                };
+
+                activeSubtabButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
+                {
+                    normal = {
+                textColor = Color.white
+            },
+                    hover = {
+                textColor = Color.white
+            },
+                    onNormal = {
+                textColor = Color.white
+            },
+                    fontStyle = FontStyle.Bold
+                };
+
+                stylesInitialized = true;
+            }
+            catch (System.Exception)
             {
-                normal = {
-                    textColor = Color.white
-                },
-                hover = {
-                    textColor = Color.white
-                },
-                onNormal = {
-                    textColor = Color.white
-                },
-                fontStyle = FontStyle.Bold
-            };
-
-            stylesInitialized = true;
+                // EditorStyles not ready yet, will try again next DrawTab() call
+                return;
+            }
         }
 
         private void InitializeToolCategories()
