@@ -48,7 +48,7 @@ namespace U3D.Editor
         {
             InitializeTabs();
             LoadLogo();
-            InitializeStyles();
+            // DON'T initialize styles here - wait for OnGUI when Editor is ready
         }
 
         void LoadLogo()
@@ -93,51 +93,65 @@ namespace U3D.Editor
         {
             if (stylesInitialized) return;
 
-            headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            try
             {
-                fontSize = 18,
-                normal = { textColor = new Color(0.4f, 0.5f, 0.9f) },
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true
-            };
+                // Only create styles if EditorStyles is ready
+                if (EditorStyles.boldLabel == null) return;
 
-            // Use the same base style as your existing buttons
-            tabButtonStyle = new GUIStyle("Button")
+                headerStyle = new GUIStyle(EditorStyles.boldLabel)
+                {
+                    fontSize = 18,
+                    normal = { textColor = new Color(0.4f, 0.5f, 0.9f) },
+                    alignment = TextAnchor.MiddleCenter,
+                    wordWrap = true
+                };
+
+                // Use the same base style as your existing buttons
+                tabButtonStyle = new GUIStyle("Button")
+                {
+                    fontSize = 12,
+                    fixedHeight = 35,
+                    normal = {
+                        textColor = Color.white
+                    },
+                    hover = {
+                        textColor = Color.white
+                    },
+                    onNormal = {
+                        textColor = Color.white
+                    }
+                };
+
+                activeTabButtonStyle = new GUIStyle("Button")
+                {
+                    fontSize = 12,
+                    fixedHeight = 35,
+                    normal = {
+                        textColor = Color.white
+                    },
+                    hover = {
+                        textColor = Color.white
+                    },
+                    onNormal = {
+                        textColor = Color.white
+                    },
+                    fontStyle = FontStyle.Bold
+                };
+
+                stylesInitialized = true;
+            }
+            catch (System.Exception)
             {
-                fontSize = 12,
-                fixedHeight = 35,
-                normal = {
-            textColor = Color.white
-        },
-                hover = {
-            textColor = Color.white
-        },
-                onNormal = {
-            textColor = Color.white
-        }
-            };
-
-            activeTabButtonStyle = new GUIStyle("Button")
-            {
-                fontSize = 12,
-                fixedHeight = 35,
-                normal = {
-            textColor = Color.white
-        },
-                hover = {
-            textColor = Color.white
-        },
-                onNormal = {
-            textColor = Color.white
-        },
-                fontStyle = FontStyle.Bold
-            };
-
-            stylesInitialized = true;
+                // EditorStyles not ready yet, will try again next OnGUI call
+                return;
+            }
         }
 
         void OnGUI()
         {
+            // Initialize styles safely during OnGUI when Editor is ready
+            InitializeStyles();
+
             DrawHeader();
             DrawTabNavigation();
             DrawCurrentTab();
