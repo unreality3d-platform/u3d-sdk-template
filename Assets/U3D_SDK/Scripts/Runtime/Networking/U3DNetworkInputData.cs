@@ -10,6 +10,7 @@ public struct U3DNetworkInputData : INetworkInput
     public Vector2 MovementInput;
     public Vector2 LookInput;
     public NetworkButtons Buttons;
+    public float PerspectiveScroll;
 }
 
 /// <summary>

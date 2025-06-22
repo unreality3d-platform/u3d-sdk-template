@@ -239,6 +239,7 @@ public class U3DPlayerController : NetworkBehaviour
             HandleMovementFusion(input);
             HandleLookFusion(input);
             HandleButtonInputsFusion(input);
+            HandleTeleportFusion(input);
             HandleCameraPositioning();
             ApplyGravity();
         }
@@ -445,6 +446,19 @@ public class U3DPlayerController : NetworkBehaviour
         isZooming = input.Buttons.IsSet(U3DInputButtons.Zoom);
         targetFOV = isZooming ? zoomFOV : defaultFOV;
 
+        // Handle perspective switching with scroll input
+        if (perspectiveMode == PerspectiveMode.SmoothScroll && Mathf.Abs(input.PerspectiveScroll) > 0.1f)
+        {
+            if (input.PerspectiveScroll > 0.1f && !isFirstPerson)
+            {
+                SetFirstPerson();
+            }
+            else if (input.PerspectiveScroll < -0.1f && isFirstPerson)
+            {
+                SetThirdPerson();
+            }
+        }
+
         // Store current buttons for next frame
         _buttonsPrevious = input.Buttons;
     }
@@ -478,6 +492,36 @@ public class U3DPlayerController : NetworkBehaviour
 
             velocity.y = jumpForce;
             jumpCount++;
+        }
+    }
+
+    void HandleTeleportFusion(U3DNetworkInputData input)
+    {
+        if (!enableTeleport || !_isLocalPlayer) return;
+
+        // Check for teleport button press
+        var pressed = input.Buttons.GetPressed(_buttonsPrevious);
+        if (pressed.IsSet(U3DInputButtons.Teleport))
+        {
+            PerformTeleport();
+        }
+    }
+
+    void PerformTeleport()
+    {
+        // Raycast from center of screen
+        Ray ray = playerCamera.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
+
+        if (Physics.Raycast(ray, out RaycastHit hit))
+        {
+            // Check if hit point is valid for teleportation
+            Vector3 teleportPosition = hit.point;
+
+            // Ensure we teleport to a walkable surface (add small offset above ground)
+            teleportPosition.y += characterController.height / 2f;
+
+            // Perform the teleport
+            SetPosition(teleportPosition);
         }
     }
 

@@ -62,6 +62,8 @@ namespace U3D.Networking
         private InputAction _interactAction;
         private InputAction _zoomAction;
         private InputAction _teleportAction;
+        private InputAction _perspectiveSwitchAction;
+        private float _perspectiveScrollValue;
 
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
@@ -137,8 +139,15 @@ namespace U3D.Networking
             if (_zoomAction != null)
                 _zoomPressed = _zoomAction.IsPressed();
 
-            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+            if (_teleportAction != null && _teleportAction.WasPerformedThisFrame())
                 _teleportPressed = true;
+
+            if (_perspectiveSwitchAction != null)
+            {
+                float scroll = _perspectiveSwitchAction.ReadValue<float>();
+                if (Mathf.Abs(scroll) > 0.1f)
+                    _perspectiveScrollValue = scroll;
+            }
         }
 
         void InitializeNetworking()
@@ -178,6 +187,7 @@ namespace U3D.Networking
             _interactAction = actionMap.FindAction("Interact");
             _zoomAction = actionMap.FindAction("Zoom");
             _teleportAction = actionMap.FindAction("Teleport");
+            _perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
 
             // Enable the action map so we can read from it
             actionMap.Enable();
@@ -464,6 +474,7 @@ namespace U3D.Networking
             // Use cached movement input
             data.MovementInput = _cachedMovementInput;
             data.LookInput = _cachedLookInput;
+            data.PerspectiveScroll = _perspectiveScrollValue;
 
             // Set button states
             if (_jumpPressed)
@@ -491,6 +502,7 @@ namespace U3D.Networking
             _flyPressed = false;
             _interactPressed = false;
             _teleportPressed = false;
+            _perspectiveScrollValue = 0f;
             // Note: _zoomPressed is not reset as it's a hold action
         }
 
