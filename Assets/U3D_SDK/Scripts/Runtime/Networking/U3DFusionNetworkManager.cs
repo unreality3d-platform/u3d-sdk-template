@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
 using System;
@@ -113,6 +113,9 @@ namespace U3D.Networking
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;
 
+                // ⭐ CRITICAL FIX: Register this component as callback handler
+                _runner.AddCallbacks(this);
+
                 // WebGL-optimized configuration
                 var args = new StartGameArgs()
                 {
@@ -156,6 +159,9 @@ namespace U3D.Networking
             if (_runner != null)
             {
                 UpdateStatus("Disconnecting from multiplayer...");
+
+                // ⭐ REMOVE CALLBACKS BEFORE SHUTDOWN
+                _runner.RemoveCallbacks(this);
 
                 await _runner.Shutdown();
 
@@ -218,24 +224,85 @@ namespace U3D.Networking
 
         public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
         {
-            Debug.Log($"Player joined: {player}");
+            Debug.Log($"=== U3DFusionNetworkManager: Player joined: {player} ===");
+            Debug.Log($"Is Local Player: {player == runner.LocalPlayer}");
+            Debug.Log($"Player Prefab Valid: {playerPrefab.IsValid}");
+            Debug.Log($"Runner Is Server: {runner.IsServer}");
+            Debug.Log($"Runner Is Client: {runner.IsClient}");
+            Debug.Log($"Runner GameMode: {runner.GameMode}");
 
-            if (player == runner.LocalPlayer)
+            // CRITICAL FIX: In Shared Mode, each client spawns their own player
+            // In Server Mode, only server spawns for all players
+            bool shouldSpawn = false;
+
+            if (runner.GameMode == GameMode.Shared)
             {
-                // Local player joined
-                UpdateStatus($"Joined multiplayer session: {_currentSessionName}");
-
-                // Spawn local player
-                if (playerPrefab.IsValid)
-                {
-                    Vector3 spawnPosition = GetSpawnPosition();
-                    var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
-                    _spawnedPlayers[player] = playerObject;
-                }
+                // In Shared Mode: Each client spawns their own player only
+                shouldSpawn = (player == runner.LocalPlayer);
+                Debug.Log($"Shared Mode - Local player spawn check: {shouldSpawn}");
             }
             else
             {
-                // Remote player joined
+                // In Server/Host Mode: Only server spawns for all players
+                shouldSpawn = runner.IsServer;
+                Debug.Log($"Server Mode - Server spawn check: {shouldSpawn}");
+            }
+
+            Debug.Log($"Should Spawn Player: {shouldSpawn}");
+
+            if (shouldSpawn && playerPrefab.IsValid)
+            {
+                Vector3 spawnPosition = GetSpawnPosition();
+                Debug.Log($"Spawning player at position: {spawnPosition}");
+
+                try
+                {
+                    var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
+
+                    if (playerObject != null)
+                    {
+                        _spawnedPlayers[player] = playerObject;
+                        Debug.Log($"✅ Player spawned successfully: {playerObject.name}");
+                        Debug.Log($"Player GameObject active: {playerObject.gameObject.activeInHierarchy}");
+                        Debug.Log($"Player position: {playerObject.transform.position}");
+
+                        // Additional validation
+                        var networkObj = playerObject.GetComponent<NetworkObject>();
+                        Debug.Log($"NetworkObject valid: {networkObj != null}");
+                        if (networkObj != null)
+                        {
+                            Debug.Log($"NetworkObject InputAuthority: {networkObj.InputAuthority}");
+                            Debug.Log($"NetworkObject StateAuthority: {networkObj.StateAuthority}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError("❌ Player object is null after spawning!");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"❌ Failed to spawn player: {e.Message}");
+                    Debug.LogError($"Stack trace: {e.StackTrace}");
+                }
+            }
+            else if (!playerPrefab.IsValid)
+            {
+                Debug.LogError("❌ Cannot spawn player - Player prefab is not valid!");
+                Debug.LogError("Make sure the Player Prefab field is assigned in the U3DFusionNetworkManager inspector!");
+            }
+            else
+            {
+                Debug.Log($"Not spawning player - GameMode: {runner.GameMode}, IsServer: {runner.IsServer}, IsLocalPlayer: {player == runner.LocalPlayer}");
+            }
+
+            // Update status based on local vs remote player
+            if (player == runner.LocalPlayer)
+            {
+                UpdateStatus($"Joined multiplayer session: {_currentSessionName}");
+            }
+            else
+            {
                 UpdateStatus($"Player {player} joined the session");
             }
 

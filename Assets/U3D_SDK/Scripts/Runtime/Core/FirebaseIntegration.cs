@@ -1,13 +1,10 @@
+using Fusion;
+using System.Runtime.InteropServices;
+using U3D.Networking;
 using UnityEngine;
 using UnityEngine.UI;
-using System.Runtime.InteropServices;
-using Fusion;
-using Fusion.Sockets;
-using System;
-using System.Collections.Generic;
-using U3D.Networking;
 
-public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
+public class FirebaseIntegration : MonoBehaviour
 {
     [Header("UI References")]
     public Button testButton;
@@ -22,7 +19,6 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
     public float contentPrice = 15.99f;
 
     [Header("Multiplayer Settings")]
-    public NetworkPrefabRef playerPrefab;
     public int maxPlayers = 10;
 
     [Header("Network Manager Integration")]
@@ -50,7 +46,6 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
     private static extern void UnityJoinMultiplayerSession(string roomName);
 
     // Network State
-    private NetworkRunner _runner;
     private bool _isConnecting = false;
     private string _pendingRoomName = "";
     private string _photonAppId = "a3df46ef-b10a-4954-8526-7a9fdd553543";
@@ -106,7 +101,7 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
             playerSpawner = FindAnyObjectByType<U3DPlayerSpawner>();
         }
 
-        // Create network manager if none exists
+        // Create network manager if none exists - AS ROOT OBJECT
         if (networkManager == null)
         {
             var networkManagerObject = new GameObject("U3D Network Manager");
@@ -114,7 +109,7 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
             Debug.Log("Created U3D Network Manager automatically");
         }
 
-        // Create player spawner if none exists
+        // Create player spawner if none exists - AS ROOT OBJECT  
         if (playerSpawner == null)
         {
             var spawnerObject = new GameObject("U3D Player Spawner");
@@ -125,7 +120,7 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
 
     void SubscribeToNetworkEvents()
     {
-        // Subscribe to network manager events with corrected event names
+        // Subscribe to network manager events
         U3DFusionNetworkManager.OnNetworkStatusChanged += HandleNetworkStatusChanged;
         U3DFusionNetworkManager.OnPlayerJoinedEvent += HandlePlayerJoined;
         U3DFusionNetworkManager.OnPlayerLeftEvent += HandlePlayerLeft;
@@ -134,17 +129,11 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
 
     void OnDestroy()
     {
-        // Unsubscribe from events with corrected event names
+        // Unsubscribe from events
         U3DFusionNetworkManager.OnNetworkStatusChanged -= HandleNetworkStatusChanged;
         U3DFusionNetworkManager.OnPlayerJoinedEvent -= HandlePlayerJoined;
         U3DFusionNetworkManager.OnPlayerLeftEvent -= HandlePlayerLeft;
         U3DFusionNetworkManager.OnPlayerCountChanged -= HandlePlayerCountChanged;
-
-        // Cleanup network runner
-        if (_runner != null)
-        {
-            _runner.Shutdown();
-        }
     }
 
     // ========== EXISTING PAYPAL FUNCTIONS (UNCHANGED) ==========
@@ -485,71 +474,6 @@ public class FirebaseIntegration : MonoBehaviour, INetworkRunnerCallbacks
     {
         UpdateStatus($"Players in session: {playerCount}");
     }
-
-    // ========== FUSION CALLBACKS (CORRECTED FOR FUSION 2) ==========
-
-    public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
-    {
-        if (player == runner.LocalPlayer)
-        {
-            UpdateStatus("Successfully joined multiplayer session!");
-
-            if (playerPrefab.IsValid && playerSpawner != null)
-            {
-                Vector3 spawnPosition = playerSpawner.GetSpawnPosition();
-                var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
-
-                // Update player info after spawning
-                UpdateNetworkedPlayerInfo();
-            }
-        }
-        else
-        {
-            UpdateStatus($"Player {player} joined the session");
-        }
-    }
-
-    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-    {
-        UpdateStatus($"Player {player} left the session");
-    }
-
-    public void OnConnectedToServer(NetworkRunner runner)
-    {
-        UpdateStatus("Connected to Photon server");
-    }
-
-    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
-    {
-        UpdateStatus($"Disconnected: {reason}");
-        _isConnecting = false;
-    }
-
-    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-    {
-        UpdateStatus($"Connection failed: {reason}");
-        _isConnecting = false;
-    }
-
-    // Required Fusion callbacks
-    public void OnInput(NetworkRunner runner, NetworkInput input) { }
-    public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
-    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
-    {
-        UpdateStatus($"Network shutdown: {shutdownReason}");
-        _isConnecting = false;
-    }
-    public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
-    public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message) { }
-    public void OnSessionListUpdated(NetworkRunner runner, List<Fusion.SessionInfo> sessionList) { }
-    public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data) { }
-    public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken) { }
-    public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey reliableKey, ArraySegment<byte> data) { }
-    public void OnSceneLoadDone(NetworkRunner runner) { }
-    public void OnSceneLoadStart(NetworkRunner runner) { }
-    public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
-    public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
-    public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey reliableKey, float progress) { }
 
     // ========== PUBLIC API ==========
 

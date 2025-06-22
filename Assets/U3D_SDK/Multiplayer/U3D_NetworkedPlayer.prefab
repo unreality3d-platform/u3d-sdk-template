@@ -175,7 +175,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8488662624428376917}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -227,9 +227,20 @@ MonoBehaviour:
   additionalJumps:
   - 4
   interactKey: 101
+  networkSendRate: 20
+  positionThreshold: 0.1
+  rotationThreshold: 1
   zoomFOV: 30
   defaultFOV: 60
   zoomSpeed: 5
+  _NetworkPosition: {x: 0, y: 0, z: 0}
+  _NetworkRotation: {x: 0, y: 0, z: 0, w: 0}
+  _NetworkIsMoving: 0
+  _NetworkIsSprinting: 0
+  _NetworkIsCrouching: 0
+  _NetworkIsFlying: 0
+  _NetworkCameraPitch: 0
+  _NetworkIsInteracting: 0
 --- !u!114 &3563563381108832062
 MonoBehaviour:
   m_ObjectHideFlags: 0

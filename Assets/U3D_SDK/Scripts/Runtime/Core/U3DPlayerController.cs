@@ -179,7 +179,11 @@ public class U3DPlayerController : NetworkBehaviour
             if (playerInput != null)
                 playerInput.enabled = true;
             if (playerCamera != null)
+            {
                 playerCamera.enabled = true;
+                // ADD THIS LINE: Ensure only local player camera has MainCamera tag
+                playerCamera.tag = "MainCamera";
+            }
         }
         else
         {
@@ -187,7 +191,11 @@ public class U3DPlayerController : NetworkBehaviour
             if (playerInput != null)
                 playerInput.enabled = false;
             if (playerCamera != null)
+            {
                 playerCamera.enabled = false;
+                // ADD THIS LINE: Remove MainCamera tag from remote players
+                playerCamera.tag = "Untagged";
+            }
 
             // Disable character controller for remote players (we'll interpolate position)
             if (characterController != null)
@@ -293,11 +301,26 @@ public class U3DPlayerController : NetworkBehaviour
 
     public override void Render()
     {
+        // Only apply interpolation for remote players
         if (_isLocalPlayer) return;
 
-        // Interpolate remote player position and rotation
+        // Validate NetworkRotation before using it
+        if (NetworkRotation == Quaternion.identity ||
+            float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
+            float.IsNaN(NetworkRotation.z) || float.IsNaN(NetworkRotation.w))
+        {
+            return; // Skip this frame if rotation is invalid
+        }
+
+        // Smooth interpolation for remote players only
         transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 10f);
-        transform.rotation = Quaternion.Lerp(transform.rotation, NetworkRotation, Time.deltaTime * 10f);
+
+        // Use Slerp instead of Lerp for quaternions, and validate angle difference
+        float angleDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
+        if (angleDifference > 0.1f && angleDifference < 180f) // Valid range
+        {
+            transform.rotation = Quaternion.Slerp(transform.rotation, NetworkRotation, Time.deltaTime * 10f);
+        }
 
         // Apply camera pitch for remote players (head movement)
         if (playerCamera != null)
