@@ -159,7 +159,6 @@ GameObject:
   - component: {fileID: 3563563381108832062}
   - component: {fileID: 8322012935390943905}
   - component: {fileID: 3303798439634689199}
-  - component: {fileID: 3268532116114048124}
   m_Layer: 0
   m_Name: U3D_NetworkedPlayer
   m_TagString: Player
@@ -225,7 +224,7 @@ MonoBehaviour:
   jumpKey: 32
   jumpHeight: 2
   additionalJumps:
-  - 4
+  - 5
   interactKey: 101
   networkSendRate: 20
   positionThreshold: 0.1
@@ -546,22 +545,4 @@ MonoBehaviour:
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 227767514918744194}
-  - {fileID: 3268532116114048124}
   ForceRemoteRenderTimeframe: 0
---- !u!114 &3268532116114048124
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8488662624428376917}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _stateAuthorityChangeErrorCorrectionDelta: 0
-  SyncScale: 0
-  SyncParent: 0
-  _autoAOIOverride: 1
-  DisableSharedModeInterpolation: 0

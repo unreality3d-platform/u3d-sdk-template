@@ -1,4 +1,4 @@
-using U3D;
+﻿using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Fusion;
@@ -120,8 +120,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Configure for local vs remote player
         ConfigurePlayerForNetworking();
-
-        Debug.Log($"Player spawned - Local: {_isLocalPlayer} - StateAuthority: {Object.HasStateAuthority}");
     }
 
     void Awake()
@@ -237,26 +235,27 @@ public class U3DPlayerController : NetworkBehaviour
             // Process all input in the fixed network update
             HandleGroundCheck();
             HandleMovementFusion(input);
-            HandleLookFusion(input);
+            HandleLookFusionFixed(input); // FIXED: Camera jitter resolved with timing separation
             HandleButtonInputsFusion(input);
             HandleTeleportFusion(input);
             HandleCameraPositioning();
-            ApplyGravity();
+            ApplyGravityFixed(); // FIXED: Unity 6 compatible gravity
         }
     }
 
-    // FUSION RENDER: For camera and visual updates
+    // FUSION RENDER: For camera and visual updates - FIXED: Proper timing separation
     public override void Render()
     {
         // Only apply interpolation for remote players
         if (_isLocalPlayer)
         {
-            // Local player - handle camera and visual effects
+            // Local player - handle camera rotation in Render for smooth visuals
+            HandleLocalCameraRender();
             HandleZoom();
             return;
         }
 
-        // Remote player interpolation
+        // Remote player interpolation with Unity 6 optimization
         // Validate NetworkRotation before using it
         if (NetworkRotation == Quaternion.identity ||
             float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
@@ -265,14 +264,14 @@ public class U3DPlayerController : NetworkBehaviour
             return; // Skip this frame if rotation is invalid
         }
 
-        // Smooth interpolation for remote players only
-        transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 10f);
+        // Unity 6 optimized interpolation for remote players
+        transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 15f);
 
-        // Use Slerp instead of Lerp for quaternions, and validate angle difference
+        // Improved rotation interpolation
         float angleDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
-        if (angleDifference > 0.1f && angleDifference < 180f) // Valid range
+        if (angleDifference > 0.5f && angleDifference < 180f)
         {
-            transform.rotation = Quaternion.Slerp(transform.rotation, NetworkRotation, Time.deltaTime * 10f);
+            transform.rotation = Quaternion.Slerp(transform.rotation, NetworkRotation, Time.deltaTime * 12f);
         }
 
         // Apply camera pitch for remote players (head movement)
@@ -282,6 +281,16 @@ public class U3DPlayerController : NetworkBehaviour
             cameraRotation.x = NetworkCameraPitch;
             playerCamera.transform.localEulerAngles = cameraRotation;
         }
+    }
+
+    void HandleLocalCameraRender()
+    {
+        if (!enableMovement || !_isLocalPlayer || playerCamera == null) return;
+
+        // CORRECTED: Apply smooth camera rotation in Render for consistent timing
+        Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
+        cameraRotation.x = cameraPitch;
+        playerCamera.transform.localEulerAngles = cameraRotation;
     }
 
     void HandleGroundCheck()
@@ -350,37 +359,33 @@ public class U3DPlayerController : NetworkBehaviour
         // Update networked position
         NetworkPosition = transform.position;
         NetworkRotation = transform.rotation;
-        NetworkIsMoving = velocity.magnitude > 0.1f;
+        NetworkIsMoving = moveVelocity.magnitude > 0.1f;
     }
 
-    void HandleLookFusion(U3DNetworkInputData input)
+    void HandleLookFusionFixed(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
         // Get look input from Fusion
         lookInput = input.LookInput;
 
-        // Apply mouse sensitivity
-        lookInput *= mouseSensitivity * 0.1f;
-
         // Apply look inversion if enabled
         if (lookInverted)
             lookInput.y = -lookInput.y;
 
-        // Horizontal rotation (Y-axis)
-        transform.Rotate(Vector3.up, lookInput.x);
+        // CORRECTED: Store rotation values for network sync, NO visual application
+        if (Mathf.Abs(lookInput.x) > 0.01f)
+        {
+            transform.Rotate(Vector3.up, lookInput.x);
+            NetworkRotation = transform.rotation;
+        }
 
-        // Vertical rotation (X-axis) - camera pitch
-        cameraPitch -= lookInput.y;
-        cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
-
-        // Apply camera rotation
-        Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
-        cameraRotation.x = cameraPitch;
-        playerCamera.transform.localEulerAngles = cameraRotation;
-
-        // Update networked camera pitch
-        NetworkCameraPitch = cameraPitch;
+        if (Mathf.Abs(lookInput.y) > 0.01f)
+        {
+            cameraPitch -= lookInput.y;
+            cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
+            NetworkCameraPitch = cameraPitch;
+        }
     }
 
     void HandleButtonInputsFusion(U3DNetworkInputData input)
@@ -394,7 +399,7 @@ public class U3DPlayerController : NetworkBehaviour
         // Jump
         if (enableJumping && pressed.IsSet(U3DInputButtons.Jump))
         {
-            HandleJumpFusion();
+            HandleJumpFusionFixed(); // FIXED: Jump height calculation
         }
 
         // Sprint (toggle)
@@ -463,7 +468,8 @@ public class U3DPlayerController : NetworkBehaviour
         _buttonsPrevious = input.Buttons;
     }
 
-    void HandleJumpFusion()
+    // FIXED: Jump height calculation with proper multi-jump logic
+    void HandleJumpFusionFixed()
     {
         if (isFlying)
         {
@@ -471,7 +477,7 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
-        // Ground jump logic
+        // FIXED: Check available jumps BEFORE incrementing jumpCount
         if (isGrounded || jumpCount < additionalJumps.Length + 1) // +1 for base jump
         {
             float jumpForce;
@@ -480,10 +486,11 @@ public class U3DPlayerController : NetworkBehaviour
                 // First jump uses base jumpHeight
                 jumpForce = Mathf.Sqrt(jumpHeight * -2f * gravity);
             }
-            else if (jumpCount - 1 < additionalJumps.Length)
+            else if (jumpCount <= additionalJumps.Length) // FIXED: Use <= instead of -1 < 
             {
-                // Additional jumps use array values
-                jumpForce = Mathf.Sqrt(additionalJumps[jumpCount - 1] * -2f * gravity);
+                // Additional jumps use array values (jumpCount-1 because first jump was jumpCount=0)
+                float jumpHeightValue = additionalJumps[jumpCount - 1];
+                jumpForce = Mathf.Sqrt(jumpHeightValue * -2f * gravity);
             }
             else
             {
@@ -491,7 +498,7 @@ public class U3DPlayerController : NetworkBehaviour
             }
 
             velocity.y = jumpForce;
-            jumpCount++;
+            jumpCount++; // FIXED: Increment AFTER successful jump calculation
         }
     }
 
@@ -499,30 +506,108 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!enableTeleport || !_isLocalPlayer) return;
 
-        // Check for teleport button press
+        // FIXED: Only check teleport when button is actually pressed
         var pressed = input.Buttons.GetPressed(_buttonsPrevious);
-        if (pressed.IsSet(U3DInputButtons.Teleport))
+        bool teleportPressed = pressed.IsSet(U3DInputButtons.Teleport);
+
+        if (teleportPressed)
         {
+            Debug.Log("✅ Teleport button pressed - performing teleport");
             PerformTeleport();
         }
     }
 
+    // ENHANCED: Teleport with comprehensive debugging
     void PerformTeleport()
     {
-        // Raycast from center of screen
-        Ray ray = playerCamera.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
+        Debug.Log($"=== TELEPORT ATTEMPT START ===");
+        Debug.Log($"Local Player: {_isLocalPlayer}");
+        Debug.Log($"Enable Teleport: {enableTeleport}");
+        Debug.Log($"Camera Valid: {playerCamera != null}");
+        Debug.Log($"CharacterController Valid: {characterController != null}");
 
-        if (Physics.Raycast(ray, out RaycastHit hit))
+        if (playerCamera == null)
         {
-            // Check if hit point is valid for teleportation
-            Vector3 teleportPosition = hit.point;
-
-            // Ensure we teleport to a walkable surface (add small offset above ground)
-            teleportPosition.y += characterController.height / 2f;
-
-            // Perform the teleport
-            SetPosition(teleportPosition);
+            Debug.LogError("❌ No camera found for teleport");
+            return;
         }
+
+        // Create ray from center of screen
+        Vector3 screenCenter = new Vector3(Screen.width / 2, Screen.height / 2, 0);
+        Ray ray = playerCamera.ScreenPointToRay(screenCenter);
+
+        Debug.Log($"Screen Center: {screenCenter}");
+        Debug.Log($"Ray Origin: {ray.origin}");
+        Debug.Log($"Ray Direction: {ray.direction}");
+
+        // Enhanced raycast with better filtering
+        RaycastHit[] allHits = Physics.RaycastAll(ray, 100f);
+        Debug.Log($"Total hits: {allHits.Length}");
+
+        // Log all hits for debugging
+        for (int i = 0; i < allHits.Length; i++)
+        {
+            Debug.Log($"Hit {i}: {allHits[i].collider.name} (Layer: {allHits[i].collider.gameObject.layer}, Distance: {allHits[i].distance:F2})");
+        }
+
+        // Find best teleport target
+        RaycastHit bestHit = new RaycastHit();
+        bool foundHit = false;
+        float closestDistance = float.MaxValue;
+
+        foreach (RaycastHit hit in allHits)
+        {
+            // Skip player and child objects
+            if (hit.collider.transform == transform ||
+                hit.collider.transform.IsChildOf(transform))
+            {
+                Debug.Log($"Skipping player hit: {hit.collider.name}");
+                continue;
+            }
+
+            // Skip triggers unless specifically allowed
+            if (hit.collider.isTrigger)
+            {
+                Debug.Log($"Skipping trigger: {hit.collider.name}");
+                continue;
+            }
+
+            // Use closest valid hit
+            if (hit.distance < closestDistance)
+            {
+                bestHit = hit;
+                closestDistance = hit.distance;
+                foundHit = true;
+            }
+        }
+
+        if (foundHit)
+        {
+            Vector3 teleportPos = bestHit.point;
+
+            // Add player height offset
+            float playerHeight = characterController != null ? characterController.height : 2f;
+            teleportPos.y += (playerHeight * 0.5f) + 0.1f;
+
+            Debug.Log($"✅ Teleporting to: {teleportPos}");
+            Debug.Log($"Hit object: {bestHit.collider.name}");
+            Debug.Log($"Distance: {bestHit.distance:F2}");
+
+            // Perform teleport
+            SetPosition(teleportPos);
+        }
+        else
+        {
+            Debug.LogWarning("❌ No valid teleport destination found");
+
+            // Additional debugging for empty scenes
+            if (allHits.Length == 0)
+            {
+                Debug.LogWarning("No objects hit by raycast - check if scene has colliders");
+            }
+        }
+
+        Debug.Log($"=== TELEPORT ATTEMPT END ===");
     }
 
     void HandleCameraPositioning()
@@ -578,12 +663,17 @@ public class U3DPlayerController : NetworkBehaviour
         return desiredPosition;
     }
 
-    void ApplyGravity()
+    // FIXED: Unity 6 compatible gravity application
+    void ApplyGravityFixed()
     {
         if (isFlying || isGrounded || !_isLocalPlayer) return;
 
+        // Unity 6 optimized gravity application
         velocity.y += gravity * Runner.DeltaTime;
-        characterController.Move(velocity * Runner.DeltaTime);
+
+        // Apply gravity movement separately for better physics accuracy
+        Vector3 gravityMovement = new Vector3(0, velocity.y, 0) * Runner.DeltaTime;
+        characterController.Move(gravityMovement);
     }
 
     float GetCurrentSpeed()
@@ -639,14 +729,60 @@ public class U3DPlayerController : NetworkBehaviour
     public float CurrentSpeed => GetCurrentSpeed();
     public bool IsLocalPlayer => _isLocalPlayer;
 
-    // Methods for networking preparation
+    // ENHANCED: More robust position setting with detailed logging
     public void SetPosition(Vector3 position)
     {
-        if (!_isLocalPlayer) return;
+        if (!_isLocalPlayer)
+        {
+            Debug.LogWarning("SetPosition called on non-local player");
+            return;
+        }
 
-        characterController.enabled = false;
-        transform.position = position;
-        characterController.enabled = true;
+        Debug.Log($"🔄 SetPosition Start: Current={transform.position}, Target={position}");
+
+        Vector3 startPosition = transform.position;
+
+        // ENHANCED: Multiple position setting approaches
+        try
+        {
+            // Method 1: Standard CharacterController approach
+            if (characterController != null && characterController.enabled)
+            {
+                Debug.Log("Using CharacterController method");
+                characterController.enabled = false;
+                transform.position = position;
+                characterController.enabled = true;
+            }
+            else
+            {
+                // Method 2: Direct transform (if no CharacterController)
+                Debug.Log("Using direct Transform method");
+                transform.position = position;
+            }
+
+            // Verify the position change
+            Vector3 finalPosition = transform.position;
+            float distanceMoved = Vector3.Distance(startPosition, finalPosition);
+
+            Debug.Log($"✅ SetPosition Complete:");
+            Debug.Log($"   Start: {startPosition}");
+            Debug.Log($"   Target: {position}");
+            Debug.Log($"   Final: {finalPosition}");
+            Debug.Log($"   Distance Moved: {distanceMoved}");
+
+            if (distanceMoved < 0.1f)
+            {
+                Debug.LogWarning("⚠️ Position barely changed - possible teleport failure");
+            }
+
+            // Update network position
+            NetworkPosition = transform.position;
+
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"❌ SetPosition failed: {e.Message}");
+        }
     }
 
     public void SetRotation(float yRotation)

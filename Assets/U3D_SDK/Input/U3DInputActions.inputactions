@@ -416,7 +416,7 @@
                     "name": "",
                     "id": "671ffd3e-eba0-4372-9e2b-42a6e92562be",
                     "path": "<Mouse>/leftButton",
-                    "interactions": "MultiTap(tapTime=0.4,tapDelay=1,pressPoint=0.5)",
+                    "interactions": "MultiTap",
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
                     "action": "Teleport",

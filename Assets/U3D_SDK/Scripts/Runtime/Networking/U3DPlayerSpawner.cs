@@ -387,13 +387,13 @@ namespace U3D.Networking
         // Debug visualization
         void OnDrawGizmos()
         {
+#if UNITY_EDITOR
             if (!showGizmos) return;
 
             // Draw spawn points
             for (int i = 0; i < spawnPoints.Count; i++)
             {
                 if (spawnPoints[i] == null) continue;
-
                 Vector3 spawnPos = spawnPoints[i].position;
 
                 // Spawn point indicator
@@ -430,6 +430,7 @@ namespace U3D.Networking
             {
                 Gizmos.DrawWireSphere(playerPos, minDistanceBetweenPlayers);
             }
+#endif
         }
     }
 }

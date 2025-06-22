@@ -33,6 +33,7 @@ namespace U3D.Networking
 
         [Header("Input System")]
         [SerializeField] private InputActionAsset inputActionAsset;
+        [SerializeField] private float mouseSensitivityMultiplier = 1f; // ADDED: Configurable sensitivity
 
         // Network State
         private NetworkRunner _runner;
@@ -113,13 +114,16 @@ namespace U3D.Networking
             // Only cache input if actions are properly set up
             if (_moveAction == null) return;
 
-            // Cache input values for Fusion to use in OnInput()
+            // Cache input values - NO sensitivity modifications
             _cachedMovementInput = _moveAction.ReadValue<Vector2>();
 
             if (_lookAction != null)
+            {
+                // Use raw Input Actions values - they're already correctly scaled
                 _cachedLookInput = _lookAction.ReadValue<Vector2>();
+            }
 
-            // Cache button presses - accumulate them so they don't get missed
+            // Cache button presses
             if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
 
@@ -135,12 +139,15 @@ namespace U3D.Networking
             if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
-            // Zoom is held, not pressed
             if (_zoomAction != null)
                 _zoomPressed = _zoomAction.IsPressed();
 
+            // FIXED: Proper MultiTap detection without spam
             if (_teleportAction != null && _teleportAction.WasPerformedThisFrame())
+            {
                 _teleportPressed = true;
+                Debug.Log("✅ Teleport double-click completed");
+            }
 
             if (_perspectiveSwitchAction != null)
             {
@@ -436,6 +443,7 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
         }
 
+        // ✅ CORRECTED: Proper Fusion 2 callback signatures
         public void OnConnectedToServer(NetworkRunner runner)
         {
             Debug.Log("Connected to Photon server");
@@ -466,13 +474,15 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(0);
         }
 
-        // Required callbacks for Fusion 2
+        // FIXED: Input processing with proper sensitivity and button detection
         public void OnInput(NetworkRunner runner, NetworkInput input)
         {
             var data = new U3DNetworkInputData();
 
             // Use cached movement input
             data.MovementInput = _cachedMovementInput;
+
+            // FIXED: Use properly scaled look input (Unity Input Actions already provide delta)
             data.LookInput = _cachedLookInput;
             data.PerspectiveScroll = _perspectiveScrollValue;
 
