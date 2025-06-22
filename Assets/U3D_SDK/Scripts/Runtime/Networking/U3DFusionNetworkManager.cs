@@ -1,9 +1,10 @@
-﻿using UnityEngine;
-using Fusion;
+﻿using Fusion;
 using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace U3D.Networking
 {
@@ -30,12 +31,37 @@ namespace U3D.Networking
         [SerializeField] private int sendRate = 20; // Reduced for WebGL
         [SerializeField] private int simulationTickRate = 60;
 
+        [Header("Input System")]
+        [SerializeField] private InputActionAsset inputActionAsset;
+
         // Network State
         private NetworkRunner _runner;
         private Dictionary<PlayerRef, NetworkObject> _spawnedPlayers = new Dictionary<PlayerRef, NetworkObject>();
         private bool _isInitialized = false;
         private string _currentSessionName = "";
         private FirebaseIntegration _firebaseIntegration;
+
+        // Input caching fields
+        private Vector2 _cachedMovementInput;
+        private Vector2 _cachedLookInput;
+        private bool _jumpPressed;
+        private bool _sprintPressed;
+        private bool _crouchPressed;
+        private bool _flyPressed;
+        private bool _interactPressed;
+        private bool _zoomPressed;
+        private bool _teleportPressed;
+
+        // Input Actions references
+        private InputAction _moveAction;
+        private InputAction _lookAction;
+        private InputAction _jumpAction;
+        private InputAction _sprintAction;
+        private InputAction _crouchAction;
+        private InputAction _flyAction;
+        private InputAction _interactAction;
+        private InputAction _zoomAction;
+        private InputAction _teleportAction;
 
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
@@ -72,11 +98,47 @@ namespace U3D.Networking
         void Start()
         {
             InitializeNetworking();
+            SetupInputActions();
 
             if (autoStartHost)
             {
                 _ = StartNetworking("DefaultRoom");
             }
+        }
+
+        void Update()
+        {
+            // Only cache input if actions are properly set up
+            if (_moveAction == null) return;
+
+            // Cache input values for Fusion to use in OnInput()
+            _cachedMovementInput = _moveAction.ReadValue<Vector2>();
+
+            if (_lookAction != null)
+                _cachedLookInput = _lookAction.ReadValue<Vector2>();
+
+            // Cache button presses - accumulate them so they don't get missed
+            if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
+                _jumpPressed = true;
+
+            if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
+                _sprintPressed = true;
+
+            if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
+                _crouchPressed = true;
+
+            if (_flyAction != null && _flyAction.WasPressedThisFrame())
+                _flyPressed = true;
+
+            if (_interactAction != null && _interactAction.WasPressedThisFrame())
+                _interactPressed = true;
+
+            // Zoom is held, not pressed
+            if (_zoomAction != null)
+                _zoomPressed = _zoomAction.IsPressed();
+
+            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+                _teleportPressed = true;
         }
 
         void InitializeNetworking()
@@ -88,6 +150,42 @@ namespace U3D.Networking
 
             _isInitialized = true;
             Debug.Log("U3D Fusion Network Manager initialized for WebGL");
+        }
+
+        void SetupInputActions()
+        {
+            if (inputActionAsset == null)
+            {
+                Debug.LogError("Input Action Asset not assigned in NetworkManager! Please assign U3DInputActions in the inspector.");
+                return;
+            }
+
+            // Get the Player action map from your input actions asset
+            var actionMap = inputActionAsset.FindActionMap("Player");
+            if (actionMap == null)
+            {
+                Debug.LogError("'Player' action map not found in Input Actions asset");
+                return;
+            }
+
+            // Cache all the input actions
+            _moveAction = actionMap.FindAction("Move");
+            _lookAction = actionMap.FindAction("Look");
+            _jumpAction = actionMap.FindAction("Jump");
+            _sprintAction = actionMap.FindAction("Sprint");
+            _crouchAction = actionMap.FindAction("Crouch");
+            _flyAction = actionMap.FindAction("Fly");
+            _interactAction = actionMap.FindAction("Interact");
+            _zoomAction = actionMap.FindAction("Zoom");
+            _teleportAction = actionMap.FindAction("Teleport");
+
+            // Enable the action map so we can read from it
+            actionMap.Enable();
+
+            Debug.Log("✅ Input actions successfully cached for networking");
+
+            // Log which actions were found
+            Debug.Log($"Found actions: Move={_moveAction != null}, Look={_lookAction != null}, Jump={_jumpAction != null}");
         }
 
         /// <summary>
@@ -361,7 +459,39 @@ namespace U3D.Networking
         // Required callbacks for Fusion 2
         public void OnInput(NetworkRunner runner, NetworkInput input)
         {
-            // Input handling will be implemented in networked player controller
+            var data = new U3DNetworkInputData();
+
+            // Use cached movement input
+            data.MovementInput = _cachedMovementInput;
+            data.LookInput = _cachedLookInput;
+
+            // Set button states
+            if (_jumpPressed)
+                data.Buttons.Set(U3DInputButtons.Jump, true);
+            if (_sprintPressed)
+                data.Buttons.Set(U3DInputButtons.Sprint, true);
+            if (_crouchPressed)
+                data.Buttons.Set(U3DInputButtons.Crouch, true);
+            if (_flyPressed)
+                data.Buttons.Set(U3DInputButtons.Fly, true);
+            if (_interactPressed)
+                data.Buttons.Set(U3DInputButtons.Interact, true);
+            if (_zoomPressed)
+                data.Buttons.Set(U3DInputButtons.Zoom, true);
+            if (_teleportPressed)
+                data.Buttons.Set(U3DInputButtons.Teleport, true);
+
+            // Send input to Fusion
+            input.Set(data);
+
+            // Reset one-shot button presses after they've been sent
+            _jumpPressed = false;
+            _sprintPressed = false;
+            _crouchPressed = false;
+            _flyPressed = false;
+            _interactPressed = false;
+            _teleportPressed = false;
+            // Note: _zoomPressed is not reset as it's a hold action
         }
 
         public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
@@ -379,6 +509,13 @@ namespace U3D.Networking
 
         void OnDestroy()
         {
+            // Disable input actions when destroying
+            if (inputActionAsset != null)
+            {
+                var actionMap = inputActionAsset.FindActionMap("Player");
+                actionMap?.Disable();
+            }
+
             if (_runner != null)
             {
                 _runner.Shutdown();

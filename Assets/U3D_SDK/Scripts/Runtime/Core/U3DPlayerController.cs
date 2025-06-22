@@ -54,7 +54,7 @@ public class U3DPlayerController : NetworkBehaviour
     [SerializeField] private KeyCode interactKey = KeyCode.E;
 
     [Header("Network Synchronization")]
-    [SerializeField] private float networkSendRate = 20f; // WebGL optimized
+    [SerializeField] private float networkSendRate = 20f;
     [SerializeField] private float positionThreshold = 0.1f;
     [SerializeField] private float rotationThreshold = 1f;
 
@@ -107,23 +107,13 @@ public class U3DPlayerController : NetworkBehaviour
     private Vector3 _lastSentPosition;
     private Quaternion _lastSentRotation;
 
-    // Input Actions (cached for performance)
-    private InputAction moveAction;
-    private InputAction lookAction;
-    private InputAction jumpAction;
-    private InputAction sprintAction;
-    private InputAction crouchAction;
-    private InputAction zoomAction;
-    private InputAction flyAction;
-    private InputAction autoRunAction;
-    private InputAction perspectiveSwitchAction;
-    private InputAction interactAction;
-    private InputAction teleportAction;
+    // FUSION INPUT TRACKING
+    private NetworkButtons _buttonsPrevious;
 
     public override void Spawned()
     {
-        // Determine if this is the local player
-        _isLocalPlayer = Object.HasInputAuthority;
+        // In Shared Mode, each client has authority over their own player
+        _isLocalPlayer = Object.HasStateAuthority;
 
         // Initialize components
         InitializeComponents();
@@ -131,7 +121,7 @@ public class U3DPlayerController : NetworkBehaviour
         // Configure for local vs remote player
         ConfigurePlayerForNetworking();
 
-        Debug.Log($"Player spawned - Local: {_isLocalPlayer}");
+        Debug.Log($"Player spawned - Local: {_isLocalPlayer} - StateAuthority: {Object.HasStateAuthority}");
     }
 
     void Awake()
@@ -157,9 +147,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Load player preferences
         LoadPlayerPreferences();
-
-        // Cache input actions for performance
-        CacheInputActions();
     }
 
     void InitializeComponents()
@@ -181,7 +168,6 @@ public class U3DPlayerController : NetworkBehaviour
             if (playerCamera != null)
             {
                 playerCamera.enabled = true;
-                // ADD THIS LINE: Ensure only local player camera has MainCamera tag
                 playerCamera.tag = "MainCamera";
             }
         }
@@ -193,7 +179,6 @@ public class U3DPlayerController : NetworkBehaviour
             if (playerCamera != null)
             {
                 playerCamera.enabled = false;
-                // ADD THIS LINE: Remove MainCamera tag from remote players
                 playerCamera.tag = "Untagged";
             }
 
@@ -221,7 +206,6 @@ public class U3DPlayerController : NetworkBehaviour
                     break;
             }
         }
-
         else
         {
             // CREATE NAMETAG FOR REMOTE PLAYERS ONLY
@@ -229,7 +213,6 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    // Add this new method to your U3DPlayerController class:
     void CreateNametag()
     {
         // Create nametag anchor above player head
@@ -242,68 +225,37 @@ public class U3DPlayerController : NetworkBehaviour
         nametag.Initialize(this);
     }
 
-    void Update()
+    // FUSION 2 REQUIRED: Replace Update with FixedUpdateNetwork
+    public override void FixedUpdateNetwork()
     {
-        if (_isLocalPlayer)
+        // Only process for local player (StateAuthority in Shared Mode)
+        if (!_isLocalPlayer) return;
+
+        // Get Fusion input instead of Unity Input System
+        if (GetInput<U3DNetworkInputData>(out var input))
         {
+            // Process all input in the fixed network update
             HandleGroundCheck();
-            HandleMovement();
-            HandleLook();
-            HandlePerspectiveSwitch();
-            HandleZoom();
-            HandleTeleport();
+            HandleMovementFusion(input);
+            HandleLookFusion(input);
+            HandleButtonInputsFusion(input);
             HandleCameraPositioning();
             ApplyGravity();
         }
     }
 
-    public override void FixedUpdateNetwork()
-    {
-        if (!_isLocalPlayer) return;
-
-        // Send network updates only when needed
-        bool shouldSendUpdate = false;
-
-        // Check if position changed significantly
-        if (Vector3.Distance(transform.position, _lastSentPosition) > positionThreshold)
-        {
-            NetworkPosition = transform.position;
-            _lastSentPosition = transform.position;
-            shouldSendUpdate = true;
-        }
-
-        // Check if rotation changed significantly
-        if (Quaternion.Angle(transform.rotation, _lastSentRotation) > rotationThreshold)
-        {
-            NetworkRotation = transform.rotation;
-            _lastSentRotation = transform.rotation;
-            shouldSendUpdate = true;
-        }
-
-        // Sync movement states
-        NetworkIsMoving = velocity.magnitude > 0.1f;
-        NetworkIsSprinting = isSprinting;
-        NetworkIsCrouching = isCrouching;
-        NetworkIsFlying = isFlying;
-
-        // Sync camera pitch for remote players to see where player is looking
-        if (playerCamera != null)
-        {
-            NetworkCameraPitch = playerCamera.transform.localEulerAngles.x;
-        }
-
-        // Rate limiting for WebGL performance
-        if (shouldSendUpdate)
-        {
-            _lastNetworkSendTime = Time.time;
-        }
-    }
-
+    // FUSION RENDER: For camera and visual updates
     public override void Render()
     {
         // Only apply interpolation for remote players
-        if (_isLocalPlayer) return;
+        if (_isLocalPlayer)
+        {
+            // Local player - handle camera and visual effects
+            HandleZoom();
+            return;
+        }
 
+        // Remote player interpolation
         // Validate NetworkRotation before using it
         if (NetworkRotation == Quaternion.identity ||
             float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
@@ -331,30 +283,6 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    void CacheInputActions()
-    {
-        if (playerInput == null) return;
-
-        var actionMap = playerInput.actions.FindActionMap("Player");
-        if (actionMap == null)
-        {
-            Debug.LogError("U3DPlayerController: 'Player' action map not found in Input Actions asset.");
-            return;
-        }
-
-        moveAction = actionMap.FindAction("Move");
-        lookAction = actionMap.FindAction("Look");
-        jumpAction = actionMap.FindAction("Jump");
-        sprintAction = actionMap.FindAction("Sprint");
-        crouchAction = actionMap.FindAction("Crouch");
-        zoomAction = actionMap.FindAction("Zoom");
-        flyAction = actionMap.FindAction("Fly");
-        autoRunAction = actionMap.FindAction("AutoRun");
-        perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
-        interactAction = actionMap.FindAction("Interact");
-        teleportAction = actionMap.FindAction("Teleport");
-    }
-
     void HandleGroundCheck()
     {
         if (!_isLocalPlayer) return;
@@ -368,12 +296,12 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    void HandleMovement()
+    void HandleMovementFusion(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
-        // Get movement input
-        moveInput = moveAction?.ReadValue<Vector2>() ?? Vector2.zero;
+        // Get movement input from Fusion
+        moveInput = input.MovementInput;
 
         // Handle auto-run
         if (isAutoRunning)
@@ -405,26 +333,31 @@ public class U3DPlayerController : NetworkBehaviour
         {
             // 6DOF movement when flying
             Vector3 flyDirection = moveDirection;
-            if (jumpAction?.IsPressed() == true)
+            if (input.Buttons.IsSet(U3DInputButtons.Jump))
                 flyDirection += Vector3.up;
-            if (crouchAction?.IsPressed() == true)
+            if (input.Buttons.IsSet(U3DInputButtons.Crouch))
                 flyDirection += Vector3.down;
 
-            characterController.Move(flyDirection * currentSpeed * Time.deltaTime);
+            characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
         else
         {
             // Ground-based movement
-            characterController.Move(moveVelocity * Time.deltaTime);
+            characterController.Move(moveVelocity * Runner.DeltaTime);
         }
+
+        // Update networked position
+        NetworkPosition = transform.position;
+        NetworkRotation = transform.rotation;
+        NetworkIsMoving = velocity.magnitude > 0.1f;
     }
 
-    void HandleLook()
+    void HandleLookFusion(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
-        // Get look input
-        lookInput = lookAction?.ReadValue<Vector2>() ?? Vector2.zero;
+        // Get look input from Fusion
+        lookInput = input.LookInput;
 
         // Apply mouse sensitivity
         lookInput *= mouseSensitivity * 0.1f;
@@ -444,174 +377,84 @@ public class U3DPlayerController : NetworkBehaviour
         Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
         cameraRotation.x = cameraPitch;
         playerCamera.transform.localEulerAngles = cameraRotation;
+
+        // Update networked camera pitch
+        NetworkCameraPitch = cameraPitch;
     }
 
-    void LoadPlayerPreferences()
+    void HandleButtonInputsFusion(U3DNetworkInputData input)
     {
-        // Load look inversion preference (player-specific, not creator setting)
-        lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
-    }
+        if (!_isLocalPlayer) return;
 
-    void HandlePerspectiveSwitch()
-    {
-        if (perspectiveMode != PerspectiveMode.SmoothScroll || !_isLocalPlayer) return;
+        // Get button press/release states
+        var pressed = input.Buttons.GetPressed(_buttonsPrevious);
+        var released = input.Buttons.GetReleased(_buttonsPrevious);
 
-        float scrollInput = perspectiveSwitchAction?.ReadValue<float>() ?? 0f;
-
-        if (scrollInput > 0.1f && !isFirstPerson)
+        // Jump
+        if (enableJumping && pressed.IsSet(U3DInputButtons.Jump))
         {
-            SetFirstPerson();
-        }
-        else if (scrollInput < -0.1f && isFirstPerson)
-        {
-            SetThirdPerson();
-        }
-    }
-
-    void HandleZoom()
-    {
-        if (!enableViewZoom || !_isLocalPlayer) return;
-
-        bool isZoomPressed = zoomAction?.IsPressed() == true;
-
-        if (isZoomPressed && !isZooming)
-        {
-            isZooming = true;
-            targetFOV = zoomFOV;
-        }
-        else if (!isZoomPressed && isZooming)
-        {
-            isZooming = false;
-            targetFOV = defaultFOV;
+            HandleJumpFusion();
         }
 
-        // Smooth FOV transition
-        playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, Time.deltaTime * zoomSpeed);
-    }
-
-    void HandleTeleport()
-    {
-        if (!enableTeleport || !_isLocalPlayer) return;
-
-        // Only teleport when MultiTap interaction is performed (double-click completed)
-        if (teleportAction?.WasPerformedThisFrame() == true)
+        // Sprint (toggle)
+        if (enableSprintToggle && pressed.IsSet(U3DInputButtons.Sprint))
         {
-            PerformTeleport();
-        }
-    }
-
-    void PerformTeleport()
-    {
-        // Raycast from center of screen
-        Ray ray = playerCamera.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
-
-        if (Physics.Raycast(ray, out RaycastHit hit))
-        {
-            // Check if hit point is valid for teleportation
-            Vector3 teleportPosition = hit.point;
-
-            // Ensure we teleport to a walkable surface (add small offset above ground)
-            teleportPosition.y += characterController.height / 2f;
-
-            // Perform the teleport
-            SetPosition(teleportPosition);
-        }
-    }
-
-    void HandleCameraPositioning()
-    {
-        if (!enableSmoothTransitions || !_isLocalPlayer) return;
-
-        Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
-
-        // Apply crouch offset to camera position
-        if (isCrouching)
-        {
-            targetPosition.y += crouchCameraOffset;
+            isSprinting = !isSprinting;
+            NetworkIsSprinting = isSprinting;
         }
 
-        if (enableCameraCollision && !isFirstPerson)
+        // Crouch (toggle)
+        if (enableCrouchToggle && pressed.IsSet(U3DInputButtons.Crouch))
         {
-            targetPosition = GetCollisionSafeCameraPosition(targetPosition);
+            isCrouching = !isCrouching;
+            NetworkIsCrouching = isCrouching;
+
+            // Adjust character controller height
+            if (isCrouching)
+            {
+                characterController.height = 1f; // Crouch height
+                characterController.center = new Vector3(0, 0.5f, 0);
+            }
+            else
+            {
+                characterController.height = 2f; // Standing height
+                characterController.center = new Vector3(0, 1f, 0);
+            }
         }
 
-        // Smooth camera position transition
-        playerCamera.transform.localPosition = Vector3.Lerp(
-            playerCamera.transform.localPosition,
-            targetPosition,
-            Time.deltaTime * perspectiveTransitionSpeed
-        );
-    }
-
-    Vector3 GetCollisionSafeCameraPosition(Vector3 desiredPosition)
-    {
-        Vector3 playerHead = transform.position + firstPersonPosition;
-
-        // Use the camera's actual current world position as target
-        Vector3 cameraWorldTarget = transform.TransformPoint(desiredPosition);
-        Vector3 direction = (cameraWorldTarget - playerHead).normalized;
-
-        float maxDistance = Vector3.Distance(playerHead, cameraWorldTarget);
-
-        if (Physics.SphereCast(playerHead, cameraCollisionRadius, direction, out RaycastHit hit, maxDistance))
+        // Fly (toggle)
+        if (enableFlying && pressed.IsSet(U3DInputButtons.Fly))
         {
-            float safeDistance = Mathf.Max(0.1f, hit.distance - cameraCollisionBuffer);
-            Vector3 safeWorldPosition = playerHead + direction * safeDistance;
-            return transform.InverseTransformPoint(safeWorldPosition);
+            isFlying = !isFlying;
+            NetworkIsFlying = isFlying;
+
+            if (isFlying)
+            {
+                velocity = Vector3.zero; // Reset velocity when starting to fly
+            }
         }
 
-        return desiredPosition;
+        // Interact
+        if (pressed.IsSet(U3DInputButtons.Interact))
+        {
+            NetworkIsInteracting = true;
+            U3DInteractionManager.Instance?.OnPlayerInteract();
+        }
+
+        // Zoom
+        isZooming = input.Buttons.IsSet(U3DInputButtons.Zoom);
+        targetFOV = isZooming ? zoomFOV : defaultFOV;
+
+        // Store current buttons for next frame
+        _buttonsPrevious = input.Buttons;
     }
 
-    void ApplyGravity()
+    void HandleJumpFusion()
     {
-        if (isFlying || isGrounded || !_isLocalPlayer) return;
-
-        velocity.y += gravity * Time.deltaTime;
-        characterController.Move(velocity * Time.deltaTime);
-    }
-
-    float GetCurrentSpeed()
-    {
-        if (isSprinting)
-            return runSpeed;
-        else if (isCrouching)
-            return walkSpeed * 0.5f; // Crouching is slower
-        else
-            return walkSpeed;
-    }
-
-    void SetFirstPerson()
-    {
-        isFirstPerson = true;
-        currentCameraDistance = 0f;
-    }
-
-    void SetThirdPerson()
-    {
-        isFirstPerson = false;
-        currentCameraDistance = thirdPersonDistance;
-    }
-
-    // Input Action Callbacks (Unity Events from PlayerInput component)
-    public void OnMove(InputAction.CallbackContext context)
-    {
-        // Movement is handled in Update() via cached action reference
-    }
-
-    public void OnLook(InputAction.CallbackContext context)
-    {
-        // Look is handled in Update() via cached action reference
-    }
-
-    public void OnJump(InputAction.CallbackContext context)
-    {
-        if (!enableJumping || !context.performed || !_isLocalPlayer) return;
-
         if (isFlying)
         {
-            // Flying mode - jump moves up
-            return; // Handled in HandleMovement
+            // Flying mode - jump moves up (handled in movement)
+            return;
         }
 
         // Ground jump logic
@@ -638,95 +481,108 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    public void OnSprint(InputAction.CallbackContext context)
+    void HandleCameraPositioning()
     {
-        if (!enableSprintToggle || !context.performed || !_isLocalPlayer) return;
+        if (!enableSmoothTransitions || !_isLocalPlayer) return;
 
-        isSprinting = !isSprinting; // Toggle sprint
-    }
+        Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
 
-    public void OnCrouch(InputAction.CallbackContext context)
-    {
-        if (!enableCrouchToggle || !context.performed || !_isLocalPlayer) return;
-
-        isCrouching = !isCrouching; // Toggle crouch
-
-        // Adjust character controller height
+        // Apply crouch offset to camera position
         if (isCrouching)
         {
-            characterController.height = 1f; // Crouch height
-            characterController.center = new Vector3(0, 0.5f, 0);
+            targetPosition.y += crouchCameraOffset;
         }
+
+        if (enableCameraCollision && !isFirstPerson)
+        {
+            targetPosition = GetCollisionSafeCameraPosition(targetPosition);
+        }
+
+        // Smooth camera position transition
+        playerCamera.transform.localPosition = Vector3.Lerp(
+            playerCamera.transform.localPosition,
+            targetPosition,
+            Runner.DeltaTime * perspectiveTransitionSpeed
+        );
+    }
+
+    void HandleZoom()
+    {
+        if (!enableViewZoom || !_isLocalPlayer) return;
+
+        // Smooth FOV transition
+        playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, Time.deltaTime * zoomSpeed);
+    }
+
+    Vector3 GetCollisionSafeCameraPosition(Vector3 desiredPosition)
+    {
+        Vector3 playerHead = transform.position + firstPersonPosition;
+
+        // Use the camera's actual current world position as target
+        Vector3 cameraWorldTarget = transform.TransformPoint(desiredPosition);
+        Vector3 direction = (cameraWorldTarget - playerHead).normalized;
+
+        float maxDistance = Vector3.Distance(playerHead, cameraWorldTarget);
+
+        if (Physics.SphereCast(playerHead, cameraCollisionRadius, direction, out RaycastHit hit, maxDistance))
+        {
+            float safeDistance = Mathf.Max(0.1f, hit.distance - cameraCollisionBuffer);
+            Vector3 safeWorldPosition = playerHead + direction * safeDistance;
+            return transform.InverseTransformPoint(safeWorldPosition);
+        }
+
+        return desiredPosition;
+    }
+
+    void ApplyGravity()
+    {
+        if (isFlying || isGrounded || !_isLocalPlayer) return;
+
+        velocity.y += gravity * Runner.DeltaTime;
+        characterController.Move(velocity * Runner.DeltaTime);
+    }
+
+    float GetCurrentSpeed()
+    {
+        if (isSprinting)
+            return runSpeed;
+        else if (isCrouching)
+            return walkSpeed * 0.5f; // Crouching is slower
         else
-        {
-            characterController.height = 2f; // Standing height
-            characterController.center = new Vector3(0, 1f, 0);
-        }
+            return walkSpeed;
     }
 
-    public void OnZoom(InputAction.CallbackContext context)
+    void SetFirstPerson()
     {
-        // Zoom is handled in Update() via cached action reference
+        isFirstPerson = true;
+        currentCameraDistance = 0f;
     }
 
-    public void OnFly(InputAction.CallbackContext context)
+    void SetThirdPerson()
     {
-        if (!enableFlying || !context.performed || !_isLocalPlayer) return;
-
-        isFlying = !isFlying; // Toggle flying
-
-        if (isFlying)
-        {
-            velocity = Vector3.zero; // Reset velocity when starting to fly
-        }
+        isFirstPerson = false;
+        currentCameraDistance = thirdPersonDistance;
     }
 
-    public void OnAutoRun(InputAction.CallbackContext context)
+    void LoadPlayerPreferences()
     {
-        if (!enableAutoRun || !context.performed || !_isLocalPlayer) return;
-
-        isAutoRunning = !isAutoRunning; // Toggle auto-run
+        // Load look inversion preference (player-specific, not creator setting)
+        lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
     }
 
-    public void OnPerspectiveSwitch(InputAction.CallbackContext context)
-    {
-        // Perspective switching is handled in Update() via cached action reference
-    }
-
-    public void OnInteract(InputAction.CallbackContext context)
-    {
-        if (!context.performed || !_isLocalPlayer) return;
-
-        // Set network interaction flag
-        NetworkIsInteracting = true;
-
-        // Trigger local interaction
-        U3DInteractionManager.Instance?.OnPlayerInteract();
-
-        // Reset flag after short duration
-        StartCoroutine(ResetInteractionFlag());
-    }
-
-    System.Collections.IEnumerator ResetInteractionFlag()
-    {
-        yield return new WaitForSeconds(0.5f);
-        NetworkIsInteracting = false;
-    }
-
-    public void OnPause(InputAction.CallbackContext context)
-    {
-        if (!context.performed || !_isLocalPlayer) return;
-
-        // Pause logic will be implemented in future phases
-        Debug.Log("Pause pressed - placeholder for future implementation");
-    }
-
-    public void OnTeleport(InputAction.CallbackContext context)
-    {
-        if (!enableTeleport || !context.performed || !_isLocalPlayer) return;
-
-        PerformTeleport();
-    }
+    // Legacy Unity Input System callbacks - now disabled for Fusion
+    public void OnMove(InputAction.CallbackContext context) { }
+    public void OnLook(InputAction.CallbackContext context) { }
+    public void OnJump(InputAction.CallbackContext context) { }
+    public void OnSprint(InputAction.CallbackContext context) { }
+    public void OnCrouch(InputAction.CallbackContext context) { }
+    public void OnZoom(InputAction.CallbackContext context) { }
+    public void OnFly(InputAction.CallbackContext context) { }
+    public void OnAutoRun(InputAction.CallbackContext context) { }
+    public void OnPerspectiveSwitch(InputAction.CallbackContext context) { }
+    public void OnInteract(InputAction.CallbackContext context) { }
+    public void OnPause(InputAction.CallbackContext context) { }
+    public void OnTeleport(InputAction.CallbackContext context) { }
 
     // Public methods for external access (e.g., UI, networking)
     public bool IsGrounded => isGrounded;

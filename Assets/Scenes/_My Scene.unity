@@ -227,6 +227,7 @@ MonoBehaviour:
   enableLagCompensation: 1
   sendRate: 20
   simulationTickRate: 60
+  inputActionAsset: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
 --- !u!1 &155919238
 GameObject:
   m_ObjectHideFlags: 0
@@ -1641,8 +1642,6 @@ MonoBehaviour:
   roomNameInput: {fileID: 1084839838}
   contentId: test-area-1
   contentPrice: 15.99
-  playerPrefab:
-    RawGuidValue: 1196447c6d8f1cb4297d592f87c3daa1
   maxPlayers: 10
   networkManager: {fileID: 117496407}
   playerSpawner: {fileID: 1964602099}
