@@ -23,7 +23,7 @@ namespace U3D.Editor
 
         public string GetFunctionEndpoint(string functionName)
         {
-            return $"https://{functionName}-peaofujdma-uc.a.run.app";
+            return $"https://us-central1-{projectId}.cloudfunctions.net/{functionName}";
         }
     }
 

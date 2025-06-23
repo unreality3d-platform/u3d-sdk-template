@@ -1,7 +1,7 @@
 {
     "Version": 1,
     "TypeId": "NetworkProjectConfig",
-    "PeerMode": 0,
+    "PeerMode": 1,
     "LagCompensation": {
         "Enabled": false,
         "HitboxBufferLengthInMs": 200,
@@ -19,7 +19,7 @@
         "ReplicationFeatures": 1,
         "InputTransferMode": 0,
         "SimulationUpdateTimeMode": 0,
-        "PlayerCount": 10,
+        "PlayerCount": 4,
         "TickRateSelection": {
             "Client": 64,
             "ServerIndex": 0,

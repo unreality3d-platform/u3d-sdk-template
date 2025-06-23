@@ -72,25 +72,24 @@ public static class U3DAuthenticator
 
             using (var client = new HttpClient())
             {
-                var requestData = new { data = loginData };
-                var json = JsonConvert.SerializeObject(requestData);
+                // FIXED: Use direct Firebase Auth endpoint
+                var json = JsonConvert.SerializeObject(loginData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint("loginWithEmailPassword");
-                var response = await client.PostAsync(functionEndpoint, content);
+                var response = await client.PostAsync(
+                    $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FirebaseConfigManager.CurrentConfig.apiKey}",
+                    content);
+
                 var responseText = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
                     var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                    var actualResult = result.ContainsKey("result") ?
-                        JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
-                        result;
 
-                    if (actualResult.ContainsKey("idToken"))
+                    if (result.ContainsKey("idToken"))
                     {
-                        _idToken = actualResult["idToken"].ToString();
-                        _refreshToken = actualResult.ContainsKey("refreshToken") ? actualResult["refreshToken"].ToString() : "";
+                        _idToken = result["idToken"].ToString();
+                        _refreshToken = result.ContainsKey("refreshToken") ? result["refreshToken"].ToString() : "";
                         _userEmail = email;
 
                         SaveCredentials();
