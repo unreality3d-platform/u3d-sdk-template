@@ -9,8 +9,8 @@ using UnityEngine.InputSystem;
 namespace U3D.Networking
 {
     /// <summary>
-    /// Core network manager for Photon Fusion integration with Firebase authentication
-    /// Manages network lifecycle and player spawning for WebGL deployment
+    /// CORRECTED: Unity 6 + Fusion 2 Network Manager with proper Input System integration
+    /// Key Fix: Uses PlayerInput for device pairing but polls actions directly for Fusion input
     /// </summary>
     public class U3DFusionNetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     {
@@ -28,12 +28,11 @@ namespace U3D.Networking
         [Header("WebGL Optimization")]
         [SerializeField] private bool useClientPrediction = true;
         [SerializeField] private bool enableLagCompensation = true;
-        [SerializeField] private int sendRate = 20; // Reduced for WebGL
+        [SerializeField] private int sendRate = 20;
         [SerializeField] private int simulationTickRate = 60;
 
-        [Header("Input System")]
+        [Header("Input System Integration")]
         [SerializeField] private InputActionAsset inputActionAsset;
-        [SerializeField] private float mouseSensitivityMultiplier = 1f; // ADDED: Configurable sensitivity
 
         // Network State
         private NetworkRunner _runner;
@@ -42,18 +41,7 @@ namespace U3D.Networking
         private string _currentSessionName = "";
         private FirebaseIntegration _firebaseIntegration;
 
-        // Input caching fields
-        private Vector2 _cachedMovementInput;
-        private Vector2 _cachedLookInput;
-        private bool _jumpPressed;
-        private bool _sprintPressed;
-        private bool _crouchPressed;
-        private bool _flyPressed;
-        private bool _interactPressed;
-        private bool _zoomPressed;
-        private bool _teleportPressed;
-
-        // Input Actions references
+        // CORRECTED: Input handling using direct Action polling
         private InputAction _moveAction;
         private InputAction _lookAction;
         private InputAction _jumpAction;
@@ -64,6 +52,17 @@ namespace U3D.Networking
         private InputAction _zoomAction;
         private InputAction _teleportAction;
         private InputAction _perspectiveSwitchAction;
+
+        // Input state caching
+        private Vector2 _cachedMovementInput;
+        private Vector2 _cachedLookInput;
+        private bool _jumpPressed;
+        private bool _sprintPressed;
+        private bool _crouchPressed;
+        private bool _flyPressed;
+        private bool _interactPressed;
+        private bool _zoomPressed;
+        private bool _teleportPressed;
         private float _perspectiveScrollValue;
 
         // Events for UI integration
@@ -103,56 +102,72 @@ namespace U3D.Networking
             InitializeNetworking();
             SetupInputActions();
 
-            // 🚨 CRITICAL: Ensure Input Actions stay enabled for networking
-            ForceEnableInputActions();
-
             if (autoStartHost)
             {
                 _ = StartNetworking("DefaultRoom");
             }
         }
 
-        // 🚨 UPDATE: Modified ForceEnableInputActions
-        void ForceEnableInputActions()
+        void InitializeNetworking()
         {
-            // This method is now less critical since we're using PlayerInput's copy
-            // But we'll keep it as a backup
+            if (_isInitialized) return;
 
-            if (inputActionAsset == null) return;
+            // WebGL-specific Fusion configuration
+            NetworkProjectConfig.Global.PeerMode = NetworkProjectConfig.PeerModes.Single;
 
-            var playerInput = FindAnyObjectByType<PlayerInput>();
-            if (playerInput != null && playerInput.actions != null)
+            _isInitialized = true;
+            Debug.Log("U3D Fusion Network Manager initialized for WebGL");
+        }
+
+        // CORRECTED: Setup input actions properly for Unity 6 + Fusion 2
+        void SetupInputActions()
+        {
+            if (inputActionAsset == null)
             {
-                var actionMap = playerInput.actions.FindActionMap("Player");
-                if (actionMap != null)
-                {
-                    actionMap.Enable();
-                    Debug.Log($"✅ Force enabled PlayerInput's action map. Enabled: {actionMap.enabled}");
-                }
+                Debug.LogError("Input Action Asset not assigned! Please assign U3DInputActions in the inspector.");
+                return;
             }
-            else
+
+            // Get the Player action map
+            var actionMap = inputActionAsset.FindActionMap("Player");
+            if (actionMap == null)
             {
-                // Fallback to original asset
-                inputActionAsset.Enable();
-                Debug.Log($"✅ Force enabled original InputActionAsset as fallback");
+                Debug.LogError("'Player' action map not found in Input Actions");
+                return;
             }
+
+            // Cache all input actions directly from the asset
+            _moveAction = actionMap.FindAction("Move");
+            _lookAction = actionMap.FindAction("Look");
+            _jumpAction = actionMap.FindAction("Jump");
+            _sprintAction = actionMap.FindAction("Sprint");
+            _crouchAction = actionMap.FindAction("Crouch");
+            _flyAction = actionMap.FindAction("Fly");
+            _interactAction = actionMap.FindAction("Interact");
+            _zoomAction = actionMap.FindAction("Zoom");
+            _teleportAction = actionMap.FindAction("Teleport");
+            _perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
+
+            // CRITICAL: Enable the action map for input polling
+            actionMap.Enable();
+
+            Debug.Log("✅ Input actions setup complete");
+            Debug.Log($"Action map enabled: {actionMap.enabled}");
+            Debug.Log($"Found actions: Move={_moveAction != null}, Look={_lookAction != null}, Jump={_jumpAction != null}");
         }
 
         void Update()
         {
-            // Only cache input if actions are properly set up
+            // CORRECTED: Poll input actions directly for Fusion
             if (_moveAction == null) return;
 
-            // Cache input values - NO sensitivity modifications
+            // Cache input values for Fusion's OnInput callback
             _cachedMovementInput = _moveAction.ReadValue<Vector2>();
 
             if (_lookAction != null)
-            {
-                // Use raw Input Actions values - they're already correctly scaled
                 _cachedLookInput = _lookAction.ReadValue<Vector2>();
-            }
 
-            // Cache button presses
+            // Cache button states using proper Input System polling
             if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
 
@@ -171,12 +186,8 @@ namespace U3D.Networking
             if (_zoomAction != null)
                 _zoomPressed = _zoomAction.IsPressed();
 
-            // FIXED: Proper MultiTap detection without spam
             if (_teleportAction != null && _teleportAction.WasPerformedThisFrame())
-            {
                 _teleportPressed = true;
-                Debug.Log("✅ Teleport double-click completed");
-            }
 
             if (_perspectiveSwitchAction != null)
             {
@@ -186,84 +197,8 @@ namespace U3D.Networking
             }
         }
 
-        void InitializeNetworking()
-        {
-            if (_isInitialized) return;
-
-            // WebGL-specific Fusion configuration
-            NetworkProjectConfig.Global.PeerMode = NetworkProjectConfig.PeerModes.Single;
-
-            _isInitialized = true;
-            Debug.Log("U3D Fusion Network Manager initialized for WebGL");
-        }
-
-        void SetupInputActions()
-        {
-            // 🚨 CRITICAL FIX: Get the actions from the spawned player's PlayerInput component
-            // instead of the original InputActionAsset
-
-            // Wait for player to be spawned first
-            if (inputActionAsset == null)
-            {
-                Debug.LogError("Input Action Asset not assigned in NetworkManager! Please assign U3DInputActions in the inspector.");
-                return;
-            }
-
-            // Find any PlayerInput component in the scene (from spawned player)
-            var playerInput = FindAnyObjectByType<PlayerInput>();
-
-            InputActionAsset actionsToUse;
-
-            if (playerInput != null && playerInput.actions != null)
-            {
-                // 🚨 USE THE PLAYERINPUT'S PRIVATE COPY, not the original asset
-                actionsToUse = playerInput.actions;
-                Debug.Log("✅ Using PlayerInput's private copy of actions");
-            }
-            else
-            {
-                // Fallback to original asset if no PlayerInput found yet
-                actionsToUse = inputActionAsset;
-                Debug.Log("⚠️ Using original InputActionAsset as fallback");
-            }
-
-            // Get the Player action map from the correct actions instance
-            var actionMap = actionsToUse.FindActionMap("Player");
-            if (actionMap == null)
-            {
-                Debug.LogError("'Player' action map not found in Input Actions");
-                return;
-            }
-
-            // Cache all the input actions from the correct instance
-            _moveAction = actionMap.FindAction("Move");
-            _lookAction = actionMap.FindAction("Look");
-            _jumpAction = actionMap.FindAction("Jump");
-            _sprintAction = actionMap.FindAction("Sprint");
-            _crouchAction = actionMap.FindAction("Crouch");
-            _flyAction = actionMap.FindAction("Fly");
-            _interactAction = actionMap.FindAction("Interact");
-            _zoomAction = actionMap.FindAction("Zoom");
-            _teleportAction = actionMap.FindAction("Teleport");
-            _perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
-
-            // 🚨 CRITICAL: Enable the action map that we're actually using
-            actionMap.Enable();
-
-            Debug.Log("✅ Input actions cached and enabled from correct source");
-            Debug.Log($"Found actions: Move={_moveAction != null}, Look={_lookAction != null}, Jump={_jumpAction != null}");
-            Debug.Log($"Action map enabled: {actionMap.enabled}");
-        }
-
-        // 🚨 NEW METHOD: Call this AFTER player spawns to re-setup input actions
-        public void RefreshInputActions()
-        {
-            SetupInputActions();
-        }
-
         /// <summary>
         /// Start networking with session name from Firebase token
-        /// Called by FirebaseIntegration after receiving Photon token
         /// </summary>
         public async Task<bool> StartNetworking(string sessionName, string photonAppId = "")
         {
@@ -284,7 +219,7 @@ namespace U3D.Networking
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;
 
-                // ⭐ CRITICAL FIX: Register this component as callback handler
+                // Register this component as callback handler
                 _runner.AddCallbacks(this);
 
                 // WebGL-optimized configuration
@@ -331,9 +266,7 @@ namespace U3D.Networking
             {
                 UpdateStatus("Disconnecting from multiplayer...");
 
-                // ⭐ REMOVE CALLBACKS BEFORE SHUTDOWN
                 _runner.RemoveCallbacks(this);
-
                 await _runner.Shutdown();
 
                 if (_runner.gameObject != null)
@@ -357,9 +290,8 @@ namespace U3D.Networking
         {
             if (spawnPoints == null || spawnPoints.Length == 0)
             {
-                // Default spawn at origin with random offset
                 Vector3 randomOffset = UnityEngine.Random.insideUnitSphere * spawnRadius;
-                randomOffset.y = 0; // Keep players on ground level
+                randomOffset.y = 0;
                 return randomOffset;
             }
 
@@ -372,7 +304,6 @@ namespace U3D.Networking
             }
             else
             {
-                // Use spawn points in order, cycling through them
                 int spawnIndex = _spawnedPlayers.Count % spawnPoints.Length;
                 return spawnPoints[spawnIndex].position;
             }
@@ -396,35 +327,21 @@ namespace U3D.Networking
         public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
         {
             Debug.Log($"=== U3DFusionNetworkManager: Player joined: {player} ===");
-            Debug.Log($"Is Local Player: {player == runner.LocalPlayer}");
-            Debug.Log($"Player Prefab Valid: {playerPrefab.IsValid}");
-            Debug.Log($"Runner Is Server: {runner.IsServer}");
-            Debug.Log($"Runner Is Client: {runner.IsClient}");
-            Debug.Log($"Runner GameMode: {runner.GameMode}");
 
-            // CRITICAL FIX: In Shared Mode, each client spawns their own player
-            // In Server Mode, only server spawns for all players
             bool shouldSpawn = false;
 
             if (runner.GameMode == GameMode.Shared)
             {
-                // In Shared Mode: Each client spawns their own player only
                 shouldSpawn = (player == runner.LocalPlayer);
-                Debug.Log($"Shared Mode - Local player spawn check: {shouldSpawn}");
             }
             else
             {
-                // In Server/Host Mode: Only server spawns for all players
                 shouldSpawn = runner.IsServer;
-                Debug.Log($"Server Mode - Server spawn check: {shouldSpawn}");
             }
-
-            Debug.Log($"Should Spawn Player: {shouldSpawn}");
 
             if (shouldSpawn && playerPrefab.IsValid)
             {
                 Vector3 spawnPosition = GetSpawnPosition();
-                Debug.Log($"Spawning player at position: {spawnPosition}");
 
                 try
                 {
@@ -434,16 +351,12 @@ namespace U3D.Networking
                     {
                         _spawnedPlayers[player] = playerObject;
                         Debug.Log($"✅ Player spawned successfully: {playerObject.name}");
-                        Debug.Log($"Player GameObject active: {playerObject.gameObject.activeInHierarchy}");
-                        Debug.Log($"Player position: {playerObject.transform.position}");
 
-                        // Additional validation
-                        var networkObj = playerObject.GetComponent<NetworkObject>();
-                        Debug.Log($"NetworkObject valid: {networkObj != null}");
-                        if (networkObj != null)
+                        // IMPORTANT: Refresh input setup for the spawned player
+                        var playerController = playerObject.GetComponent<U3DPlayerController>();
+                        if (playerController != null)
                         {
-                            Debug.Log($"NetworkObject InputAuthority: {networkObj.InputAuthority}");
-                            Debug.Log($"NetworkObject StateAuthority: {networkObj.StateAuthority}");
+                            playerController.RefreshInputActionsFromNetworkManager(this);
                         }
                     }
                     else
@@ -454,20 +367,9 @@ namespace U3D.Networking
                 catch (System.Exception e)
                 {
                     Debug.LogError($"❌ Failed to spawn player: {e.Message}");
-                    Debug.LogError($"Stack trace: {e.StackTrace}");
                 }
             }
-            else if (!playerPrefab.IsValid)
-            {
-                Debug.LogError("❌ Cannot spawn player - Player prefab is not valid!");
-                Debug.LogError("Make sure the Player Prefab field is assigned in the U3DFusionNetworkManager inspector!");
-            }
-            else
-            {
-                Debug.Log($"Not spawning player - GameMode: {runner.GameMode}, IsServer: {runner.IsServer}, IsLocalPlayer: {player == runner.LocalPlayer}");
-            }
 
-            // Update status based on local vs remote player
             if (player == runner.LocalPlayer)
             {
                 UpdateStatus($"Joined multiplayer session: {_currentSessionName}");
@@ -499,7 +401,7 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
         }
 
-        // ✅ CORRECTED: Proper Fusion 2 callback signatures
+        // FIXED: Correct Fusion 2 callback signatures
         public void OnConnectedToServer(NetworkRunner runner)
         {
             Debug.Log("Connected to Photon server");
@@ -530,15 +432,13 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(0);
         }
 
-        // FIXED: Input processing with proper sensitivity and button detection
+        // CORRECTED: Fusion input processing using cached values
         public void OnInput(NetworkRunner runner, NetworkInput input)
         {
             var data = new U3DNetworkInputData();
 
-            // Use cached movement input
+            // Use cached input values from Update()
             data.MovementInput = _cachedMovementInput;
-
-            // FIXED: Use properly scaled look input (Unity Input Actions already provide delta)
             data.LookInput = _cachedLookInput;
             data.PerspectiveScroll = _perspectiveScrollValue;
 
@@ -561,7 +461,7 @@ namespace U3D.Networking
             // Send input to Fusion
             input.Set(data);
 
-            // Reset one-shot button presses after they've been sent
+            // Reset one-shot button presses
             _jumpPressed = false;
             _sprintPressed = false;
             _crouchPressed = false;
@@ -569,9 +469,21 @@ namespace U3D.Networking
             _interactPressed = false;
             _teleportPressed = false;
             _perspectiveScrollValue = 0f;
-            // Note: _zoomPressed is not reset as it's a hold action
         }
 
+        // Get input actions for PlayerController integration
+        public InputAction GetMoveAction() => _moveAction;
+        public InputAction GetLookAction() => _lookAction;
+        public InputAction GetJumpAction() => _jumpAction;
+        public InputAction GetSprintAction() => _sprintAction;
+        public InputAction GetCrouchAction() => _crouchAction;
+        public InputAction GetFlyAction() => _flyAction;
+        public InputAction GetInteractAction() => _interactAction;
+        public InputAction GetZoomAction() => _zoomAction;
+        public InputAction GetTeleportAction() => _teleportAction;
+        public InputAction GetPerspectiveSwitchAction() => _perspectiveSwitchAction;
+
+        // Standard Fusion callbacks
         public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
         public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
         public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message) { }
@@ -585,19 +497,22 @@ namespace U3D.Networking
         public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
         public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey reliableKey, float progress) { }
 
-        // 🚨 UPDATE: Modified OnDestroy to properly disable the asset
         void OnDestroy()
         {
-            // Clean disable of input actions when destroying
-            if (inputActionAsset != null && inputActionAsset.enabled)
-            {
-                inputActionAsset.Disable();
-                Debug.Log("✅ Disabled InputActionAsset on NetworkManager destroy");
-            }
-
+            // Clean shutdown
             if (_runner != null)
             {
                 _runner.Shutdown();
+            }
+
+            // Disable input actions
+            if (inputActionAsset != null)
+            {
+                var actionMap = inputActionAsset.FindActionMap("Player");
+                if (actionMap != null && actionMap.enabled)
+                {
+                    actionMap.Disable();
+                }
             }
         }
     }
