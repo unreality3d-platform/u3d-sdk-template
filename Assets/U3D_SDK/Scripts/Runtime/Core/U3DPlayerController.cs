@@ -160,9 +160,19 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (_isLocalPlayer)
         {
-            // Local player - enable all controls
+            // Local player - DISABLE Unity Input callbacks, use Fusion input only
             if (playerInput != null)
-                playerInput.enabled = true;
+            {
+                Debug.Log("✅ Local Player: Disabling Unity Input callbacks for Fusion compatibility");
+
+                // CRITICAL FIX: Disable PlayerInput component to prevent Unity callback conflicts
+                playerInput.enabled = false;
+
+                // OR Alternative: Set behavior to none to disable callbacks but keep component active
+                // This prevents Unity Events from being triggered while keeping the component intact
+                // playerInput.notificationBehavior = PlayerNotifications.InvokeUnityEvents; // Keep as reference
+            }
+
             if (playerCamera != null)
             {
                 playerCamera.enabled = true;
@@ -171,7 +181,7 @@ public class U3DPlayerController : NetworkBehaviour
         }
         else
         {
-            // Remote player - disable input and camera
+            // Remote player - disable input and camera completely
             if (playerInput != null)
                 playerInput.enabled = false;
             if (playerCamera != null)
@@ -704,19 +714,68 @@ public class U3DPlayerController : NetworkBehaviour
         lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
     }
 
-    // Legacy Unity Input System callbacks - now disabled for Fusion
-    public void OnMove(InputAction.CallbackContext context) { }
-    public void OnLook(InputAction.CallbackContext context) { }
-    public void OnJump(InputAction.CallbackContext context) { }
-    public void OnSprint(InputAction.CallbackContext context) { }
-    public void OnCrouch(InputAction.CallbackContext context) { }
-    public void OnZoom(InputAction.CallbackContext context) { }
-    public void OnFly(InputAction.CallbackContext context) { }
-    public void OnAutoRun(InputAction.CallbackContext context) { }
-    public void OnPerspectiveSwitch(InputAction.CallbackContext context) { }
-    public void OnInteract(InputAction.CallbackContext context) { }
-    public void OnPause(InputAction.CallbackContext context) { }
-    public void OnTeleport(InputAction.CallbackContext context) { }
+    // 🚨 CRITICAL FIX: Unity Input System callbacks now DISABLED for networked players
+    // These callbacks are now ONLY placeholders - they do NOT execute because PlayerInput is disabled
+    public void OnMove(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+        // Input is now handled exclusively through Fusion's OnInput system
+    }
+
+    public void OnLook(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnJump(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnSprint(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnCrouch(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnZoom(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnFly(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnAutoRun(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnPerspectiveSwitch(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnInteract(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnPause(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
+
+    public void OnTeleport(InputAction.CallbackContext context)
+    {
+        // DISABLED: This callback is not called when PlayerInput is disabled for networked players
+    }
 
     // Public methods for external access (e.g., UI, networking)
     public bool IsGrounded => isGrounded;

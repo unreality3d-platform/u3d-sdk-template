@@ -103,9 +103,38 @@ namespace U3D.Networking
             InitializeNetworking();
             SetupInputActions();
 
+            // 🚨 CRITICAL: Ensure Input Actions stay enabled for networking
+            ForceEnableInputActions();
+
             if (autoStartHost)
             {
                 _ = StartNetworking("DefaultRoom");
+            }
+        }
+
+        // 🚨 UPDATE: Modified ForceEnableInputActions
+        void ForceEnableInputActions()
+        {
+            // This method is now less critical since we're using PlayerInput's copy
+            // But we'll keep it as a backup
+
+            if (inputActionAsset == null) return;
+
+            var playerInput = FindAnyObjectByType<PlayerInput>();
+            if (playerInput != null && playerInput.actions != null)
+            {
+                var actionMap = playerInput.actions.FindActionMap("Player");
+                if (actionMap != null)
+                {
+                    actionMap.Enable();
+                    Debug.Log($"✅ Force enabled PlayerInput's action map. Enabled: {actionMap.enabled}");
+                }
+            }
+            else
+            {
+                // Fallback to original asset
+                inputActionAsset.Enable();
+                Debug.Log($"✅ Force enabled original InputActionAsset as fallback");
             }
         }
 
@@ -170,21 +199,43 @@ namespace U3D.Networking
 
         void SetupInputActions()
         {
+            // 🚨 CRITICAL FIX: Get the actions from the spawned player's PlayerInput component
+            // instead of the original InputActionAsset
+
+            // Wait for player to be spawned first
             if (inputActionAsset == null)
             {
                 Debug.LogError("Input Action Asset not assigned in NetworkManager! Please assign U3DInputActions in the inspector.");
                 return;
             }
 
-            // Get the Player action map from your input actions asset
-            var actionMap = inputActionAsset.FindActionMap("Player");
+            // Find any PlayerInput component in the scene (from spawned player)
+            var playerInput = FindAnyObjectByType<PlayerInput>();
+
+            InputActionAsset actionsToUse;
+
+            if (playerInput != null && playerInput.actions != null)
+            {
+                // 🚨 USE THE PLAYERINPUT'S PRIVATE COPY, not the original asset
+                actionsToUse = playerInput.actions;
+                Debug.Log("✅ Using PlayerInput's private copy of actions");
+            }
+            else
+            {
+                // Fallback to original asset if no PlayerInput found yet
+                actionsToUse = inputActionAsset;
+                Debug.Log("⚠️ Using original InputActionAsset as fallback");
+            }
+
+            // Get the Player action map from the correct actions instance
+            var actionMap = actionsToUse.FindActionMap("Player");
             if (actionMap == null)
             {
-                Debug.LogError("'Player' action map not found in Input Actions asset");
+                Debug.LogError("'Player' action map not found in Input Actions");
                 return;
             }
 
-            // Cache all the input actions
+            // Cache all the input actions from the correct instance
             _moveAction = actionMap.FindAction("Move");
             _lookAction = actionMap.FindAction("Look");
             _jumpAction = actionMap.FindAction("Jump");
@@ -196,13 +247,18 @@ namespace U3D.Networking
             _teleportAction = actionMap.FindAction("Teleport");
             _perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
 
-            // Enable the action map so we can read from it
+            // 🚨 CRITICAL: Enable the action map that we're actually using
             actionMap.Enable();
 
-            Debug.Log("✅ Input actions successfully cached for networking");
-
-            // Log which actions were found
+            Debug.Log("✅ Input actions cached and enabled from correct source");
             Debug.Log($"Found actions: Move={_moveAction != null}, Look={_lookAction != null}, Jump={_jumpAction != null}");
+            Debug.Log($"Action map enabled: {actionMap.enabled}");
+        }
+
+        // 🚨 NEW METHOD: Call this AFTER player spawns to re-setup input actions
+        public void RefreshInputActions()
+        {
+            SetupInputActions();
         }
 
         /// <summary>
@@ -529,13 +585,14 @@ namespace U3D.Networking
         public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
         public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey reliableKey, float progress) { }
 
+        // 🚨 UPDATE: Modified OnDestroy to properly disable the asset
         void OnDestroy()
         {
-            // Disable input actions when destroying
-            if (inputActionAsset != null)
+            // Clean disable of input actions when destroying
+            if (inputActionAsset != null && inputActionAsset.enabled)
             {
-                var actionMap = inputActionAsset.FindActionMap("Player");
-                actionMap?.Disable();
+                inputActionAsset.Disable();
+                Debug.Log("✅ Disabled InputActionAsset on NetworkManager destroy");
             }
 
             if (_runner != null)
