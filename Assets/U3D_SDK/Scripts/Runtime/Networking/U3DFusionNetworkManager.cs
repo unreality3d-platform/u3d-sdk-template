@@ -183,7 +183,7 @@ namespace U3D.Networking
             if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
-            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+            if (_teleportAction != null && _teleportAction.WasPerformedThisFrame())
                 _teleportPressed = true;
 
             if (_zoomAction != null)

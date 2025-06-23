@@ -103,6 +103,7 @@ public class U3DPlayerController : NetworkBehaviour
     private float _lastNetworkSendTime;
     private Vector3 _lastSentPosition;
     private Quaternion _lastSentRotation;
+    private bool _justTeleported = false;
 
     // FUSION INPUT TRACKING
     private NetworkButtons _buttonsPrevious;
@@ -270,7 +271,15 @@ public class U3DPlayerController : NetworkBehaviour
             // Local player - handle camera rotation in Render for smooth visuals
             HandleLocalCameraRender();
             HandleZoom();
-            return; // CRITICAL: Don't interpolate local player position!
+
+            // CRITICAL: Clear teleport flag after one Render frame
+            if (_justTeleported)
+            {
+                _justTeleported = false;
+                Debug.Log("🎯 Teleport flag cleared - Render won't override position this frame");
+            }
+
+            return; // Don't interpolate local player position!
         }
 
         // Remote player interpolation with Unity 6 optimization
@@ -281,7 +290,15 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
-        // FIXED: Only interpolate if there's a significant difference to prevent override issues
+        // SKIP INTERPOLATION if remote player just teleported
+        if (_justTeleported)
+        {
+            _justTeleported = false;
+            Debug.Log("🎯 Remote player teleported - skipping interpolation this frame");
+            return;
+        }
+
+        // Only interpolate if there's a significant difference to prevent override issues
         float positionDifference = Vector3.Distance(transform.position, NetworkPosition);
         float rotationDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
 
@@ -589,12 +606,14 @@ public class U3DPlayerController : NetworkBehaviour
 
             Debug.Log($"✅ Teleporting to: {teleportPos}");
 
-            // CRITICAL FIX: Update NetworkPosition BEFORE changing transform
-            // This ensures the networked state is updated in the same network tick
+            // CRITICAL: Set teleport flag to prevent Render() override
+            _justTeleported = true;
+
+            // Update NetworkPosition AND transform in FixedUpdateNetwork
             NetworkPosition = teleportPos;
             NetworkRotation = transform.rotation;
 
-            // Now perform the actual teleport using the working CharacterController method
+            // Perform the actual teleport
             if (characterController != null && characterController.enabled)
             {
                 Debug.Log("Using CharacterController teleport method");
@@ -604,7 +623,6 @@ public class U3DPlayerController : NetworkBehaviour
             }
             else
             {
-                // Direct transform method as fallback
                 transform.position = teleportPos;
             }
 

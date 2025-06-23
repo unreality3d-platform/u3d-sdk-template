@@ -236,37 +236,159 @@ jobs:
           channelId: ${{ steps.repo_info.outputs.REPO_NAME }}
           entryPoint: '.'
           expires: 30d
+
+      # Register Project and Generate Professional URLs
+      - name: Register Project with Unreality3D
+        id: project_registration
+        run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          GITHUB_OWNER="${{ github.repository_owner }}"
+          ENVIRONMENT="${{ steps.env_info.outputs.ENVIRONMENT }}"
+          BASE_URL="${{ steps.env_info.outputs.BASE_URL }}"
           
-      # Output deployment URL with repository-specific preview channel
+          # Only register projects in production environment
+          if [[ "$ENVIRONMENT" == "production" ]]; then
+            echo "🔄 Registering project with Unreality3D backend..."
+            
+            # Extract project name from repository name (remove common prefixes)
+            PROJECT_NAME=$(echo "$REPO_NAME" | sed 's/^u3d-//' | sed 's/-template$//' | sed 's/^game-//')
+            
+            # Call Firebase Function to register project
+            REGISTRATION_RESPONSE=$(curl -s -X POST \
+              "https://${BASE_URL}/registerProject" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"projectName\":\"$PROJECT_NAME\",
+                \"repositoryName\":\"$REPO_NAME\",
+                \"githubOwner\":\"$GITHUB_OWNER\",
+                \"description\":\"Unity WebGL project deployed from GitHub\"
+              }")
+            
+            echo "Registration response: $REGISTRATION_RESPONSE"
+            
+            # Parse registration response
+            if echo "$REGISTRATION_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
+              CREATOR_USERNAME=$(echo "$REGISTRATION_RESPONSE" | jq -r '.creatorUsername')
+              FINAL_PROJECT_NAME=$(echo "$REGISTRATION_RESPONSE" | jq -r '.projectName')
+              PROFESSIONAL_URL=$(echo "$REGISTRATION_RESPONSE" | jq -r '.professionalUrl')
+              AUTO_INCREMENTED=$(echo "$REGISTRATION_RESPONSE" | jq -r '.autoIncremented')
+              
+              echo "✅ Project registered successfully!"
+              echo "👤 Creator: $CREATOR_USERNAME"
+              echo "📱 Project: $FINAL_PROJECT_NAME"
+              echo "🌐 Professional URL: $PROFESSIONAL_URL"
+              
+              if [[ "$AUTO_INCREMENTED" == "true" ]]; then
+                ORIGINAL_NAME=$(echo "$REGISTRATION_RESPONSE" | jq -r '.originalName')
+                echo "🔄 Auto-incremented: $ORIGINAL_NAME → $FINAL_PROJECT_NAME"
+              fi
+              
+              echo "CREATOR_USERNAME=$CREATOR_USERNAME" >> $GITHUB_OUTPUT
+              echo "PROJECT_NAME=$FINAL_PROJECT_NAME" >> $GITHUB_OUTPUT
+              echo "PROFESSIONAL_URL=$PROFESSIONAL_URL" >> $GITHUB_OUTPUT
+              echo "REGISTRATION_SUCCESS=true" >> $GITHUB_OUTPUT
+              echo "AUTO_INCREMENTED=$AUTO_INCREMENTED" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️  Project registration failed or creator not found"
+              echo "🔗 Using repository-based URL as fallback"
+              
+              # Fallback to GitHub-based URL
+              echo "CREATOR_USERNAME=$GITHUB_OWNER" >> $GITHUB_OUTPUT
+              echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_OUTPUT
+              echo "PROFESSIONAL_URL=https://${GITHUB_OWNER}.unreality3d.com/${PROJECT_NAME}/" >> $GITHUB_OUTPUT
+              echo "REGISTRATION_SUCCESS=false" >> $GITHUB_OUTPUT
+              echo "AUTO_INCREMENTED=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Development environment
+            echo "CREATOR_USERNAME=$GITHUB_OWNER" >> $GITHUB_OUTPUT
+            echo "PROJECT_NAME=$REPO_NAME" >> $GITHUB_OUTPUT
+            echo "PROFESSIONAL_URL=Development environment" >> $GITHUB_OUTPUT
+            echo "REGISTRATION_SUCCESS=false" >> $GITHUB_OUTPUT
+            echo "AUTO_INCREMENTED=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Output deployment information with professional URLs
       - name: Output Deployment Information
         run: |
           REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           ENVIRONMENT="${{ steps.env_info.outputs.ENVIRONMENT }}"
           PROJECT_ID="${{ steps.env_info.outputs.PROJECT_ID }}"
-          PREVIEW_URL="${{ steps.deploy.outputs.details_url }}"
+          FIREBASE_PREVIEW_URL="${{ steps.deploy.outputs.details_url }}"
+          
+          CREATOR_USERNAME="${{ steps.project_registration.outputs.CREATOR_USERNAME }}"
+          PROJECT_NAME="${{ steps.project_registration.outputs.PROJECT_NAME }}"
+          PROFESSIONAL_URL="${{ steps.project_registration.outputs.PROFESSIONAL_URL }}"
+          REGISTRATION_SUCCESS="${{ steps.project_registration.outputs.REGISTRATION_SUCCESS }}"
+          AUTO_INCREMENTED="${{ steps.project_registration.outputs.AUTO_INCREMENTED }}"
           
           echo "🎉 Deployment completed successfully!"
           echo "🌍 Environment: ${ENVIRONMENT}"
-          echo "📦 Project: ${PROJECT_ID}"
+          echo "📦 Firebase Project: ${PROJECT_ID}"
           echo "📱 Repository: ${REPO_NAME}"
-          echo "🌐 Your Unity WebGL Preview URL:"
-          echo "$PREVIEW_URL"
+          echo "👤 Creator: ${CREATOR_USERNAME}"
+          echo "🎯 Project Name: ${PROJECT_NAME}"
           echo ""
-          echo "📋 Next steps for creators:"
-          echo "1. Click the URL above to test your Unity WebGL content"
-          echo "2. Use WASD to move, mouse to look around"
-          echo "3. Share the URL with others to experience your creation"
-          echo "4. Preview expires in 30 days (auto-extends with new deployments)"
-          echo ""
-          echo "🔄 To update: Push changes to this repository to redeploy automatically"
           
-          # Also output to GitHub step summary for easy access
+          if [[ "$REGISTRATION_SUCCESS" == "true" ]]; then
+            echo "✅ Project registered with Unreality3D backend"
+            echo "🌐 Your Professional URL:"
+            echo "$PROFESSIONAL_URL"
+            echo ""
+            
+            if [[ "$AUTO_INCREMENTED" == "true" ]]; then
+              echo "🔄 Project name was auto-incremented to avoid conflicts"
+            fi
+            
+            echo "📋 Professional Features Active:"
+            echo "• PayPal monetization enabled"
+            echo "• Creator analytics tracking" 
+            echo "• Professional SEO-friendly URL"
+            echo "• Automatic project management"
+            echo "• Professional subdomain routing"
+          else
+            echo "⚠️  Using fallback URL (creator not registered)"
+            echo "🌐 Your URL:"
+            echo "$PROFESSIONAL_URL"
+            echo ""
+            echo "💡 To enable professional features:"
+            echo "1. Open Unity → U3D → Setup Tab"
+            echo "2. Sign up and reserve your creator username"
+            echo "3. Redeploy this repository"
+          fi
+          
+          echo ""
+          echo "🔧 Firebase Preview URL (for testing):"
+          echo "$FIREBASE_PREVIEW_URL"
+          echo ""
+          echo "🎮 How to use:"
+          echo "• WASD to move, mouse to look around"
+          echo "• Share your professional URL with others"
+          echo "• URL is permanent and indexed by search engines"
+          echo ""
+          echo "🔄 To update: Push changes to this repository"
+          
+          # GitHub step summary
           echo "## 🚀 Unity WebGL Deployment Successful!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**🎮 Unity WebGL URL:** [$PREVIEW_URL]($PREVIEW_URL)" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$REGISTRATION_SUCCESS" == "true" ]]; then
+            echo "**🎮 Professional URL:** [$PROFESSIONAL_URL]($PROFESSIONAL_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "**✅ Status:** Registered with Unreality3D backend" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ "$AUTO_INCREMENTED" == "true" ]]; then
+              echo "**🔄 Note:** Project name auto-incremented to avoid conflicts" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "**🎮 Project URL:** [$PROFESSIONAL_URL]($PROFESSIONAL_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "**⚠️ Status:** Fallback URL (register creator for full features)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "**👤 Creator:** $CREATOR_USERNAME" >> $GITHUB_STEP_SUMMARY
+          echo "**🎯 Project:** $PROJECT_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**🔧 Firebase Preview:** [$FIREBASE_PREVIEW_URL]($FIREBASE_PREVIEW_URL)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**🌍 Environment:** $ENVIRONMENT" >> $GITHUB_STEP_SUMMARY
-          echo "**📦 Project:** $PROJECT_ID" >> $GITHUB_STEP_SUMMARY
+          echo "**📦 Project ID:** $PROJECT_ID" >> $GITHUB_STEP_SUMMARY
           echo "**📱 Repository:** $REPO_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "**⏰ Expires:** 30 days (auto-extends with deployments)" >> $GITHUB_STEP_SUMMARY
           echo "**🎯 Controls:** WASD to move, mouse to look" >> $GITHUB_STEP_SUMMARY
