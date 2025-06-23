@@ -270,7 +270,7 @@ public class U3DPlayerController : NetworkBehaviour
             // Local player - handle camera rotation in Render for smooth visuals
             HandleLocalCameraRender();
             HandleZoom();
-            return;
+            return; // CRITICAL: Don't interpolate local player position!
         }
 
         // Remote player interpolation with Unity 6 optimization
@@ -281,12 +281,18 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
-        // Unity 6 optimized interpolation for remote players
-        transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 15f);
+        // FIXED: Only interpolate if there's a significant difference to prevent override issues
+        float positionDifference = Vector3.Distance(transform.position, NetworkPosition);
+        float rotationDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
 
-        // Improved rotation interpolation
-        float angleDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
-        if (angleDifference > 0.5f && angleDifference < 180f)
+        // Only interpolate if positions are significantly different (prevents teleport override)
+        if (positionDifference > 0.1f)
+        {
+            transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 15f);
+        }
+
+        // Only interpolate rotation if significantly different
+        if (rotationDifference > 0.5f && rotationDifference < 180f)
         {
             transform.rotation = Quaternion.Slerp(transform.rotation, NetworkRotation, Time.deltaTime * 12f);
         }
@@ -528,9 +534,14 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
+    // FIXED: Network-aware teleport method WITHOUT NetworkTransform
     void PerformTeleport()
     {
-        if (playerCamera == null) return;
+        if (playerCamera == null)
+        {
+            Debug.LogWarning("❌ Cannot teleport - player camera is null");
+            return;
+        }
 
         // Create ray from center of screen
         Vector3 screenCenter = new Vector3(Screen.width / 2, Screen.height / 2, 0);
@@ -578,8 +589,29 @@ public class U3DPlayerController : NetworkBehaviour
 
             Debug.Log($"✅ Teleporting to: {teleportPos}");
 
-            // Perform teleport
-            SetPosition(teleportPos);
+            // CRITICAL FIX: Update NetworkPosition BEFORE changing transform
+            // This ensures the networked state is updated in the same network tick
+            NetworkPosition = teleportPos;
+            NetworkRotation = transform.rotation;
+
+            // Now perform the actual teleport using the working CharacterController method
+            if (characterController != null && characterController.enabled)
+            {
+                Debug.Log("Using CharacterController teleport method");
+                characterController.enabled = false;
+                transform.position = teleportPos;
+                characterController.enabled = true;
+            }
+            else
+            {
+                // Direct transform method as fallback
+                transform.position = teleportPos;
+            }
+
+            // Reset velocity to prevent continued falling/movement
+            velocity = Vector3.zero;
+
+            Debug.Log($"✅ Teleport completed - Local: {transform.position}, Network: {NetworkPosition}");
         }
         else
         {
@@ -704,6 +736,7 @@ public class U3DPlayerController : NetworkBehaviour
     public bool IsLocalPlayer => _isLocalPlayer;
 
     // Enhanced position setting with detailed logging
+    // IMPROVED: Enhanced SetPosition method with proper network sync
     public void SetPosition(Vector3 position)
     {
         if (!_isLocalPlayer)
@@ -718,6 +751,10 @@ public class U3DPlayerController : NetworkBehaviour
 
         try
         {
+            // CRITICAL: Update NetworkPosition FIRST in the same network tick
+            NetworkPosition = position;
+            NetworkRotation = transform.rotation;
+
             // Method 1: Standard CharacterController approach
             if (characterController != null && characterController.enabled)
             {
@@ -733,6 +770,9 @@ public class U3DPlayerController : NetworkBehaviour
                 transform.position = position;
             }
 
+            // Reset physics state
+            velocity = Vector3.zero;
+
             // Verify the position change
             Vector3 finalPosition = transform.position;
             float distanceMoved = Vector3.Distance(startPosition, finalPosition);
@@ -741,15 +781,13 @@ public class U3DPlayerController : NetworkBehaviour
             Debug.Log($"   Start: {startPosition}");
             Debug.Log($"   Target: {position}");
             Debug.Log($"   Final: {finalPosition}");
+            Debug.Log($"   Network: {NetworkPosition}");
             Debug.Log($"   Distance Moved: {distanceMoved}");
 
             if (distanceMoved < 0.1f)
             {
                 Debug.LogWarning("⚠️ Position barely changed - possible teleport failure");
             }
-
-            // Update network position
-            NetworkPosition = transform.position;
 
         }
         catch (System.Exception e)

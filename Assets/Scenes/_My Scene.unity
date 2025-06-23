@@ -228,7 +228,6 @@ MonoBehaviour:
   sendRate: 20
   simulationTickRate: 60
   inputActionAsset: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
-  mouseSensitivityMultiplier: 1
 --- !u!1 &155919238
 GameObject:
   m_ObjectHideFlags: 0
