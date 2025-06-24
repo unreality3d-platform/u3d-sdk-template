@@ -29,7 +29,105 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== PHOTON FUSION MULTIPLAYER FUNCTIONS ==========
+    // ========== NEW: PROFESSIONAL URL DETECTION ==========
+
+    UnityGetCurrentURL: function () {
+        var currentUrl = window.location.href;
+        var bufferSize = lengthBytesUTF8(currentUrl) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(currentUrl, buffer, bufferSize);
+        return buffer;
+    },
+
+    UnityGetDeploymentInfo: function () {
+        var deploymentInfo = {
+            url: window.location.href,
+            hostname: window.location.hostname,
+            pathname: window.location.pathname,
+            isProduction: false,
+            isProfessionalURL: false,
+            creatorUsername: '',
+            projectName: '',
+            deploymentType: 'unknown'
+        };
+
+        // Detect professional URL pattern: username.unreality3d.com/project/
+        var hostname = window.location.hostname.toLowerCase();
+        var pathname = window.location.pathname;
+
+        if (hostname.endsWith('.unreality3d.com') && hostname !== 'unreality3d.com') {
+            // Professional URL detected
+            deploymentInfo.isProfessionalURL = true;
+            deploymentInfo.isProduction = true;
+            deploymentInfo.deploymentType = 'professional';
+            
+            // Extract creator username (subdomain)
+            var subdomain = hostname.replace('.unreality3d.com', '');
+            deploymentInfo.creatorUsername = subdomain;
+            
+            // Extract project name from path
+            var pathParts = pathname.split('/').filter(part => part.length > 0);
+            if (pathParts.length > 0) {
+                deploymentInfo.projectName = pathParts[0];
+            }
+            
+            console.log('Professional URL detected:', deploymentInfo.creatorUsername + '.unreality3d.com/' + deploymentInfo.projectName);
+            
+        } else if (hostname.includes('unreality3d.web.app') || hostname.includes('unreality3d.firebaseapp.com')) {
+            // Firebase hosting URL (current system)
+            deploymentInfo.isProduction = hostname.includes('unreality3d.web.app');
+            deploymentInfo.deploymentType = deploymentInfo.isProduction ? 'firebase-production' : 'firebase-development';
+            
+            console.log('Firebase hosting detected:', deploymentInfo.deploymentType);
+            
+        } else if (hostname.includes('unreality3d2025.web.app') || hostname.includes('unreality3d2025.firebaseapp.com')) {
+            // Development environment
+            deploymentInfo.isProduction = false;
+            deploymentInfo.deploymentType = 'firebase-development';
+            
+            console.log('Development environment detected');
+            
+        } else if (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('127.0.0.1')) {
+            // Local development
+            deploymentInfo.deploymentType = 'local';
+            console.log('Local development detected');
+            
+        } else {
+            // Unknown deployment
+            deploymentInfo.deploymentType = 'unknown';
+            console.log('Unknown deployment type for hostname:', hostname);
+        }
+
+        // Convert to JSON string for Unity
+        var jsonString = JSON.stringify(deploymentInfo);
+        var bufferSize = lengthBytesUTF8(jsonString) + 1;
+        var buffer = _malloc(bufferSize);
+        stringToUTF8(jsonString, buffer, bufferSize);
+        return buffer;
+    },
+
+    UnityReportDeploymentMetrics: function (deploymentTypePtr, loadTimePtr) {
+        var deploymentType = UTF8ToString(deploymentTypePtr);
+        var loadTime = UTF8ToString(loadTimePtr);
+        
+        console.log('Unity deployment metrics:', {
+            type: deploymentType,
+            loadTime: loadTime + 'ms',
+            timestamp: new Date().toISOString()
+        });
+        
+        // Send metrics to analytics if available
+        if (typeof window.UnityReportAnalyticsEvent === 'function') {
+            window.UnityReportAnalyticsEvent('deployment_metrics', JSON.stringify({
+                deploymentType: deploymentType,
+                loadTime: loadTime,
+                url: window.location.href,
+                timestamp: new Date().toISOString()
+            }));
+        }
+    },
+
+    // ========== PHOTON FUSION MULTIPLAYER FUNCTIONS (UNCHANGED) ==========
 
     UnityGetPhotonToken: function (roomNamePtr, contentIdPtr) {
         var roomName = UTF8ToString(roomNamePtr);
@@ -85,7 +183,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== USER PROFILE FUNCTIONS ==========
+    // ========== USER PROFILE FUNCTIONS (UNCHANGED) ==========
 
     UnityGetUserProfile: function () {
         console.log('Unity requesting user profile');
@@ -123,7 +221,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== NETWORKING STATUS FUNCTIONS ==========
+    // ========== NETWORKING STATUS FUNCTIONS (UNCHANGED) ==========
 
     UnityReportNetworkStatus: function (statusPtr, playerCountPtr) {
         var status = UTF8ToString(statusPtr);
@@ -157,7 +255,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== ANALYTICS AND TELEMETRY ==========
+    // ========== ANALYTICS AND TELEMETRY (UNCHANGED) ==========
 
     UnityReportAnalyticsEvent: function (eventNamePtr, eventDataPtr) {
         var eventName = UTF8ToString(eventNamePtr);
@@ -180,7 +278,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== BROWSER INTEGRATION FUNCTIONS ==========
+    // ========== BROWSER INTEGRATION FUNCTIONS (UNCHANGED) ==========
 
     UnityRequestFullscreen: function () {
         console.log('Unity requesting fullscreen');
@@ -238,7 +336,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== ERROR HANDLING AND DEBUGGING ==========
+    // ========== ERROR HANDLING AND DEBUGGING (UNCHANGED) ==========
 
     UnityReportError: function (errorMessagePtr, stackTracePtr) {
         var errorMessage = UTF8ToString(errorMessagePtr);
@@ -285,7 +383,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== UTILITY FUNCTIONS ==========
+    // ========== UTILITY FUNCTIONS (UNCHANGED) ==========
 
     UnityGetTimestamp: function () {
         return Date.now();

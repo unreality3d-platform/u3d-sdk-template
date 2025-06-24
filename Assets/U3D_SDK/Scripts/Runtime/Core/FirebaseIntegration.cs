@@ -35,6 +35,16 @@ public class FirebaseIntegration : MonoBehaviour
     [DllImport("__Internal")]
     private static extern void UnityRequestPayment(string contentId, string price);
 
+    // Professional URL Detection (NEW)
+    [DllImport("__Internal")]
+    private static extern System.IntPtr UnityGetCurrentURL();
+
+    [DllImport("__Internal")]
+    private static extern System.IntPtr UnityGetDeploymentInfo();
+
+    [DllImport("__Internal")]
+    private static extern void UnityReportDeploymentMetrics(string deploymentType, string loadTime);
+
     // Photon Fusion Integration
     [DllImport("__Internal")]
     private static extern void UnityGetPhotonToken(string roomName, string contentId);
@@ -50,6 +60,8 @@ public class FirebaseIntegration : MonoBehaviour
     private string _pendingRoomName = "";
     private string _photonAppId = "a3df46ef-b10a-4954-8526-7a9fdd553543";
     private UserInfo _currentUserInfo;
+    private DeploymentInfo _deploymentInfo;
+    private float _startTime;
 
     // User data structure
     [System.Serializable]
@@ -62,8 +74,24 @@ public class FirebaseIntegration : MonoBehaviour
         public string creatorUsername;
     }
 
+    // Deployment info structure (NEW)
+    [System.Serializable]
+    public class DeploymentInfo
+    {
+        public string url;
+        public string hostname;
+        public string pathname;
+        public bool isProduction;
+        public bool isProfessionalURL;
+        public string creatorUsername;
+        public string projectName;
+        public string deploymentType;
+    }
+
     void Start()
     {
+        _startTime = Time.time;
+
         // Existing PayPal button setup
         if (testButton != null)
             testButton.onClick.AddListener(TestFirebaseConnection);
@@ -84,7 +112,85 @@ public class FirebaseIntegration : MonoBehaviour
         // Subscribe to network events
         SubscribeToNetworkEvents();
 
+        // NEW: Detect deployment environment
+        DetectDeploymentEnvironment();
+
         CheckContentAccess();
+    }
+
+    void DetectDeploymentEnvironment()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            // Get deployment information from JavaScript
+            var deploymentInfoPtr = UnityGetDeploymentInfo();
+            var deploymentInfoJson = Marshal.PtrToStringAnsi(deploymentInfoPtr);
+            
+            if (!string.IsNullOrEmpty(deploymentInfoJson))
+            {
+                _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
+                
+                UpdateStatus($"Detected: {_deploymentInfo.deploymentType}");
+                
+                if (_deploymentInfo.isProfessionalURL)
+                {
+                    UpdateStatus($"Professional URL: {_deploymentInfo.creatorUsername}.unreality3d.com/{_deploymentInfo.projectName}");
+                    Debug.Log($"Creator: {_deploymentInfo.creatorUsername}, Project: {_deploymentInfo.projectName}");
+                }
+                else if (_deploymentInfo.isProduction)
+                {
+                    UpdateStatus("Production Firebase hosting detected");
+                }
+                else
+                {
+                    UpdateStatus($"Development environment: {_deploymentInfo.deploymentType}");
+                }
+
+                // Report deployment metrics after 2 seconds
+                Invoke(nameof(ReportDeploymentMetrics), 2f);
+            }
+            else
+            {
+                UpdateStatus("Could not detect deployment environment");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"Deployment detection failed: {e.Message}");
+            UpdateStatus("Deployment detection unavailable in this environment");
+        }
+#else
+        UpdateStatus("Editor Mode - Deployment detection disabled");
+        _deploymentInfo = new DeploymentInfo
+        {
+            deploymentType = "editor",
+            isProduction = false,
+            isProfessionalURL = false,
+            url = "editor://localhost",
+            hostname = "localhost",
+            pathname = "/editor"
+        };
+#endif
+    }
+
+    void ReportDeploymentMetrics()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (_deploymentInfo != null)
+        {
+            var loadTime = (Time.time - _startTime) * 1000f; // Convert to milliseconds
+            try
+            {
+                UnityReportDeploymentMetrics(_deploymentInfo.deploymentType, loadTime.ToString("F0"));
+                Debug.Log($"Deployment metrics reported: {_deploymentInfo.deploymentType}, {loadTime:F0}ms");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"Failed to report deployment metrics: {e.Message}");
+            }
+        }
+#endif
     }
 
     void InitializeNetworkComponents()
@@ -189,7 +295,7 @@ public class FirebaseIntegration : MonoBehaviour
 #endif
     }
 
-    // ========== MULTIPLAYER FUNCTIONS ==========
+    // ========== MULTIPLAYER FUNCTIONS (UNCHANGED) ==========
 
     public void JoinMultiplayer()
     {
@@ -264,7 +370,7 @@ public class FirebaseIntegration : MonoBehaviour
 #endif
     }
 
-    // ========== FIREBASE CALLBACKS ==========
+    // ========== FIREBASE CALLBACKS (UNCHANGED) ==========
 
     public void UpdateStatus(string message)
     {
@@ -373,7 +479,7 @@ public class FirebaseIntegration : MonoBehaviour
         }
     }
 
-    // ========== NETWORKING INTEGRATION ==========
+    // ========== NETWORKING INTEGRATION (UNCHANGED) ==========
 
     async void StartNetworkingWithToken(PhotonTokenInfo tokenInfo)
     {
@@ -432,7 +538,7 @@ public class FirebaseIntegration : MonoBehaviour
         }
     }
 
-    // ========== NETWORK EVENT HANDLERS ==========
+    // ========== NETWORK EVENT HANDLERS (UNCHANGED) ==========
 
     void HandleNetworkStatusChanged(bool isConnected)
     {
@@ -506,6 +612,51 @@ public class FirebaseIntegration : MonoBehaviour
         };
 
         UpdateNetworkedPlayerInfo();
+    }
+
+    // ========== NEW: PROFESSIONAL URL API ==========
+
+    public string GetCurrentURL()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            var urlPtr = UnityGetCurrentURL();
+            return Marshal.PtrToStringAnsi(urlPtr);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"Failed to get current URL: {e.Message}");
+            return "unknown";
+        }
+#else
+        return "editor://localhost";
+#endif
+    }
+
+    public DeploymentInfo GetDeploymentInfo()
+    {
+        return _deploymentInfo ?? new DeploymentInfo { deploymentType = "unknown" };
+    }
+
+    public bool IsProfessionalURL()
+    {
+        return _deploymentInfo != null && _deploymentInfo.isProfessionalURL;
+    }
+
+    public string GetCreatorUsername()
+    {
+        return _deploymentInfo?.creatorUsername ?? "";
+    }
+
+    public string GetProjectName()
+    {
+        return _deploymentInfo?.projectName ?? "";
+    }
+
+    public bool IsProductionEnvironment()
+    {
+        return _deploymentInfo != null && _deploymentInfo.isProduction;
     }
 }
 

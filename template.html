@@ -324,19 +324,68 @@
             </div>
         </div>
         <div id="unity-warning"></div>
-        <div id="unity-footer">
-            <div id="unity-webgl-logo"></div>
-            <div id="unity-fullscreen-button"></div>
-            <div id="unity-build-title">{{{ PRODUCT_NAME }}}</div>
-        </div>
     </div>
 
     <script>
-        // Environment-aware Firebase Configuration
-        const isProduction = window.location.hostname.includes('unreality3d.web.app') ||
-            window.location.hostname.endsWith('.unreality3d.com');
+        // Enhanced Environment Detection for Professional URLs
+        function detectEnvironment() {
+            const hostname = window.location.hostname.toLowerCase();
+            const pathname = window.location.pathname;
 
-        const firebaseConfig = isProduction ? {
+            // Professional URL pattern: username.unreality3d.com/project/
+            if (hostname.endsWith('.unreality3d.com') && hostname !== 'unreality3d.com') {
+                console.log('Professional URL detected:', hostname);
+                return {
+                    type: 'professional',
+                    isProduction: true,
+                    projectId: 'unreality3d',
+                    creatorUsername: hostname.replace('.unreality3d.com', ''),
+                    projectName: pathname.split('/').filter(p => p.length > 0)[0] || 'main'
+                };
+            }
+
+            // Firebase hosting detection
+            if (hostname.includes('unreality3d.web.app') || hostname.includes('unreality3d.firebaseapp.com')) {
+                console.log('Production Firebase hosting detected');
+                return {
+                    type: 'firebase',
+                    isProduction: true,
+                    projectId: 'unreality3d'
+                };
+            }
+
+            if (hostname.includes('unreality3d2025.web.app') || hostname.includes('unreality3d2025.firebaseapp.com')) {
+                console.log('Development Firebase hosting detected');
+                return {
+                    type: 'firebase',
+                    isProduction: false,
+                    projectId: 'unreality3d2025'
+                };
+            }
+
+            // Local development
+            if (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('127.0.0.1')) {
+                console.log('Local development detected');
+                return {
+                    type: 'local',
+                    isProduction: false,
+                    projectId: 'unreality3d2025' // Use development for local
+                };
+            }
+
+            // Default fallback
+            console.log('Unknown environment, defaulting to development');
+            return {
+                type: 'unknown',
+                isProduction: false,
+                projectId: 'unreality3d2025'
+            };
+        }
+
+        // Detect environment and configure Firebase
+        const environment = detectEnvironment();
+
+        const firebaseConfig = environment.isProduction ? {
             apiKey: "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
             authDomain: "unreality3d.firebaseapp.com",
             projectId: "unreality3d",
@@ -352,8 +401,14 @@
             appId: "1:244081840635:web:71c37efb6b172a706dbb5e"
         };
 
-        console.log('Environment detected:', isProduction ? 'Production' : 'Development');
+        console.log('Environment:', environment.type);
+        console.log('Production:', environment.isProduction);
         console.log('Firebase Project:', firebaseConfig.projectId);
+
+        if (environment.type === 'professional') {
+            console.log('Creator:', environment.creatorUsername);
+            console.log('Project:', environment.projectName);
+        }
 
         // Initialize Firebase
         if (!firebase.apps.length) {
@@ -864,7 +919,7 @@
             });
         }
 
-        console.log('Unity WebGL Template loaded - Fullscreen Responsive Mode with Photon Fusion Integration');
+        console.log('Unity WebGL Template loaded - Professional URL Support with Photon Fusion Integration');
     </script>
 </body>
 </html>
