@@ -22,6 +22,15 @@ public static class U3DAuthenticator
     public static string DisplayName => _displayName;
     public static string CreatorUsername => _creatorUsername;
     public static bool PayPalConnected => _paypalConnected;
+    public static class CurrentUser
+    {
+        public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
+        public static string Email => U3DAuthenticator.UserEmail;
+        public static string DisplayName => U3DAuthenticator.DisplayName;
+        public static string CreatorUsername => U3DAuthenticator.CreatorUsername;
+        public static string UserType => "creator";
+        public static bool PayPalConnected => U3DAuthenticator.PayPalConnected;
+    }
 
     public static async Task<bool> TryAutoLogin()
     {
