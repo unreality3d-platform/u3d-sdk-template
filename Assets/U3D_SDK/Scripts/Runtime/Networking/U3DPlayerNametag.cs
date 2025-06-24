@@ -54,85 +54,99 @@ namespace U3D.Networking
                 nametagCanvas.renderMode = RenderMode.WorldSpace;
                 nametagCanvas.worldCamera = null; // Will be set dynamically
 
-                var canvasScaler = canvasObject.AddComponent<CanvasScaler>();
-                canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                canvasScaler.scaleFactor = 0.01f; // Scale down for world space
+                // Set canvas size and scale properly for world space
+                var canvasRect = nametagCanvas.GetComponent<RectTransform>();
+                canvasRect.sizeDelta = new Vector2(200, 60);
+                canvasRect.localScale = new Vector3(0.002f, 0.002f, 0.002f);
 
                 canvasGroup = canvasObject.AddComponent<CanvasGroup>();
             }
 
-            // Create main panel
-            var panelObject = new GameObject("NametagPanel");
-            panelObject.transform.SetParent(nametagCanvas.transform);
+            // Use Unity's built-in method to create panel
+            var uiResources = new DefaultControls.Resources();
+            var panelObject = DefaultControls.CreatePanel(uiResources);
+            panelObject.name = "NametagPanel";
+            panelObject.transform.SetParent(nametagCanvas.transform, false);
 
-            _nametagRect = panelObject.AddComponent<RectTransform>();
-            _nametagRect.anchorMin = new Vector2(0.5f, 0.5f);
-            _nametagRect.anchorMax = new Vector2(0.5f, 0.5f);
-            _nametagRect.sizeDelta = new Vector2(200, 60);
-            _nametagRect.anchoredPosition = Vector2.zero;
+            _nametagRect = panelObject.GetComponent<RectTransform>();
+            _nametagRect.anchorMin = Vector2.zero;
+            _nametagRect.anchorMax = Vector2.one;
+            _nametagRect.offsetMin = Vector2.zero;
+            _nametagRect.offsetMax = Vector2.zero;
 
-            var panelImage = panelObject.AddComponent<Image>();
+            // Set panel background
+            var panelImage = panelObject.GetComponent<Image>();
             panelImage.color = new Color(0, 0, 0, 0.7f);
             panelImage.raycastTarget = false;
 
-            // Create player name text
-            var nameObject = new GameObject("PlayerName");
-            nameObject.transform.SetParent(panelObject.transform);
+            // Use Unity's built-in method to create player name text
+            var nameTextObject = DefaultControls.CreateText(uiResources);
+            nameTextObject.name = "PlayerName";
+            nameTextObject.transform.SetParent(panelObject.transform, false);
 
-            var nameRect = nameObject.AddComponent<RectTransform>();
+            var nameRect = nameTextObject.GetComponent<RectTransform>();
             nameRect.anchorMin = new Vector2(0, 0.5f);
             nameRect.anchorMax = new Vector2(1, 1);
             nameRect.offsetMin = new Vector2(5, 0);
             nameRect.offsetMax = new Vector2(-5, -2);
 
-            playerNameText = nameObject.AddComponent<TextMeshProUGUI>();
+            // Replace Text with TextMeshPro
+            DestroyImmediate(nameTextObject.GetComponent<Text>());
+            playerNameText = nameTextObject.AddComponent<TextMeshProUGUI>();
             playerNameText.text = "Player";
             playerNameText.fontSize = 14;
             playerNameText.color = Color.white;
             playerNameText.alignment = TextAlignmentOptions.Center;
             playerNameText.raycastTarget = false;
 
-            // Create user type text
-            var typeObject = new GameObject("UserType");
-            typeObject.transform.SetParent(panelObject.transform);
+            // Use Unity's built-in method to create user type text
+            var typeTextObject = DefaultControls.CreateText(uiResources);
+            typeTextObject.name = "UserType";
+            typeTextObject.transform.SetParent(panelObject.transform, false);
 
-            var typeRect = typeObject.AddComponent<RectTransform>();
+            var typeRect = typeTextObject.GetComponent<RectTransform>();
             typeRect.anchorMin = new Vector2(0, 0);
             typeRect.anchorMax = new Vector2(0.8f, 0.5f);
             typeRect.offsetMin = new Vector2(5, 2);
             typeRect.offsetMax = new Vector2(-5, 0);
 
-            userTypeText = typeObject.AddComponent<TextMeshProUGUI>();
+            // Replace Text with TextMeshPro
+            DestroyImmediate(typeTextObject.GetComponent<Text>());
+            userTypeText = typeTextObject.AddComponent<TextMeshProUGUI>();
             userTypeText.text = "Visitor";
             userTypeText.fontSize = 10;
             userTypeText.color = Color.gray;
             userTypeText.alignment = TextAlignmentOptions.Left;
             userTypeText.raycastTarget = false;
 
-            // Create PayPal badge
-            var paypalObject = new GameObject("PayPalBadge");
-            paypalObject.transform.SetParent(panelObject.transform);
+            // Use Unity's built-in method to create PayPal badge image
+            var paypalBadgeObject = DefaultControls.CreateImage(uiResources);
+            paypalBadgeObject.name = "PayPalBadge";
+            paypalBadgeObject.transform.SetParent(panelObject.transform, false);
 
-            var paypalRect = paypalObject.AddComponent<RectTransform>();
+            var paypalRect = paypalBadgeObject.GetComponent<RectTransform>();
             paypalRect.anchorMin = new Vector2(0.8f, 0);
             paypalRect.anchorMax = new Vector2(1, 0.5f);
             paypalRect.offsetMin = new Vector2(-20, 2);
             paypalRect.offsetMax = new Vector2(-2, 0);
 
-            paypalBadge = paypalObject.AddComponent<Image>();
-            paypalBadge.color = new Color(0, 0.5f, 1f, 0.8f); // PayPal blue
+            paypalBadge = paypalBadgeObject.GetComponent<Image>();
+            paypalBadge.color = new Color(0, 0.5f, 1f, 0.8f);
             paypalBadge.raycastTarget = false;
 
-            // Add "PP" text to PayPal badge
-            var ppTextObject = new GameObject("PPText");
-            ppTextObject.transform.SetParent(paypalObject.transform);
+            // Use Unity's built-in method to create PP text
+            var ppTextObject = DefaultControls.CreateText(uiResources);
+            ppTextObject.name = "PPText";
+            ppTextObject.transform.SetParent(paypalBadgeObject.transform, false);
 
-            var ppTextRect = ppTextObject.AddComponent<RectTransform>();
+            var ppTextRect = ppTextObject.GetComponent<RectTransform>();
             ppTextRect.anchorMin = Vector2.zero;
             ppTextRect.anchorMax = Vector2.one;
             ppTextRect.offsetMin = Vector2.zero;
             ppTextRect.offsetMax = Vector2.zero;
 
+            // Replace Text with TextMeshPro
+            DestroyImmediate(ppTextObject.GetComponent<Text>());
             var ppText = ppTextObject.AddComponent<TextMeshProUGUI>();
             ppText.text = "PP";
             ppText.fontSize = 8;

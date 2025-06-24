@@ -1,17 +1,17 @@
 {
     "Version": 1,
     "TypeId": "NetworkProjectConfig",
-    "PeerMode": 1,
+    "PeerMode": 0,
     "LagCompensation": {
         "Enabled": false,
         "HitboxBufferLengthInMs": 200,
         "HitboxDefaultCapacity": 512,
         "CachedStaticCollidersSize": 64
     },
-    "EnqueueIncompleteSynchronousSpawns": false,
-    "InvokeRenderInBatchMode": true,
+    "EnqueueIncompleteSynchronousSpawns": true,
+    "InvokeRenderInBatchMode": false,
     "NetworkIdIsObjectName": false,
-    "HideNetworkObjectInactivityGuard": false,
+    "HideNetworkObjectInactivityGuard": true,
     "AllowClientServerModesInWebGL": true,
     "ClientsRecordFrameAndPacketTimingTraces": false,
     "Simulation": {
@@ -19,9 +19,9 @@
         "ReplicationFeatures": 1,
         "InputTransferMode": 0,
         "SimulationUpdateTimeMode": 0,
-        "PlayerCount": 4,
+        "PlayerCount": 10,
         "TickRateSelection": {
-            "Client": 64,
+            "Client": 30,
             "ServerIndex": 0,
             "ClientSendIndex": 1,
             "ServerSendIndex": 1
@@ -29,8 +29,8 @@
         "MaxObjectDestroysSentPerPacket": 32
     },
     "Network": {
-        "ConnectionTimeout": 10.0,
-        "ConnectionShutdownTime": 1.0,
+        "ConnectionTimeout": 15.0,
+        "ConnectionShutdownTime": 2.0,
         "ReliableDataTransferModes": 3
     },
     "HostMigration": {
@@ -56,8 +56,8 @@
         "AdditionalLoss": 0.0
     },
     "Heap": {
-        "PageShift": 15,
-        "PageCount": 256,
+        "PageShift": 14,
+        "PageCount": 128,
         "GlobalsSize": 0
     },
     "AssembliesToWeave": [
@@ -68,7 +68,7 @@
         "Fusion.Addons.FSM"
     ],
     "UseSerializableDictionary": true,
-    "NullChecksForNetworkedProperties": true,
+    "NullChecksForNetworkedProperties": false,
     "CheckRpcAttributeUsage": false,
     "CheckNetworkedPropertiesBeingEmpty": false
 }
