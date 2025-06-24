@@ -9,9 +9,13 @@ public class ProjectStartupConfiguration
     private const string PREF_KEY = "HasConfiguredStartup";
     private const string BUILD_TARGET_KEY = "HasSetWebGLTarget";
 
+    // Project-specific key to avoid cross-template conflicts
+    private static string PROJECT_SPECIFIC_KEY => $"{PREF_KEY}_{Application.dataPath.GetHashCode()}";
+    private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
+
     static ProjectStartupConfiguration()
     {
-        // Multiple delay calls with additional safety checks
+        // Enhanced initialization with project-specific tracking
         EditorApplication.delayCall += () => {
             EditorApplication.delayCall += () => {
                 EditorApplication.delayCall += ConfigureProjectStartup;
@@ -32,11 +36,14 @@ public class ProjectStartupConfiguration
             return;
         }
 
-        // Check if this is the first time opening this project
-        bool hasConfiguredStartup = EditorPrefs.GetBool(PREF_KEY, false);
-        bool hasSetBuildTarget = EditorPrefs.GetBool(BUILD_TARGET_KEY, false);
+        // Use project-specific keys to avoid conflicts between template downloads
+        bool hasConfiguredStartup = EditorPrefs.GetBool(PROJECT_SPECIFIC_KEY, false);
+        bool hasSetBuildTarget = EditorPrefs.GetBool(BUILD_TARGET_SPECIFIC_KEY, false);
 
-        if (!hasConfiguredStartup || !hasSetBuildTarget)
+        // Force scene check on every first load regardless of previous preference
+        bool forceSceneCheck = !hasConfiguredStartup;
+
+        if (!hasConfiguredStartup || !hasSetBuildTarget || forceSceneCheck)
         {
             try
             {
@@ -45,7 +52,6 @@ public class ProjectStartupConfiguration
                 {
                     Debug.Log("🔄 U3D SDK: Switching build target to WebGL...");
 
-                    // Use the synchronous version which is more reliable for startup
                     bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(
                         BuildTargetGroup.WebGL,
                         BuildTarget.WebGL
@@ -54,15 +60,13 @@ public class ProjectStartupConfiguration
                     if (success)
                     {
                         Debug.Log("✅ U3D SDK: Build target switched to WebGL successfully");
-                        EditorPrefs.SetBool(BUILD_TARGET_KEY, true);
+                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
                     }
                     else
                     {
                         Debug.LogError("❌ U3D SDK: WEBGL BUILD SUPPORT NOT INSTALLED");
                         Debug.LogError("📋 TO FIX: Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support");
-                        Debug.LogError("🔄 After installing WebGL support, use menu: U3D/Reset Startup Configuration");
 
-                        // Show user-friendly dialog
                         EditorUtility.DisplayDialog(
                             "WebGL Build Support Required",
                             "This Unreality3D template requires WebGL Build Support to function properly.\n\n" +
@@ -72,34 +76,45 @@ public class ProjectStartupConfiguration
                             "3. Click the gear icon next to your Unity version\n" +
                             "4. Select 'Add Modules'\n" +
                             "5. Check 'WebGL Build Support'\n" +
-                            "6. Install and restart Unity\n\n" +
-                            "After installation, use menu: U3D → Reset Startup Configuration",
-                            "Open Unity Hub"
+                            "6. Install and restart Unity",
+                            "OK"
                         );
 
-                        // Don't set the pref key so it retries next time
                         return;
                     }
                 }
                 else
                 {
                     Debug.Log("✅ U3D SDK: Build target is already set to WebGL");
-                    EditorPrefs.SetBool(BUILD_TARGET_KEY, true);
+                    EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
                 }
 
-                // Open startup scene with enhanced safety checks
-                if (!hasConfiguredStartup)
+                // Enhanced scene opening with additional verification
+                if (forceSceneCheck || !hasConfiguredStartup)
                 {
                     if (System.IO.File.Exists(STARTUP_SCENE_PATH))
                     {
-                        // Additional check to ensure scene isn't already open
                         var currentScene = EditorSceneManager.GetActiveScene();
-                        if (currentScene.path != STARTUP_SCENE_PATH)
+
+                        // More robust scene path comparison
+                        string currentScenePath = currentScene.path;
+                        bool isCorrectScene = string.Equals(currentScenePath, STARTUP_SCENE_PATH, System.StringComparison.OrdinalIgnoreCase);
+
+                        Debug.Log($"🔍 U3D SDK: Current scene: '{currentScenePath}' | Target: '{STARTUP_SCENE_PATH}' | Match: {isCorrectScene}");
+
+                        if (!isCorrectScene)
                         {
                             try
                             {
-                                EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
-                                Debug.Log($"✅ U3D SDK: Opened startup scene: {STARTUP_SCENE_PATH}");
+                                // Additional delay to ensure Unity is fully ready
+                                EditorApplication.delayCall += () => {
+                                    if (!EditorApplication.isPlayingOrWillChangePlaymode &&
+                                        !EditorApplication.isCompiling)
+                                    {
+                                        EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
+                                        Debug.Log($"✅ U3D SDK: Successfully opened startup scene: {STARTUP_SCENE_PATH}");
+                                    }
+                                };
                             }
                             catch (System.Exception e)
                             {
@@ -115,9 +130,16 @@ public class ProjectStartupConfiguration
                     {
                         Debug.LogWarning($"⚠️ U3D SDK: Startup scene not found: {STARTUP_SCENE_PATH}");
                         Debug.LogWarning("💡 U3D SDK: Please ensure your main scene is located at Assets/Scenes/_My Scene.unity");
+
+                        // List available scenes for debugging
+                        if (System.IO.Directory.Exists("Assets/Scenes/"))
+                        {
+                            string[] allScenes = System.IO.Directory.GetFiles("Assets/Scenes/", "*.unity");
+                            Debug.Log($"📁 U3D SDK: Available scenes: {string.Join(", ", allScenes)}");
+                        }
                     }
 
-                    EditorPrefs.SetBool(PREF_KEY, true);
+                    EditorPrefs.SetBool(PROJECT_SPECIFIC_KEY, true);
                 }
 
                 Debug.Log("✅ U3D SDK: Project startup configuration complete");
@@ -125,44 +147,7 @@ public class ProjectStartupConfiguration
             catch (System.Exception e)
             {
                 Debug.LogError($"❌ U3D SDK: Error during startup configuration: {e.Message}");
-                // Don't set pref keys on error so it retries next time
             }
-        }
-    }
-
-    // Optional: Add menu item to reset configuration for testing
-    [MenuItem("U3D/Reset Startup Configuration")]
-    private static void ResetStartupConfiguration()
-    {
-        EditorPrefs.DeleteKey(PREF_KEY);
-        EditorPrefs.DeleteKey(BUILD_TARGET_KEY);
-        Debug.Log("🔄 U3D SDK: Startup configuration reset. Restart Unity to reconfigure.");
-    }
-
-    // Optional: Add menu item to manually set WebGL target
-    [MenuItem("U3D/Force WebGL Build Target")]
-    private static void ForceWebGLTarget()
-    {
-        if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
-        {
-            bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(
-                BuildTargetGroup.WebGL,
-                BuildTarget.WebGL
-            );
-
-            if (success)
-            {
-                Debug.Log("✅ U3D SDK: Manually switched to WebGL build target");
-                EditorPrefs.SetBool(BUILD_TARGET_KEY, true);
-            }
-            else
-            {
-                Debug.LogError("❌ U3D SDK: Failed to switch to WebGL. Check WebGL support installation.");
-            }
-        }
-        else
-        {
-            Debug.Log("✅ U3D SDK: Already using WebGL build target");
         }
     }
 }

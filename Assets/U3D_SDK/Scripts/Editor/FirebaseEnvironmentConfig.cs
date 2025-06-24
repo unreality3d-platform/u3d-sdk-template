@@ -93,7 +93,7 @@ namespace U3D.Editor
             // If configurations are missing, prompt for setup
             if (_configs.Count == 0)
             {
-                Debug.LogWarning("Firebase configurations not found. Please run Setup tab to configure.");
+                Debug.LogWarning("Firebase backend connection unavailable. Attempting dynamic configuration...");
                 // Return minimal safe config that will prompt for setup
                 _configs["setup_required"] = new FirebaseEnvironmentConfig
                 {
