@@ -31,17 +31,16 @@ namespace U3D.Editor
                 
                 // Social & Community Systems
                 new CreatorTool("🚧 Add Social Sharing", "Screenshot/share moments from experiences", () => Debug.Log("Applied Social Sharing")),
-                new CreatorTool("🚧 Add Guest Book", "Visitor messages and feedback collection", () => Debug.Log("Applied Guest Book")),
                 new CreatorTool("🚧 Add Guestbook", "Adds a screen space UI panel with built-in interactivity, instructing visitors to 'Press E to leave '[Your Name] was here!' note.' that gets the user's name and adds the message to the displayed text", () => Debug.Log("Applied Guestbook")),
                 
                 // UI & Navigation Systems
                 new CreatorTool("🚧 Add Worldspace Interaction UI", "3D world canvas for object interactions", () => Debug.Log("Applied Worldspace Interaction UI"), true),
-                new CreatorTool("🚧 Add Screen Interaction UI", "Screen overlay canvas for user interfaces", () => Debug.Log("Applied Screen Interaction UI")),
+                new CreatorTool("🚧 Add Screenspace Interaction UI", "Screen overlay canvas for user interfaces", () => Debug.Log("Applied Screen Interaction UI")),
                 
                 // Portal & Navigation Systems
                 new CreatorTool("🚧 Add Scene-to-Scene Portal", "Portal to load different scenes", () => Debug.Log("Applied Scene-to-Scene Portal"), true),
-                new CreatorTool("🚧 Add 1-Way Portal", "Portal for one-direction travel within scene", () => Debug.Log("Applied 1-Way Portal"), true),
-                new CreatorTool("🚧 Add 2-Way Portal", "Portal for bi-directional travel within scene", () => Debug.Log("Applied 2-Way Portal"), true)
+                new CreatorTool("🚧 Add 1-Way In-Scene Portal", "Portal for one-direction travel within scene", () => Debug.Log("Applied 1-Way Portal"), true),
+                new CreatorTool("🚧 Add 2-Way In-Scene Portal", "Portal for bi-directional travel within scene", () => Debug.Log("Applied 2-Way Portal"), true)
             };
         }
 
