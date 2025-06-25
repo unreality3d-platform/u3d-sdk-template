@@ -26,7 +26,7 @@ Your **interactive 3D experience** goes live at: `https://yourname.unreality3d.c
 
 ### Complete Pre-Configuration
 - ✅ **Unity 6 WebGL optimization** - Instant web deployment
-- ✅ **Professional character controls** - First-person movement and interaction
+- ✅ **Professional character controls** - Fully configurable character controller
 - ✅ **PayPal monetization** - 95% creator payout, industry-leading
 - ✅ **Firebase backend** - Authentication and data management
 - ✅ **GitHub Actions CI/CD** - Professional publishing pipeline
