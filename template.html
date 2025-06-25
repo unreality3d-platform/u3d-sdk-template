@@ -369,65 +369,120 @@
                 return {
                     type: 'local',
                     isProduction: false,
-                    projectId: 'unreality3d2025' // Use development for local
+                    projectId: 'unreality3d2025'
                 };
             }
 
-            // Default fallback
-            console.log('Unknown environment, defaulting to development');
+            // GitHub Pages detection (creator repositories)
+            if (hostname.includes('github.io')) {
+                console.log('GitHub Pages detected - using production backend');
+                return {
+                    type: 'github-pages',
+                    isProduction: true,
+                    projectId: 'unreality3d'
+                };
+            }
+
+            // Default fallback for creator repositories
+            console.log('Creator repository detected, defaulting to production backend');
             return {
-                type: 'unknown',
-                isProduction: false,
-                projectId: 'unreality3d2025'
+                type: 'creator',
+                isProduction: true,
+                projectId: 'unreality3d'
             };
         }
 
-        // Detect environment and configure Firebase
+        // Detect environment
         const environment = detectEnvironment();
-
-        const firebaseConfig = environment.isProduction ? {
-            apiKey: "AIzaSyB3GWmzcyew1yw4sUi6vn-Ys6643JI9zMo",
-            authDomain: "unreality3d.firebaseapp.com",
-            projectId: "unreality3d",
-            storageBucket: "unreality3d.firebasestorage.app",
-            messagingSenderId: "183773881724",
-            appId: "1:183773881724:web:50ca32baa00960b46170f9"
-        } : {
-            apiKey: "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
-            authDomain: "unreality3d2025.firebaseapp.com",
-            projectId: "unreality3d2025",
-            storageBucket: "unreality3d2025.firebasestorage.app",
-            messagingSenderId: "244081840635",
-            appId: "1:244081840635:web:71c37efb6b172a706dbb5e"
-        };
-
-        console.log('Environment:', environment.type);
-        console.log('Production:', environment.isProduction);
-        console.log('Firebase Project:', firebaseConfig.projectId);
-
-        if (environment.type === 'professional') {
-            console.log('Creator:', environment.creatorUsername);
-            console.log('Project:', environment.projectName);
-        }
-
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-
-        const auth = firebase.auth();
-        const functions = firebase.functions();
 
         // Global variables
         let unityInstance = null;
         let currentUser = null;
         let userType = 'visitor';
         let paypalOrderId = null;
+        let auth = null;
+        let functions = null;
+
+        // SECURE: Fetch Firebase configuration from your backend
+        async function initializeFirebase() {
+            try {
+                // Get Firebase config from your secure endpoint
+                const configEndpoint = environment.isProduction
+                    ? 'https://unreality3d.web.app/api/getFirebaseConfig'
+                    : 'https://unreality3d2025.web.app/api/getFirebaseConfig';
+
+                const response = await fetch(configEndpoint);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch Firebase configuration');
+                }
+
+                const firebaseConfig = await response.json();
+
+                console.log('Environment:', environment.type);
+                console.log('Production:', environment.isProduction);
+                console.log('Firebase Project:', firebaseConfig.projectId);
+
+                if (environment.type === 'professional') {
+                    console.log('Creator:', environment.creatorUsername);
+                    console.log('Project:', environment.projectName);
+                }
+
+                // Initialize Firebase with secure config
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+
+                // Initialize Firebase services
+                auth = firebase.auth();
+                functions = firebase.functions();
+
+                // Continue with rest of initialization
+                setupAuthHandlers();
+
+            } catch (error) {
+                console.error('Firebase initialization failed:', error);
+
+                // Fallback: Use a basic configuration for static content only
+                const fallbackConfig = {
+                    projectId: environment.isProduction ? 'unreality3d' : 'unreality3d2025',
+                    authDomain: environment.isProduction ? 'unreality3d.firebaseapp.com' : 'unreality3d2025.firebaseapp.com'
+                };
+
+                console.warn('Using fallback configuration - limited functionality');
+
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(fallbackConfig);
+                }
+
+                // Initialize with limited functionality
+                auth = firebase.auth();
+                functions = firebase.functions();
+                setupAuthHandlers();
+            }
+        }
+
+        function setupAuthHandlers() {
+            // Authentication state management
+            auth.onAuthStateChanged((user) => {
+                currentUser = user;
+                if (user) {
+                    console.log('User authenticated:', user.email);
+                    hideAuthOverlay();
+                } else {
+                    console.log('User not authenticated');
+                    // Automatically check content access and show overlay if needed
+                    setTimeout(() => {
+                        window.UnityCheckContentAccess('test-area-1');
+                    }, 1000);
+                }
+                // Load Unity regardless for testing
+                loadUnity();
+            });
+        }
 
         // PayPal login flow
         function startPayPalLogin() {
             showLoadingText('Connecting to PayPal...');
-            const functions = firebase.functions();
             const getPayPalAuthUrl = functions.httpsCallable('getPayPalAuthUrl');
 
             getPayPalAuthUrl({ contentId: '{{{ CONTENT_ID }}}' })
@@ -455,23 +510,6 @@
         function openCreatorInfo() {
             window.open('/quickstart.html', '_blank');
         }
-
-        // Authentication state management
-        auth.onAuthStateChanged((user) => {
-            currentUser = user;
-            if (user) {
-                console.log('User authenticated:', user.email);
-                hideAuthOverlay();
-            } else {
-                console.log('User not authenticated');
-                // Automatically check content access and show overlay if needed
-                setTimeout(() => {
-                    window.UnityCheckContentAccess('test-area-1');
-                }, 1000);
-            }
-            // Load Unity regardless for testing
-            loadUnity();
-        });
 
         // ===== UNITY LOADING FUNCTION - RESPONSIVE FULLSCREEN =====
         function loadUnity() {
@@ -577,7 +615,6 @@
                 return;
             }
 
-            const functions = firebase.functions();
             const createPaymentOrder = functions.httpsCallable('createPaymentOrder');
 
             createPaymentOrder({
@@ -631,7 +668,6 @@
                 return;
             }
 
-            const functions = firebase.functions();
             const checkContentAccess = functions.httpsCallable('checkContentAccess');
 
             checkContentAccess({ contentId: contentId })
@@ -672,7 +708,6 @@
                 return;
             }
 
-            const functions = firebase.functions();
             const testFunction = functions.httpsCallable('testFunction');
 
             testFunction({ message: 'Hello from Unity!' })
@@ -851,7 +886,6 @@
                 console.log('PayPal OAuth callback detected');
                 showLoadingText('Processing PayPal authentication...');
 
-                const functions = firebase.functions();
                 const exchangePayPalTokens = functions.httpsCallable('exchangePayPalTokens');
 
                 exchangePayPalTokens({ code: code })
@@ -918,6 +952,9 @@
                     });
             });
         }
+
+        // Initialize Firebase securely
+        initializeFirebase();
 
         console.log('Unity WebGL Template loaded - Professional URL Support with Photon Fusion Integration');
     </script>
