@@ -12,101 +12,102 @@ namespace U3D.Editor
     {
         public static async Task<UnityBuildResult> BuildWebGL(string outputPath, System.Action<string> onProgress = null)
         {
-            return await Task.Run(() =>
+            // Ensure we're on the main thread for Unity operations
+            await Awaitable.MainThreadAsync();
+
+            try
             {
-                try
+                onProgress?.Invoke("Preparing WebGL build...");
+
+                // Ensure output directory exists
+                if (Directory.Exists(outputPath))
                 {
-                    onProgress?.Invoke("Preparing WebGL build...");
-
-                    // Ensure output directory exists
-                    if (Directory.Exists(outputPath))
-                    {
-                        Directory.Delete(outputPath, true);
-                    }
-                    Directory.CreateDirectory(outputPath);
-
-                    // Get all scenes in build settings
-                    var scenes = EditorBuildSettings.scenes
-                        .Where(scene => scene.enabled)
-                        .Select(scene => scene.path)
-                        .ToArray();
-
-                    if (scenes.Length == 0)
-                    {
-                        return new UnityBuildResult
-                        {
-                            Success = false,
-                            ErrorMessage = "No scenes enabled in Build Settings. Please add at least one scene."
-                        };
-                    }
-
-                    onProgress?.Invoke($"Building {scenes.Length} scene(s) to WebGL...");
-
-                    // Configure build options
-                    var buildPlayerOptions = new BuildPlayerOptions
-                    {
-                        scenes = scenes,
-                        locationPathName = outputPath,
-                        target = BuildTarget.WebGL,
-                        options = BuildOptions.None
-                    };
-
-                    // Optimize WebGL build settings
-                    SetOptimalWebGLSettings();
-
-                    onProgress?.Invoke("Starting Unity build process...");
-
-                    // Build the player
-                    var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
-                    var summary = report.summary;
-
-                    if (summary.result == BuildResult.Succeeded)
-                    {
-                        onProgress?.Invoke("Build completed successfully!");
-
-                        return new UnityBuildResult
-                        {
-                            Success = true,
-                            BuildPath = outputPath,
-                            BuildSize = (long)summary.totalSize,
-                            BuildTime = summary.totalTime,
-                            Message = $"Build completed in {summary.totalTime.TotalSeconds:F1} seconds"
-                        };
-                    }
-                    else
-                    {
-                        var errorMessage = "Build failed";
-
-                        if (summary.result == BuildResult.Failed)
-                        {
-                            errorMessage = "Build failed. Check the Console for detailed error messages.";
-                        }
-                        else if (summary.result == BuildResult.Cancelled)
-                        {
-                            errorMessage = "Build was cancelled.";
-                        }
-
-                        return new UnityBuildResult
-                        {
-                            Success = false,
-                            ErrorMessage = errorMessage,
-                            BuildTime = summary.totalTime
-                        };
-                    }
+                    Directory.Delete(outputPath, true);
                 }
-                catch (Exception ex)
+                Directory.CreateDirectory(outputPath);
+
+                // Get all scenes in build settings
+                var scenes = EditorBuildSettings.scenes
+                    .Where(scene => scene.enabled)
+                    .Select(scene => scene.path)
+                    .ToArray();
+
+                if (scenes.Length == 0)
                 {
                     return new UnityBuildResult
                     {
                         Success = false,
-                        ErrorMessage = $"Build process failed: {ex.Message}"
+                        ErrorMessage = "No scenes enabled in Build Settings. Please add at least one scene."
                     };
                 }
-            });
+
+                onProgress?.Invoke($"Building {scenes.Length} scene(s) to WebGL...");
+
+                // Configure build options
+                var buildPlayerOptions = new BuildPlayerOptions
+                {
+                    scenes = scenes,
+                    locationPathName = outputPath,
+                    target = BuildTarget.WebGL,
+                    options = BuildOptions.None
+                };
+
+                // Optimize WebGL build settings
+                SetOptimalWebGLSettings();
+
+                onProgress?.Invoke("Starting Unity build process...");
+
+                // Build the player - this must run on main thread
+                var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+                var summary = report.summary;
+
+                if (summary.result == BuildResult.Succeeded)
+                {
+                    onProgress?.Invoke("Build completed successfully!");
+
+                    return new UnityBuildResult
+                    {
+                        Success = true,
+                        BuildPath = outputPath,
+                        BuildSize = (long)summary.totalSize,
+                        BuildTime = summary.totalTime,
+                        Message = $"Build completed in {summary.totalTime.TotalSeconds:F1} seconds"
+                    };
+                }
+                else
+                {
+                    var errorMessage = "Build failed";
+
+                    if (summary.result == BuildResult.Failed)
+                    {
+                        errorMessage = "Build failed. Check the Console for detailed error messages.";
+                    }
+                    else if (summary.result == BuildResult.Cancelled)
+                    {
+                        errorMessage = "Build was cancelled.";
+                    }
+
+                    return new UnityBuildResult
+                    {
+                        Success = false,
+                        ErrorMessage = errorMessage,
+                        BuildTime = summary.totalTime
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return new UnityBuildResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Build process failed: {ex.Message}"
+                };
+            }
         }
 
         public static async Task<bool> CopyBuildToRepository(string buildPath, string repositoryPath)
         {
+            // File operations can safely run on background thread
             return await Task.Run(() =>
             {
                 try
