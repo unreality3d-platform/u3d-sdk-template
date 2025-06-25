@@ -118,37 +118,72 @@ namespace U3D.Editor
 
         private void DrawGitHubSetup()
         {
-            EditorGUILayout.LabelField("🔗 GitHub Integration Setup", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("🚀 Connect to GitHub", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "To publish your Unity projects, you need a GitHub Personal Access Token.\n\n" +
-                "This allows the Unity SDK to create repositories and deploy your content automatically.",
+                "Connect a (free) GitHub account to publish online.\n\n" +
+                "New to GitHub? No problem! Just create a free account, then follow the steps below.\n\n" +
+                "We'll handle the rest - you just click 'Make It Live!'",
                 MessageType.Info);
 
             EditorGUILayout.Space(10);
 
-            // Instructions section
-            if (GUILayout.Button("📋 How to Create a GitHub Token", EditorStyles.linkLabel))
-            {
-                Application.OpenURL("https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token");
-            }
-
+            // Step-by-step instructions
+            EditorGUILayout.LabelField("📋 Quick Setup (takes 2 minutes):", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
             EditorGUILayout.BeginVertical("box");
-            EditorGUILayout.LabelField("Required Token Permissions:", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Repository access: All repositories", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Contents: Read and write", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Metadata: Read", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Pages: Write (for deployment)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Step 1: Go to GitHub", EditorStyles.boldLabel);
+            if (GUILayout.Button("🌐 Open GitHub Settings", GUILayout.Height(35)))
+            {
+                Application.OpenURL("https://github.com/settings/personal-access-tokens/new");
+            }
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.LabelField("Step 2: Fill out the form", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Token name: Type 'Unreality3D Publishing'", EditorStyles.miniLabel);
+
+            // Expiration with tooltip
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("• Expiration: Choose '90 days' (Recommended)", EditorStyles.miniLabel);
+            if (GUILayout.Button("ⓘ"))
+            {
+                EditorUtility.DisplayDialog("Why 90 days?",
+                    "Setting an expiration date on personal access tokens is highly recommended as this helps keep your information secure.\n\n" +
+                    "GitHub will send you an email when it's time to renew a token that's about to expire.\n\n" +
+                    "Tokens that have expired can be regenerated, giving you a duplicate token with the same properties as the original.",
+                    "Got it!");
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // Repository access with tooltip
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("• Repository access: Select 'All repositories' (Most convenient)", EditorStyles.miniLabel);
+            if (GUILayout.Button("ⓘ"))
+            {
+                EditorUtility.DisplayDialog("Repository Access Explained",
+                    "This lets us create new repositories for your projects. We only create new ones - we never touch your existing repos.\n\n" +
+                    "Want to limit access? Choosing 'Selected Repositories' is fine!\n\n" +
+                    "You'll just need to manually add each new Unreality3D project to the token's access list before clicking 'Make It Live!'.\n\n" +
+                    "We'll let you know if you missed this step.",
+                    "Understood!");
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(3);
+
+            EditorGUILayout.LabelField("Step 3: Create and copy", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Click 'Generate token' at the bottom", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Copy the long code that appears", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Paste it below ⬇️", EditorStyles.miniLabel);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);
 
-            // Token input
-            EditorGUILayout.LabelField("GitHub Personal Access Token:", EditorStyles.boldLabel);
+            // Token input with friendly label
+            EditorGUILayout.LabelField("🔑 Paste your code here:", EditorStyles.boldLabel);
             githubToken = EditorGUILayout.PasswordField(githubToken);
+            EditorGUILayout.LabelField("(This stays private and secure on your computer)", EditorStyles.miniLabel);
 
             EditorGUILayout.Space(5);
 
@@ -160,9 +195,9 @@ namespace U3D.Editor
                 EditorGUILayout.Space(5);
             }
 
-            // Validate button
+            // Validate button with friendly text
             EditorGUI.BeginDisabledGroup(string.IsNullOrWhiteSpace(githubToken) || validatingToken);
-            if (GUILayout.Button(validatingToken ? "Validating..." : "Validate Token", GUILayout.Height(30)))
+            if (GUILayout.Button(validatingToken ? "🔄 Checking..." : "✅ Test Connection", GUILayout.Height(35)))
             {
                 ValidateGitHubToken();
             }
@@ -173,7 +208,7 @@ namespace U3D.Editor
             // Continue button (only show if validated)
             if (tokenValidated)
             {
-                if (GUILayout.Button("Continue to Publishing", GUILayout.Height(35)))
+                if (GUILayout.Button("🎉 All Set! Continue to Publishing", GUILayout.Height(40)))
                 {
                     currentState = AuthState.LoggedIn;
                     UpdateCompletion();
@@ -182,12 +217,12 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Skip button (for users who want to set up later)
-            if (GUILayout.Button("⏭️ Skip for Now (Setup Later)", EditorStyles.miniButton))
+            // Skip button for later setup
+            if (GUILayout.Button("⏭️ I'll Set This Up Later", EditorStyles.miniButton))
             {
-                if (EditorUtility.DisplayDialog("Skip GitHub Setup",
-                    "You can still use other features but won't be able to publish until you set up GitHub integration.\n\nContinue?",
-                    "Yes, Skip", "Cancel"))
+                if (EditorUtility.DisplayDialog("Setup Later?",
+                    "No problem! You can explore other features now.\n\nJust remember you'll need to come back here before you can publish your creations online.\n\nContinue?",
+                    "Yes, Skip for Now", "Wait, Let Me Finish"))
                 {
                     currentState = AuthState.LoggedIn;
                     UpdateCompletion();
@@ -198,7 +233,7 @@ namespace U3D.Editor
         private async void ValidateGitHubToken()
         {
             validatingToken = true;
-            validationMessage = "Validating token...";
+            validationMessage = "Testing your connection...";
 
             try
             {
@@ -207,25 +242,41 @@ namespace U3D.Editor
                 if (result.IsValid)
                 {
                     tokenValidated = true;
-                    validationMessage = $"✅ Token validated successfully for user: {result.Username}";
+                    validationMessage = $"🎉 Perfect! Connected to GitHub as {result.Username}";
 
                     // Also check repository permissions
                     bool hasRepoPermissions = await GitHubTokenManager.CheckRepositoryPermissions();
                     if (!hasRepoPermissions)
                     {
-                        validationMessage += "\n\n⚠️ Warning: Token may not have sufficient repository permissions.";
+                        validationMessage += "\n\n⚠️ Heads up: Your code might not have all the permissions we need. If publishing doesn't work, try creating a new code with the steps above.";
                     }
                 }
                 else
                 {
                     tokenValidated = false;
-                    validationMessage = $"❌ {result.ErrorMessage}";
+
+                    // Make error messages more user-friendly
+                    string friendlyError = result.ErrorMessage;
+                    if (friendlyError.Contains("Bad credentials"))
+                    {
+                        friendlyError = "The code you entered doesn't seem to work. Please double-check you copied it correctly, or try creating a new one.";
+                    }
+                    else if (friendlyError.Contains("rate limit"))
+                    {
+                        friendlyError = "GitHub is busy right now. Please wait a minute and try again.";
+                    }
+                    else if (friendlyError.Contains("Forbidden"))
+                    {
+                        friendlyError = "This code doesn't have the right permissions. Please create a new one following the steps above.";
+                    }
+
+                    validationMessage = $"❌ {friendlyError}";
                 }
             }
             catch (Exception ex)
             {
                 tokenValidated = false;
-                validationMessage = $"❌ Validation failed: {ex.Message}";
+                validationMessage = $"❌ Something went wrong: {ex.Message}\n\nPlease check your internet connection and try again.";
             }
             finally
             {
@@ -265,13 +316,13 @@ namespace U3D.Editor
             if (!GitHubTokenManager.HasValidToken)
             {
                 EditorGUILayout.HelpBox(
-                    "🔗 GitHub Integration Required\n\n" +
-                    "To publish your projects, you need to set up GitHub integration.",
+                    "🚀 Almost Ready to Publish!\n\n" +
+                    "Connect to GitHub so we can put your creations online automatically.",
                     MessageType.Warning);
 
                 EditorGUILayout.Space(5);
 
-                if (GUILayout.Button("🔗 Set Up GitHub Integration", GUILayout.Height(30)))
+                if (GUILayout.Button("🔗 Connect to GitHub", GUILayout.Height(30)))
                 {
                     currentState = AuthState.GitHubSetup;
                 }
