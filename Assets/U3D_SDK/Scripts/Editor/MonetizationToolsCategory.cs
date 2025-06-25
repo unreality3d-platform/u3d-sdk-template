@@ -16,6 +16,7 @@ namespace U3D.Editor
                 new CreatorTool("🚧 Add Shop Object", "3D world PayPal shop with multiple items", () => Debug.Log("Applied Shop Object"), true),
                 new CreatorTool("🚧 Add Screen Shop", "Screen overlay PayPal shop interface", () => Debug.Log("Applied Screen Shop")),
                 new CreatorTool("🚧 Add Purchase Button", "Single item PayPal purchase button", () => Debug.Log("Applied Purchase Button"), true),
+                new CreatorTool("🚧 Add Tip Jar", "Accept donations from visitors to support your work", () => Debug.Log("Applied Tip Jar"), true),
                 new CreatorTool("🚧 Add Event Gate", "Timed event access with PayPal payment", () => Debug.Log("Applied Event Gate"), true),
                 new CreatorTool("🚧 Add Scene Gate", "Scene entry payment gate with PayPal", () => Debug.Log("Applied Scene Gate"), true)
             };
