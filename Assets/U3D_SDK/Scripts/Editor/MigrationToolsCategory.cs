@@ -13,10 +13,10 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
-                new CreatorTool("Remove Placeholder Components", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
-                new CreatorTool("Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
-                new CreatorTool("Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder)
+                new CreatorTool("🟢 Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
+                new CreatorTool("🟢 Remove Placeholder Components", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
+                new CreatorTool("🟢 Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
+                new CreatorTool("🟢 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder)
             };
         }
 

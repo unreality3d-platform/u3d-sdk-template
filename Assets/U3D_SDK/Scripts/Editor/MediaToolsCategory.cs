@@ -13,11 +13,11 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Add Video Player Object", "Stream videos from URLs in your world", () => Debug.Log("Applied Video Player Object"), true),
-                new CreatorTool("Add Audio Trigger", "Sounds that play on player interaction", () => Debug.Log("Applied Audio Trigger"), true),
-                new CreatorTool("Add Screenshare Object", "Share desktop screens within your experience", () => Debug.Log("Applied Screenshare Object"), true),
-                new CreatorTool("Add Image Gallery", "Display rotating image collections", () => Debug.Log("Applied Image Gallery"), true),
-                new CreatorTool("Add Text Display", "Dynamic text that can be updated", () => Debug.Log("Applied Text Display"), true)
+                new CreatorTool("🚧 Add Video Player Object", "Stream videos from URLs in your world", () => Debug.Log("Applied Video Player Object"), true),
+                new CreatorTool("🚧 Add Audio Trigger", "Sounds that play on player interaction", () => Debug.Log("Applied Audio Trigger"), true),
+                new CreatorTool("🚧 Add Screenshare Object", "Share desktop screens within your experience", () => Debug.Log("Applied Screenshare Object"), true),
+                new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => Debug.Log("Applied Image Gallery"), true),
+                new CreatorTool("🚧 Add Text Display", "Dynamic text that can be updated", () => Debug.Log("Applied Text Display"), true)
             };
         }
 
