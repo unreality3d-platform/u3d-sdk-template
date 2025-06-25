@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using UnityEditor;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace U3D.Editor
 {
@@ -15,6 +17,8 @@ namespace U3D.Editor
         private bool projectSaved = false;
         private bool deploymentComplete = false;
         private Vector2 scrollPosition;
+        private string currentStatus = "";
+        private bool isPublishing = false;
 
         private enum PublishStep
         {
@@ -40,16 +44,15 @@ namespace U3D.Editor
 
         private void ResetPublishState()
         {
-            // Clear all publish-related EditorPrefs
             EditorPrefs.DeleteKey("U3D_PublishedURL");
-
-            // Reset internal state
             publishUrl = "";
             githubConnected = false;
             projectSaved = false;
             deploymentComplete = false;
             currentStep = PublishStep.Ready;
             IsComplete = false;
+            currentStatus = "";
+            isPublishing = false;
 
             Debug.Log("Publish state reset - ready to publish again");
         }
@@ -64,27 +67,28 @@ namespace U3D.Editor
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
-            if (currentStep == PublishStep.Ready)
+            // Check prerequisites
+            if (!CanPublish())
             {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("Ready to go live?", EditorStyles.boldLabel);
-                EditorGUILayout.LabelField("This will:", EditorStyles.label);
-                EditorGUILayout.LabelField("• Connect to online storage", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField("• Save your project safely", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField("• Make it live on the internet", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField("• Give you a URL to share", EditorStyles.miniLabel);
-                EditorGUILayout.Space(10);
-
-                if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
-                {
-                    StartPublishProcess();
-                }
-                EditorGUILayout.EndVertical();
+                DrawPrerequisites();
+            }
+            else if (currentStep == PublishStep.Ready && !isPublishing)
+            {
+                DrawReadyToPublish();
             }
 
             EditorGUILayout.Space(10);
 
-            DrawPublishingSteps();
+            if (isPublishing || currentStep != PublishStep.Ready)
+            {
+                DrawPublishingSteps();
+            }
+
+            if (!string.IsNullOrEmpty(currentStatus))
+            {
+                EditorGUILayout.Space(5);
+                EditorGUILayout.HelpBox(currentStatus, MessageType.Info);
+            }
 
             if (currentStep == PublishStep.Complete)
             {
@@ -94,28 +98,84 @@ namespace U3D.Editor
             EditorGUILayout.EndScrollView();
         }
 
+        private bool CanPublish()
+        {
+            return U3DAuthenticator.IsLoggedIn &&
+                   !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername) &&
+                   GitHubTokenManager.HasValidToken;
+        }
+
+        private void DrawPrerequisites()
+        {
+            EditorGUILayout.LabelField("Prerequisites", EditorStyles.boldLabel);
+            EditorGUILayout.Space(5);
+
+            if (!U3DAuthenticator.IsLoggedIn)
+            {
+                EditorGUILayout.HelpBox("❌ Please complete authentication in the Setup tab first.", MessageType.Warning);
+                if (GUILayout.Button("Go to Setup Tab"))
+                {
+                    OnRequestTabSwitch?.Invoke(0);
+                }
+            }
+            else if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                EditorGUILayout.HelpBox("❌ Please reserve your creator username in the Setup tab first.", MessageType.Warning);
+                if (GUILayout.Button("Go to Setup Tab"))
+                {
+                    OnRequestTabSwitch?.Invoke(0);
+                }
+            }
+            else if (!GitHubTokenManager.HasValidToken)
+            {
+                EditorGUILayout.HelpBox("❌ GitHub token not configured. Please set up your GitHub token in the Setup tab.", MessageType.Warning);
+                if (GUILayout.Button("Go to Setup Tab"))
+                {
+                    OnRequestTabSwitch?.Invoke(0);
+                }
+            }
+        }
+
+        private void DrawReadyToPublish()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Ready to go live?", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("This will:", EditorStyles.label);
+            EditorGUILayout.LabelField("• Create a GitHub repository for your project", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Build your Unity project for WebGL", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Deploy to GitHub Pages", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Generate your professional URL", EditorStyles.miniLabel);
+            EditorGUILayout.Space(10);
+
+            if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
+            {
+                StartRealPublishProcess();
+            }
+            EditorGUILayout.EndVertical();
+        }
+
         private void DrawPublishingSteps()
         {
             EditorGUILayout.LabelField("Publishing Progress", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            DrawStep("Set Up Publishing",
+            DrawStep("GitHub Repository",
                 githubConnected,
                 currentStep == PublishStep.ConnectingGitHub,
-                "✓ Ready to publish your project",
-                "🔗 Setting up publishing...");
+                "✓ GitHub repository created",
+                "🔗 Creating GitHub repository...");
 
-            DrawStep("Save Your Project",
+            DrawStep("Unity WebGL Build",
                 projectSaved,
                 currentStep == PublishStep.SavingProject,
-                "✓ Project saved safely",
-                "💾 Saving your project...");
+                "✓ Unity project built successfully",
+                "🔨 Building Unity WebGL project...");
 
-            DrawStep("Make It Live",
+            DrawStep("Deploy to Web",
                 deploymentComplete,
                 currentStep == PublishStep.MakingLive,
                 "✓ Your content is now live!",
-                "🚀 Making it live on the internet...");
+                "🚀 Deploying to GitHub Pages...");
         }
 
         private void DrawStep(string stepName, bool isComplete, bool isActive, string completeMessage, string activeMessage)
@@ -142,52 +202,181 @@ namespace U3D.Editor
             EditorGUILayout.Space(3);
         }
 
-        private async void StartPublishProcess()
+        private async void StartRealPublishProcess()
         {
+            isPublishing = true;
+
             try
             {
+                // Step 1: Create GitHub Repository
                 currentStep = PublishStep.ConnectingGitHub;
-                await SimulateGitHubConnection();
+                currentStatus = "Creating GitHub repository...";
+
+                var repoResult = await CreateGitHubRepository();
+                if (!repoResult.Success)
+                {
+                    throw new System.Exception(repoResult.ErrorMessage);
+                }
+
                 githubConnected = true;
+                currentStatus = $"Repository created: {repoResult.RepositoryName}";
 
+                // Step 2: Build Unity WebGL Project
                 currentStep = PublishStep.SavingProject;
-                await SimulateProjectSave();
-                projectSaved = true;
+                currentStatus = "Building Unity WebGL project...";
 
+                var buildResult = await BuildUnityProject(repoResult.LocalPath);
+                if (!buildResult.Success)
+                {
+                    throw new System.Exception(buildResult.ErrorMessage);
+                }
+
+                projectSaved = true;
+                currentStatus = "Unity build completed successfully";
+
+                // Step 3: Deploy to GitHub Pages
                 currentStep = PublishStep.MakingLive;
-                await SimulateDeployment();
+                currentStatus = "Deploying to GitHub Pages...";
+
+                var deployResult = await DeployToGitHub(repoResult.LocalPath, repoResult.CloneUrl);
+                if (!deployResult.Success)
+                {
+                    throw new System.Exception(deployResult.ErrorMessage);
+                }
+
                 deploymentComplete = true;
 
+                // Complete
                 currentStep = PublishStep.Complete;
                 IsComplete = true;
 
-                var creatorUsername = U3DAuthenticator.CreatorUsername ?? "your-username";
-                var projectName = Application.productName.ToLower().Replace(" ", "-");
+                var creatorUsername = U3DAuthenticator.CreatorUsername;
+                var projectName = GitHubAPI.SanitizeRepositoryName(Application.productName);
                 publishUrl = $"https://{creatorUsername}.unreality3d.com/{projectName}/";
                 EditorPrefs.SetString("U3D_PublishedURL", publishUrl);
 
+                currentStatus = "Publishing completed successfully!";
             }
             catch (System.Exception ex)
             {
                 Debug.LogError($"Publishing failed: {ex.Message}");
                 EditorUtility.DisplayDialog("Publishing Failed", $"There was an error: {ex.Message}", "OK");
+
                 currentStep = PublishStep.Ready;
+                currentStatus = $"Publishing failed: {ex.Message}";
+
+                // Reset states
+                githubConnected = false;
+                projectSaved = false;
+                deploymentComplete = false;
+            }
+            finally
+            {
+                isPublishing = false;
             }
         }
 
-        private async System.Threading.Tasks.Task SimulateGitHubConnection()
+        private async Task<GitHubRepositoryCreationResult> CreateGitHubRepository()
         {
-            await System.Threading.Tasks.Task.Delay(2000);
+            // Generate unique repository name
+            var baseName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+            var uniqueName = await GitHubAPI.GenerateUniqueRepositoryName(baseName);
+
+            // Create repository from template
+            var repoResult = await GitHubAPI.CopyFromTemplate(uniqueName, $"Unity WebGL project: {Application.productName}");
+
+            if (!repoResult.Success)
+            {
+                return new GitHubRepositoryCreationResult
+                {
+                    Success = false,
+                    ErrorMessage = repoResult.ErrorMessage
+                };
+            }
+
+            // Create local working directory
+            var projectPath = Path.GetDirectoryName(Application.dataPath);
+            var localRepoPath = Path.Combine(projectPath, $"{uniqueName}-repo");
+
+            return new GitHubRepositoryCreationResult
+            {
+                Success = true,
+                RepositoryName = uniqueName,
+                CloneUrl = repoResult.CloneUrl,
+                LocalPath = localRepoPath
+            };
         }
 
-        private async System.Threading.Tasks.Task SimulateProjectSave()
+        private async Task<UnityBuildResult> BuildUnityProject(string outputPath)
         {
-            await System.Threading.Tasks.Task.Delay(3000);
+            // Validate build requirements
+            if (!UnityBuildHelper.ValidateBuildRequirements())
+            {
+                return new UnityBuildResult
+                {
+                    Success = false,
+                    ErrorMessage = "Build requirements not met. Please check the Console for details."
+                };
+            }
+
+            // Build WebGL
+            var buildResult = await UnityBuildHelper.BuildWebGL(outputPath, (status) =>
+            {
+                currentStatus = status;
+            });
+
+            return buildResult;
         }
 
-        private async System.Threading.Tasks.Task SimulateDeployment()
+        private async Task<GitOperationResult> DeployToGitHub(string localPath, string cloneUrl)
         {
-            await System.Threading.Tasks.Task.Delay(4000);
+            // Check if git is available
+            if (!await GitIntegration.IsGitAvailable())
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = "Git is not installed or not available in PATH. Please install Git to continue."
+                };
+            }
+
+            // Initialize git repository
+            var initResult = await GitIntegration.InitializeRepository(localPath);
+            if (!initResult.Success)
+            {
+                return initResult;
+            }
+
+            // Set up git user
+            var username = GitHubTokenManager.GitHubUsername ?? "Unity User";
+            var email = U3DAuthenticator.UserEmail ?? "user@example.com";
+            await GitIntegration.SetupGitUser(localPath, username, email);
+
+            // Add remote origin
+            var remoteResult = await GitIntegration.AddRemoteOrigin(localPath, cloneUrl);
+            if (!remoteResult.Success)
+            {
+                return remoteResult;
+            }
+
+            // Add all files
+            var addResult = await GitIntegration.AddAllFiles(localPath);
+            if (!addResult.Success)
+            {
+                return addResult;
+            }
+
+            // Commit changes
+            var commitMessage = $"Initial Unity WebGL build for {Application.productName}";
+            var commitResult = await GitIntegration.CommitChanges(localPath, commitMessage);
+            if (!commitResult.Success)
+            {
+                return commitResult;
+            }
+
+            // Push to GitHub
+            var pushResult = await GitIntegration.PushToRemote(localPath, "main");
+            return pushResult;
         }
 
         private void DrawSuccessSection()
@@ -238,5 +427,15 @@ namespace U3D.Editor
 
             EditorGUILayout.EndVertical();
         }
+    }
+
+    [System.Serializable]
+    public class GitHubRepositoryCreationResult
+    {
+        public bool Success { get; set; }
+        public string RepositoryName { get; set; }
+        public string CloneUrl { get; set; }
+        public string LocalPath { get; set; }
+        public string ErrorMessage { get; set; }
     }
 }

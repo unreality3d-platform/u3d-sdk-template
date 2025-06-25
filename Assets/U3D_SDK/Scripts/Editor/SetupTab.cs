@@ -20,7 +20,8 @@ namespace U3D.Editor
             ManualLogin,
             ManualRegister,
             LoggedIn,
-            UsernameReservation
+            UsernameReservation,
+            GitHubSetup
         }
 
         private AuthState currentState = AuthState.MethodSelection;
@@ -45,6 +46,12 @@ namespace U3D.Editor
         private string[] usernameSuggestions = new string[0];
         private bool reservingUsername = false;
 
+        // GitHub token setup
+        private string githubToken = "";
+        private bool validatingToken = false;
+        private bool tokenValidated = false;
+        private string validationMessage = "";
+
         private bool showOnStartup = true;
 
         public void Initialize()
@@ -56,6 +63,10 @@ namespace U3D.Editor
                 if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                 {
                     currentState = AuthState.UsernameReservation;
+                }
+                else if (!GitHubTokenManager.HasValidToken)
+                {
+                    currentState = AuthState.GitHubSetup;
                 }
                 else
                 {
@@ -91,17 +102,231 @@ namespace U3D.Editor
                 case AuthState.ManualRegister:
                     DrawManualRegister();
                     break;
-                case AuthState.LoggedIn:
-                    DrawLoggedIn();
-                    break;
                 case AuthState.UsernameReservation:
                     DrawUsernameReservation();
+                    break;
+                case AuthState.GitHubSetup:
+                    DrawGitHubSetup();
+                    break;
+                case AuthState.LoggedIn:
+                    DrawLoggedIn();
                     break;
             }
 
             EditorGUILayout.EndVertical();
         }
 
+        private void DrawGitHubSetup()
+        {
+            EditorGUILayout.LabelField("🔗 GitHub Integration Setup", EditorStyles.boldLabel);
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.HelpBox(
+                "To publish your Unity projects, you need a GitHub Personal Access Token.\n\n" +
+                "This allows the Unity SDK to create repositories and deploy your content automatically.",
+                MessageType.Info);
+
+            EditorGUILayout.Space(10);
+
+            // Instructions section
+            if (GUILayout.Button("📋 How to Create a GitHub Token", EditorStyles.linkLabel))
+            {
+                Application.OpenURL("https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token");
+            }
+
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Required Token Permissions:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Repository access: All repositories", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Contents: Read and write", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Metadata: Read", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Pages: Write (for deployment)", EditorStyles.miniLabel);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
+
+            // Token input
+            EditorGUILayout.LabelField("GitHub Personal Access Token:", EditorStyles.boldLabel);
+            githubToken = EditorGUILayout.PasswordField(githubToken);
+
+            EditorGUILayout.Space(5);
+
+            // Validation section
+            if (!string.IsNullOrEmpty(validationMessage))
+            {
+                var messageType = tokenValidated ? MessageType.Info : MessageType.Warning;
+                EditorGUILayout.HelpBox(validationMessage, messageType);
+                EditorGUILayout.Space(5);
+            }
+
+            // Validate button
+            EditorGUI.BeginDisabledGroup(string.IsNullOrWhiteSpace(githubToken) || validatingToken);
+            if (GUILayout.Button(validatingToken ? "Validating..." : "Validate Token", GUILayout.Height(30)))
+            {
+                ValidateGitHubToken();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            EditorGUILayout.Space(10);
+
+            // Continue button (only show if validated)
+            if (tokenValidated)
+            {
+                if (GUILayout.Button("Continue to Publishing", GUILayout.Height(35)))
+                {
+                    currentState = AuthState.LoggedIn;
+                    UpdateCompletion();
+                }
+            }
+
+            EditorGUILayout.Space(10);
+
+            // Skip button (for users who want to set up later)
+            if (GUILayout.Button("⏭️ Skip for Now (Setup Later)", EditorStyles.miniButton))
+            {
+                if (EditorUtility.DisplayDialog("Skip GitHub Setup",
+                    "You can still use other features but won't be able to publish until you set up GitHub integration.\n\nContinue?",
+                    "Yes, Skip", "Cancel"))
+                {
+                    currentState = AuthState.LoggedIn;
+                    UpdateCompletion();
+                }
+            }
+        }
+
+        private async void ValidateGitHubToken()
+        {
+            validatingToken = true;
+            validationMessage = "Validating token...";
+
+            try
+            {
+                var result = await GitHubTokenManager.ValidateAndSetToken(githubToken);
+
+                if (result.IsValid)
+                {
+                    tokenValidated = true;
+                    validationMessage = $"✅ Token validated successfully for user: {result.Username}";
+
+                    // Also check repository permissions
+                    bool hasRepoPermissions = await GitHubTokenManager.CheckRepositoryPermissions();
+                    if (!hasRepoPermissions)
+                    {
+                        validationMessage += "\n\n⚠️ Warning: Token may not have sufficient repository permissions.";
+                    }
+                }
+                else
+                {
+                    tokenValidated = false;
+                    validationMessage = $"❌ {result.ErrorMessage}";
+                }
+            }
+            catch (Exception ex)
+            {
+                tokenValidated = false;
+                validationMessage = $"❌ Validation failed: {ex.Message}";
+            }
+            finally
+            {
+                validatingToken = false;
+            }
+        }
+
+        private void DrawLoggedIn()
+        {
+            EditorGUILayout.LabelField("✅ Setup Complete", EditorStyles.boldLabel);
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.BeginVertical("Box");
+            EditorGUILayout.LabelField($"👤 {U3DAuthenticator.DisplayName}", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField($"📧 {U3DAuthenticator.UserEmail}", EditorStyles.miniLabel);
+
+            if (!string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                EditorGUILayout.LabelField($"🔗 Username: {U3DAuthenticator.CreatorUsername}", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"🌐 URL: https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/", EditorStyles.miniLabel);
+            }
+
+            if (U3DAuthenticator.PayPalConnected)
+            {
+                EditorGUILayout.LabelField("💳 PayPal: Connected", EditorStyles.miniLabel);
+            }
+
+            if (GitHubTokenManager.HasValidToken)
+            {
+                EditorGUILayout.LabelField($"🔗 GitHub: Connected ({GitHubTokenManager.GitHubUsername})", EditorStyles.miniLabel);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
+
+            // GitHub setup section
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                EditorGUILayout.HelpBox(
+                    "🔗 GitHub Integration Required\n\n" +
+                    "To publish your projects, you need to set up GitHub integration.",
+                    MessageType.Warning);
+
+                EditorGUILayout.Space(5);
+
+                if (GUILayout.Button("🔗 Set Up GitHub Integration", GUILayout.Height(30)))
+                {
+                    currentState = AuthState.GitHubSetup;
+                }
+
+                EditorGUILayout.Space(10);
+            }
+
+            // PayPal connection option for email/password users
+            if (!U3DAuthenticator.PayPalConnected)
+            {
+                EditorGUILayout.HelpBox(
+                    "💡 Connect PayPal to enable monetization:\n" +
+                    "• Sell content (scenes, avatars, props, access)\n" +
+                    "• Receive payments directly to your account\n" +
+                    "• Keep 95% of your earnings",
+                    MessageType.Info);
+
+                EditorGUILayout.Space(5);
+
+                if (GUILayout.Button("🔗 Connect PayPal Account", GUILayout.Height(30)))
+                {
+                    StartPayPalLinking();
+                }
+
+                EditorGUILayout.Space(10);
+            }
+
+            // Management buttons
+            EditorGUILayout.BeginHorizontal();
+
+            if (GitHubTokenManager.HasValidToken && GUILayout.Button("⚙️ Update GitHub Token"))
+            {
+                currentState = AuthState.GitHubSetup;
+                githubToken = "";
+                tokenValidated = false;
+                validationMessage = "";
+            }
+
+            if (GUILayout.Button("🚪 Logout"))
+            {
+                if (EditorUtility.DisplayDialog("Logout Confirmation",
+                    "This will log you out and clear all stored credentials. Continue?",
+                    "Yes, Logout", "Cancel"))
+                {
+                    U3DAuthenticator.Logout();
+                    GitHubTokenManager.ClearToken();
+                    currentState = AuthState.MethodSelection;
+                    UpdateCompletion();
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // Keep all existing methods from original SetupTab.cs
         private void DrawMethodSelection()
         {
             EditorGUILayout.LabelField("Welcome to Unreality3D", EditorStyles.boldLabel);
@@ -338,57 +563,6 @@ namespace U3D.Editor
             }
         }
 
-        private void DrawLoggedIn()
-        {
-            EditorGUILayout.LabelField("✅ Authentication Complete", EditorStyles.boldLabel);
-            EditorGUILayout.Space(5);
-
-            EditorGUILayout.BeginVertical("Box");
-            EditorGUILayout.LabelField($"👤 {U3DAuthenticator.DisplayName}", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField($"📧 {U3DAuthenticator.UserEmail}", EditorStyles.miniLabel);
-
-            if (!string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-            {
-                EditorGUILayout.LabelField($"🔗 Username: {U3DAuthenticator.CreatorUsername}", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField($"🌐 URL: https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/", EditorStyles.miniLabel);
-            }
-
-            if (U3DAuthenticator.PayPalConnected)
-            {
-                EditorGUILayout.LabelField("💳 PayPal: Connected", EditorStyles.miniLabel);
-            }
-            EditorGUILayout.EndVertical();
-
-            EditorGUILayout.Space(10);
-
-            // PayPal connection option for email/password users
-            if (!U3DAuthenticator.PayPalConnected)
-            {
-                EditorGUILayout.HelpBox(
-                    "💡 Connect PayPal to enable monetization:\n" +
-                    "• Sell content (scenes, avatars, props, access)\n" +
-                    "• Receive payments directly to your account\n" +
-                    "• Keep 95% of your earnings",
-                    MessageType.Info);
-
-                EditorGUILayout.Space(5);
-
-                if (GUILayout.Button("🔗 Connect PayPal Account", GUILayout.Height(30)))
-                {
-                    StartPayPalLinking();
-                }
-
-                EditorGUILayout.Space(10);
-            }
-
-            if (GUILayout.Button("🚪 Logout"))
-            {
-                U3DAuthenticator.Logout();
-                currentState = AuthState.MethodSelection;
-                UpdateCompletion();
-            }
-        }
-
         private void DrawUsernameReservation()
         {
             EditorGUILayout.LabelField("🎯 Reserve Your Creator Username", EditorStyles.boldLabel);
@@ -478,10 +652,7 @@ namespace U3D.Editor
 
                 if (currentPayPalAuth.Success)
                 {
-                    // Open PayPal OAuth URL in browser
                     Application.OpenURL(currentPayPalAuth.AuthUrl);
-
-                    // Start polling for completion
                     currentState = AuthState.PayPalPolling;
                     isPollingPayPal = true;
                     authStartTime = Time.realtimeSinceStartup;
@@ -552,12 +723,15 @@ namespace U3D.Editor
                 {
                     if (result.Completed)
                     {
-                        // Authentication completed successfully
                         StopPayPalPolling();
 
                         if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                         {
                             currentState = AuthState.UsernameReservation;
+                        }
+                        else if (!GitHubTokenManager.HasValidToken)
+                        {
+                            currentState = AuthState.GitHubSetup;
                         }
                         else
                         {
@@ -570,11 +744,9 @@ namespace U3D.Editor
                             result.Message ?? "PayPal authentication completed successfully.",
                             "Awesome!");
                     }
-                    // If not completed, continue polling
                 }
                 else
                 {
-                    // Authentication failed
                     StopPayPalPolling();
                     currentState = AuthState.PayPalLogin;
 
@@ -586,7 +758,6 @@ namespace U3D.Editor
             catch (Exception ex)
             {
                 Debug.LogError($"PayPal polling error: {ex.Message}");
-                // Continue polling unless it's a critical error
             }
         }
 
@@ -596,7 +767,7 @@ namespace U3D.Editor
             currentPayPalAuth = null;
         }
 
-        // Manual authentication methods (existing implementation)
+        // Manual authentication methods
         private async void StartManualLogin()
         {
             try
@@ -607,6 +778,10 @@ namespace U3D.Editor
                     if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                     {
                         currentState = AuthState.UsernameReservation;
+                    }
+                    else if (!GitHubTokenManager.HasValidToken)
+                    {
+                        currentState = AuthState.GitHubSetup;
                     }
                     else
                     {
@@ -646,7 +821,7 @@ namespace U3D.Editor
             }
         }
 
-        // Username reservation methods (existing implementation)
+        // Username reservation methods
         private async void CheckUsernameAvailability()
         {
             checkingAvailability = true;
@@ -682,7 +857,14 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.ReserveUsername(desiredUsername);
                 if (success)
                 {
-                    currentState = AuthState.LoggedIn;
+                    if (!GitHubTokenManager.HasValidToken)
+                    {
+                        currentState = AuthState.GitHubSetup;
+                    }
+                    else
+                    {
+                        currentState = AuthState.LoggedIn;
+                    }
                     UpdateCompletion();
                     EditorUtility.DisplayDialog("Success!",
                         $"Username '{desiredUsername}' reserved successfully!\n\nYour professional URL: https://{desiredUsername}.unreality3d.com/",
@@ -707,7 +889,8 @@ namespace U3D.Editor
         {
             IsComplete = FirebaseConfigManager.IsConfigurationComplete() &&
                         U3DAuthenticator.IsLoggedIn &&
-                        !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername);
+                        !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername) &&
+                        GitHubTokenManager.HasValidToken;
         }
 
         private void EnsureFirebaseConfiguration()
@@ -729,35 +912,13 @@ namespace U3D.Editor
 
         private void OnEditorUpdate()
         {
-            // Handle PayPal polling in the Editor update loop
             if (isPollingPayPal && currentState == AuthState.PayPalPolling)
             {
-                // Polling is handled in DrawPayPalPolling method
-                // This ensures the UI refreshes during polling
-                if (EditorApplication.isPlaying == false) // Only repaint when not playing
+                if (EditorApplication.isPlaying == false)
                 {
                     EditorApplication.QueuePlayerLoopUpdate();
                 }
             }
         }
-    }
-
-    // Configuration data structure for JSON config file (existing)
-    [System.Serializable]
-    public class U3DConfiguration
-    {
-        public string productionApiKey;
-        public string productionAuthDomain;
-        public string productionProjectId;
-        public string productionStorageBucket;
-        public string productionMessagingSenderId;
-        public string productionAppId;
-
-        public string developmentApiKey;
-        public string developmentAuthDomain;
-        public string developmentProjectId;
-        public string developmentStorageBucket;
-        public string developmentMessagingSenderId;
-        public string developmentAppId;
     }
 }
