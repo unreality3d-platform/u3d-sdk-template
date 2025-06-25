@@ -137,12 +137,13 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Step 1: Go to GitHub", EditorStyles.boldLabel);
             if (GUILayout.Button("🌐 Open GitHub Settings", GUILayout.Height(35)))
             {
-                Application.OpenURL("https://github.com/settings/personal-access-tokens/new");
+                // Updated URL for classic tokens
+                Application.OpenURL("https://github.com/settings/tokens/new");
             }
             EditorGUILayout.Space(5);
 
             EditorGUILayout.LabelField("Step 2: Fill out the form", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Token name: Type 'Unreality3D Publishing'", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Note: Type in 'Unreality3D Publishing'", EditorStyles.miniLabel);
 
             // Expiration with tooltip
             EditorGUILayout.BeginHorizontal();
@@ -157,19 +158,10 @@ namespace U3D.Editor
             }
             EditorGUILayout.EndHorizontal();
 
-            // Repository access with tooltip
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("• Repository access: Select 'All repositories' (Most convenient)", EditorStyles.miniLabel);
-            if (GUILayout.Button("ⓘ"))
-            {
-                EditorUtility.DisplayDialog("Repository Access Explained",
-                    "This lets us create new repositories for your projects. We only create new ones - we never touch your existing repos.\n\n" +
-                    "Want to limit access? Choosing 'Selected Repositories' is fine!\n\n" +
-                    "You'll just need to manually add each new Unreality3D project to the token's access list before clicking 'Make It Live!'.\n\n" +
-                    "We'll let you know if you missed this step.",
-                    "Understood!");
-            }
-            EditorGUILayout.EndHorizontal();
+            // Updated scope instructions for classic tokens
+            EditorGUILayout.LabelField("• Scopes: Check these boxes:", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("  ✅ repo (Full control of private repositories)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("  ✅ workflow (Update GitHub Action workflows)", EditorStyles.miniLabel);
             EditorGUILayout.Space(3);
 
             EditorGUILayout.LabelField("Step 3: Create and copy", EditorStyles.boldLabel);

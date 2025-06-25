@@ -243,7 +243,7 @@ namespace U3D.Editor
         private static HttpClient CreateAuthenticatedClient()
         {
             var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {GitHubTokenManager.Token}");
+            client.DefaultRequestHeaders.Add("Authorization", $"token {GitHubTokenManager.Token}");
             client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
             client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
             client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");

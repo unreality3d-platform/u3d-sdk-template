@@ -49,7 +49,7 @@ namespace U3D.Editor
             {
                 using (var client = new HttpClient())
                 {
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+                    client.DefaultRequestHeaders.Add("Authorization", $"token {token}");
                     client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
                     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 
