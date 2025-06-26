@@ -111,7 +111,7 @@ namespace U3D.Editor
                     directPush.ErrorMessage.Contains("rejected") ||
                     directPush.ErrorMessage.Contains("Updates were rejected"))
                 {
-                    Debug.Log("Push rejected, attempting to fetch and merge remote changes...");
+                    UnityEngine.Debug.Log("Push rejected, attempting to fetch and merge remote changes...");
 
                     // Fetch remote changes
                     var fetchResult = await RunGitCommand(repositoryPath, "fetch origin");
@@ -136,7 +136,7 @@ namespace U3D.Editor
                         };
                     }
 
-                    Debug.Log("Successfully merged remote changes, attempting push again...");
+                    UnityEngine.Debug.Log("Successfully merged remote changes, attempting push again...");
 
                     // Now try push again
                     var finalPush = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
@@ -146,7 +146,7 @@ namespace U3D.Editor
                 // Handle other push failures (like missing branch)
                 if (directPush.ErrorMessage.Contains("src refspec"))
                 {
-                    Debug.Log("Branch doesn't exist, creating and pushing...");
+                    UnityEngine.Debug.Log("Branch doesn't exist, creating and pushing...");
                     await RunGitCommand(repositoryPath, $"checkout -b {branch}");
                     var retryPush = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
                     return retryPush;
