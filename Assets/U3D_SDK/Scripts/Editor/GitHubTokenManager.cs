@@ -179,7 +179,7 @@ namespace U3D.Editor
                     var keyId = keyData["key_id"].ToString();
 
                     // Step 2: Encrypt the secret value using libsodium-compatible encryption
-                    var encryptedValue = EncryptSecretValue(secretValue, publicKey);
+                    var encryptedValue = await EncryptSecretValue(secretValue, publicKey);
 
                     // Step 3: Set the repository secret
                     var secretData = new
@@ -270,9 +270,9 @@ namespace U3D.Editor
         }
 
         // Encrypt secret value using GitHub-compatible sealed box encryption
-        private static string EncryptSecretValue(string secretValue, string base64PublicKey)
+        private static async Task<string> EncryptSecretValue(string secretValue, string base64PublicKey)
         {
-            return GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
+            return await GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
         }
 
         public static void ClearToken()
