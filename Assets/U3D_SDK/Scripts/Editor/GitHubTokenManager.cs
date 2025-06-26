@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System;
+using System.Text;
 
 namespace U3D.Editor
 {
@@ -144,6 +145,136 @@ namespace U3D.Editor
             }
         }
 
+        // NEW: Unity licensing automation methods
+        public static async Task<bool> SetRepositorySecret(string repositoryName, string secretName, string secretValue)
+        {
+            if (!HasValidToken)
+            {
+                Debug.LogError("No valid GitHub token available for setting repository secrets");
+                return false;
+            }
+
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_githubToken}");
+                    client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
+                    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+                    client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+                    // Step 1: Get repository public key for encryption
+                    var publicKeyUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/public-key";
+                    var keyResponse = await client.GetAsync(publicKeyUrl);
+
+                    if (!keyResponse.IsSuccessStatusCode)
+                    {
+                        var keyError = await keyResponse.Content.ReadAsStringAsync();
+                        Debug.LogError($"Failed to get repository public key: {keyError}");
+                        return false;
+                    }
+
+                    var keyData = JsonConvert.DeserializeObject<Dictionary<string, object>>(await keyResponse.Content.ReadAsStringAsync());
+                    var publicKey = keyData["key"].ToString();
+                    var keyId = keyData["key_id"].ToString();
+
+                    // Step 2: Encrypt the secret value using libsodium-compatible encryption
+                    var encryptedValue = EncryptSecretValue(secretValue, publicKey);
+
+                    // Step 3: Set the repository secret
+                    var secretData = new
+                    {
+                        encrypted_value = encryptedValue,
+                        key_id = keyId
+                    };
+
+                    var json = JsonConvert.SerializeObject(secretData);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var secretUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/{secretName}";
+                    var secretResponse = await client.PutAsync(secretUrl, content);
+
+                    if (secretResponse.IsSuccessStatusCode)
+                    {
+                        Debug.Log($"Successfully set repository secret: {secretName}");
+                        return true;
+                    }
+                    else
+                    {
+                        var secretError = await secretResponse.Content.ReadAsStringAsync();
+                        Debug.LogError($"Failed to set repository secret {secretName}: {secretError}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error setting repository secret {secretName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static async Task<bool> SetupUnityRepositorySecrets(string repositoryName, UnityCredentials credentials)
+        {
+            if (credentials == null)
+            {
+                Debug.LogError("Unity credentials are null");
+                return false;
+            }
+
+            try
+            {
+                Debug.Log($"Setting up Unity repository secrets for: {repositoryName}");
+
+                // Set UNITY_EMAIL secret
+                if (!string.IsNullOrEmpty(credentials.Email))
+                {
+                    var emailResult = await SetRepositorySecret(repositoryName, "UNITY_EMAIL", credentials.Email);
+                    if (!emailResult)
+                    {
+                        Debug.LogError("Failed to set UNITY_EMAIL secret");
+                        return false;
+                    }
+                }
+
+                // Set UNITY_PASSWORD secret
+                if (!string.IsNullOrEmpty(credentials.Password))
+                {
+                    var passwordResult = await SetRepositorySecret(repositoryName, "UNITY_PASSWORD", credentials.Password);
+                    if (!passwordResult)
+                    {
+                        Debug.LogError("Failed to set UNITY_PASSWORD secret");
+                        return false;
+                    }
+                }
+
+                // Set UNITY_AUTHENTICATOR_KEY secret (optional for 2FA)
+                if (!string.IsNullOrEmpty(credentials.AuthenticatorKey))
+                {
+                    var authKeyResult = await SetRepositorySecret(repositoryName, "UNITY_AUTHENTICATOR_KEY", credentials.AuthenticatorKey);
+                    if (!authKeyResult)
+                    {
+                        Debug.LogWarning("Failed to set UNITY_AUTHENTICATOR_KEY secret (this is optional for 2FA)");
+                        // Don't return false here since 2FA key is optional
+                    }
+                }
+
+                Debug.Log("Unity repository secrets configured successfully");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error setting up Unity repository secrets: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Encrypt secret value using GitHub-compatible sealed box encryption
+        private static string EncryptSecretValue(string secretValue, string base64PublicKey)
+        {
+            return GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
+        }
+
         public static void ClearToken()
         {
             _githubToken = "";
@@ -185,5 +316,13 @@ namespace U3D.Editor
         public string Username { get; set; }
         public string Message { get; set; }
         public string ErrorMessage { get; set; }
+    }
+
+    [System.Serializable]
+    public class UnityCredentials
+    {
+        public string Email { get; set; }
+        public string Password { get; set; }
+        public string AuthenticatorKey { get; set; } // Optional for 2FA
     }
 }

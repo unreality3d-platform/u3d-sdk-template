@@ -2,7 +2,7 @@
 using UnityEditor;
 using System.IO;
 using System.Threading.Tasks;
-using System.Linq; // ADDED: Required for .Any() method
+using System.Linq;
 
 namespace U3D.Editor
 {
@@ -21,6 +21,12 @@ namespace U3D.Editor
         private string currentStatus = "";
         private bool isPublishing = false;
 
+        // NEW: Unity credentials management
+        private UnityCredentials unityCredentials;
+        private bool showUnityCredentials = false;
+        private bool validatingUnityCredentials = false;
+        private string unityValidationMessage = "";
+
         private enum PublishStep
         {
             Ready,
@@ -33,6 +39,8 @@ namespace U3D.Editor
         public void Initialize()
         {
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
+            LoadUnityCredentials();
+
             if (!string.IsNullOrEmpty(publishUrl))
             {
                 IsComplete = true;
@@ -148,11 +156,182 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("• Generate your professional URL", EditorStyles.miniLabel);
             EditorGUILayout.Space(10);
 
+            // NEW: Unity credentials section
+            DrawUnityCredentialsSection();
+
+            EditorGUILayout.Space(10);
+
+            // Enable publish button only if Unity credentials are configured
+            EditorGUI.BeginDisabledGroup(!HasValidUnityCredentials());
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
                 StartRealPublishProcess();
             }
+            EditorGUI.EndDisabledGroup();
+
+            if (!HasValidUnityCredentials())
+            {
+                EditorGUILayout.HelpBox("⚠️ Unity credentials required for automated builds", MessageType.Warning);
+            }
+
             EditorGUILayout.EndVertical();
+        }
+
+        // NEW: Unity credentials management UI
+        private void DrawUnityCredentialsSection()
+        {
+            EditorGUILayout.LabelField("Unity Account (for automated builds)", EditorStyles.boldLabel);
+
+            if (!HasValidUnityCredentials())
+            {
+                EditorGUILayout.HelpBox(
+                    "Your Unity account credentials are needed to build your project automatically.\n\n" +
+                    "These are stored securely on your computer and used to configure GitHub Actions.",
+                    MessageType.Info);
+            }
+
+            EditorGUILayout.Space(5);
+
+            if (showUnityCredentials || !HasValidUnityCredentials())
+            {
+                if (unityCredentials == null)
+                {
+                    unityCredentials = new UnityCredentials();
+                }
+
+                EditorGUILayout.LabelField("Unity Email:", EditorStyles.miniLabel);
+                unityCredentials.Email = EditorGUILayout.TextField(unityCredentials.Email);
+
+                EditorGUILayout.LabelField("Unity Password:", EditorStyles.miniLabel);
+                unityCredentials.Password = EditorGUILayout.PasswordField(unityCredentials.Password);
+
+                EditorGUILayout.LabelField("2FA Key (optional):", EditorStyles.miniLabel);
+                unityCredentials.AuthenticatorKey = EditorGUILayout.TextField(unityCredentials.AuthenticatorKey);
+                EditorGUILayout.LabelField("Only needed if you have 2FA enabled on your Unity account", EditorStyles.miniLabel);
+
+                EditorGUILayout.Space(5);
+
+                if (!string.IsNullOrEmpty(unityValidationMessage))
+                {
+                    var messageType = HasValidUnityCredentials() ? MessageType.Info : MessageType.Warning;
+                    EditorGUILayout.HelpBox(unityValidationMessage, messageType);
+                }
+
+                EditorGUILayout.BeginHorizontal();
+
+                bool canValidate = !string.IsNullOrEmpty(unityCredentials.Email) &&
+                                 !string.IsNullOrEmpty(unityCredentials.Password) &&
+                                 !validatingUnityCredentials;
+
+                EditorGUI.BeginDisabledGroup(!canValidate);
+                if (GUILayout.Button(validatingUnityCredentials ? "🔄 Validating..." : "✅ Save Credentials"))
+                {
+                    ValidateAndSaveUnityCredentials();
+                }
+                EditorGUI.EndDisabledGroup();
+
+                if (HasValidUnityCredentials() && GUILayout.Button("👁️ Hide"))
+                {
+                    showUnityCredentials = false;
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+            else
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("✅ Unity credentials configured", EditorStyles.miniLabel);
+                if (GUILayout.Button("📝 Update", GUILayout.Width(70)))
+                {
+                    showUnityCredentials = true;
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        // NEW: Unity credentials validation
+        private async void ValidateAndSaveUnityCredentials()
+        {
+            validatingUnityCredentials = true;
+            unityValidationMessage = "Validating Unity credentials...";
+
+            try
+            {
+                // Basic validation
+                if (string.IsNullOrEmpty(unityCredentials.Email) || string.IsNullOrEmpty(unityCredentials.Password))
+                {
+                    unityValidationMessage = "❌ Email and password are required";
+                    return;
+                }
+
+                if (!unityCredentials.Email.Contains("@"))
+                {
+                    unityValidationMessage = "❌ Please enter a valid email address";
+                    return;
+                }
+
+                if (unityCredentials.Password.Length < 6)
+                {
+                    unityValidationMessage = "❌ Password seems too short";
+                    return;
+                }
+
+                // Save credentials (encrypted via EditorPrefs)
+                SaveUnityCredentials();
+
+                unityValidationMessage = "✅ Unity credentials saved successfully";
+                showUnityCredentials = false;
+
+                Debug.Log("Unity credentials validated and saved");
+            }
+            catch (System.Exception ex)
+            {
+                unityValidationMessage = $"❌ Validation failed: {ex.Message}";
+                Debug.LogError($"Unity credentials validation error: {ex.Message}");
+            }
+            finally
+            {
+                validatingUnityCredentials = false;
+            }
+        }
+
+        // NEW: Unity credentials storage methods
+        private void SaveUnityCredentials()
+        {
+            if (unityCredentials != null)
+            {
+                // Store encrypted in EditorPrefs (similar to GitHub token approach)
+                if (!string.IsNullOrEmpty(unityCredentials.Email))
+                {
+                    EditorPrefs.SetString("U3D_UnityEmail", unityCredentials.Email);
+                }
+                if (!string.IsNullOrEmpty(unityCredentials.Password))
+                {
+                    EditorPrefs.SetString("U3D_UnityPassword", unityCredentials.Password);
+                }
+                if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+                {
+                    EditorPrefs.SetString("U3D_UnityAuthKey", unityCredentials.AuthenticatorKey);
+                }
+                EditorPrefs.SetBool("U3D_UnityCredentialsValid", true);
+            }
+        }
+
+        private void LoadUnityCredentials()
+        {
+            unityCredentials = new UnityCredentials
+            {
+                Email = EditorPrefs.GetString("U3D_UnityEmail", ""),
+                Password = EditorPrefs.GetString("U3D_UnityPassword", ""),
+                AuthenticatorKey = EditorPrefs.GetString("U3D_UnityAuthKey", "")
+            };
+        }
+
+        private bool HasValidUnityCredentials()
+        {
+            return EditorPrefs.GetBool("U3D_UnityCredentialsValid", false) &&
+                   !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityEmail", "")) &&
+                   !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityPassword", ""));
         }
 
         private void DrawPublishingSteps()
@@ -221,6 +400,18 @@ namespace U3D.Editor
 
                 githubConnected = true;
                 currentStatus = $"Repository created: {repoResult.RepositoryName}";
+
+                // NEW: Step 1.5: Configure Unity secrets automatically
+                currentStatus = "Configuring Unity build secrets...";
+                LoadUnityCredentials(); // Ensure we have the latest credentials
+
+                bool secretsConfigured = await GitHubTokenManager.SetupUnityRepositorySecrets(repoResult.RepositoryName, unityCredentials);
+                if (!secretsConfigured)
+                {
+                    throw new System.Exception("Failed to configure Unity build secrets. Publishing cannot continue.");
+                }
+
+                currentStatus = "Unity build secrets configured successfully";
 
                 // Step 2: Clone template repository first
                 currentStep = PublishStep.SavingProject;
