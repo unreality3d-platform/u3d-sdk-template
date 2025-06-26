@@ -222,11 +222,20 @@ namespace U3D.Editor
                 githubConnected = true;
                 currentStatus = $"Repository created: {repoResult.RepositoryName}";
 
-                // Step 2: Build Unity WebGL Project
+                // Step 2: Clone template repository first
                 currentStep = PublishStep.SavingProject;
+                currentStatus = "Cloning template repository...";
+
+                var cloneResult = await GitIntegration.CloneRepository(repoResult.CloneUrl, repoResult.LocalPath);
+                if (!cloneResult.Success)
+                {
+                    throw new System.Exception(cloneResult.ErrorMessage);
+                }
+
+                // Step 3: Build Unity WebGL Project directly into the repository
                 currentStatus = "Building Unity WebGL project...";
 
-                var buildResult = await BuildUnityProject(repoResult.LocalPath);
+                var buildResult = await BuildUnityProjectToRepository(repoResult.LocalPath);
                 if (!buildResult.Success)
                 {
                     throw new System.Exception(buildResult.ErrorMessage);
@@ -235,11 +244,11 @@ namespace U3D.Editor
                 projectSaved = true;
                 currentStatus = "Unity build completed successfully";
 
-                // Step 3: Deploy to GitHub Pages
+                // Step 4: Deploy to GitHub Pages
                 currentStep = PublishStep.MakingLive;
                 currentStatus = "Deploying to GitHub Pages...";
 
-                var deployResult = await DeployToGitHub(repoResult.LocalPath, repoResult.CloneUrl);
+                var deployResult = await FinalizeDeployment(repoResult.LocalPath);
                 if (!deployResult.Success)
                 {
                     throw new System.Exception(deployResult.ErrorMessage);
@@ -308,7 +317,7 @@ namespace U3D.Editor
             };
         }
 
-        private async Task<UnityBuildResult> BuildUnityProject(string outputPath)
+        private async Task<UnityBuildResult> BuildUnityProjectToRepository(string repositoryPath)
         {
             // Validate build requirements
             if (!UnityBuildHelper.ValidateBuildRequirements())
@@ -320,8 +329,9 @@ namespace U3D.Editor
                 };
             }
 
-            // Build WebGL
-            var buildResult = await UnityBuildHelper.BuildWebGL(outputPath, (status) =>
+            // Build WebGL directly to the repository's Build folder
+            var buildOutputPath = Path.Combine(repositoryPath, "Build");
+            var buildResult = await UnityBuildHelper.BuildWebGL(buildOutputPath, (status) =>
             {
                 currentStatus = status;
             });
@@ -329,73 +339,78 @@ namespace U3D.Editor
             return buildResult;
         }
 
-        private async Task<GitOperationResult> DeployToGitHub(string localPath, string cloneUrl)
+        private async Task<GitOperationResult> FinalizeDeployment(string localPath)
         {
-            // Check if git is available
-            if (!await GitIntegration.IsGitAvailable())
+            try
+            {
+                // Verify Unity build files exist in the repository
+                currentStatus = "Verifying Unity build files...";
+                var buildDirectory = Path.Combine(localPath, "Build");
+                if (!Directory.Exists(buildDirectory))
+                {
+                    return new GitOperationResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Unity build directory not found. Build may have failed."
+                    };
+                }
+
+                var webglFiles = Directory.GetFiles(buildDirectory, "*.*", SearchOption.AllDirectories);
+                if (!webglFiles.Any(f => f.EndsWith(".wasm") || f.EndsWith(".loader.js")))
+                {
+                    return new GitOperationResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Unity WebGL build files not found. Build may have failed."
+                    };
+                }
+
+                // Run unity-template-processor to replace organization content
+                currentStatus = "Processing Unity template and generating creator files...";
+                var processorResult = await RunUnityTemplateProcessor(localPath);
+                if (!processorResult.Success)
+                {
+                    return processorResult;
+                }
+
+                // Set up git user
+                var username = GitHubTokenManager.GitHubUsername ?? "Unity User";
+                var email = U3DAuthenticator.UserEmail ?? "user@example.com";
+                await GitIntegration.SetupGitUser(localPath, username, email);
+
+                // Add all files (including processed template and creator README)
+                currentStatus = "Committing files to repository...";
+                var addResult = await GitIntegration.AddAllFiles(localPath);
+                if (!addResult.Success)
+                {
+                    return addResult;
+                }
+
+                // Commit changes with creator-specific message
+                var creatorUsername = U3DAuthenticator.CreatorUsername;
+                var commitMessage = $"Creator content: {Application.productName} by {creatorUsername}";
+                var commitResult = await GitIntegration.CommitChanges(localPath, commitMessage);
+                if (!commitResult.Success)
+                {
+                    return commitResult;
+                }
+
+                // Push to GitHub (using enhanced PushToRemote with force handling)
+                currentStatus = "Pushing to GitHub Pages...";
+                var pushResult = await GitIntegration.PushToRemote(localPath, "main");
+                return pushResult;
+            }
+            catch (System.Exception ex)
             {
                 return new GitOperationResult
                 {
                     Success = false,
-                    ErrorMessage = "Git is not installed or not available in PATH. Please install Git to continue."
+                    ErrorMessage = $"Deployment finalization failed: {ex.Message}"
                 };
             }
-
-            // Clone the template repository first to get existing structure
-            currentStatus = "Cloning template repository...";
-            var cloneResult = await GitIntegration.CloneRepository(cloneUrl, localPath);
-            if (!cloneResult.Success)
-            {
-                return cloneResult;
-            }
-
-            // Copy Unity build files to the cloned repository
-            currentStatus = "Copying Unity build files...";
-            var unityBuildPath = GetUnityBuildPath();
-            if (!CopyUnityBuildFiles(unityBuildPath, localPath))
-            {
-                return new GitOperationResult
-                {
-                    Success = false,
-                    ErrorMessage = "Failed to copy Unity build files to repository"
-                };
-            }
-
-            // **CRITICAL: Run unity-template-processor to replace organization content**
-            currentStatus = "Processing Unity template and generating creator files...";
-            var processorResult = await RunUnityTemplateProcessor(localPath);
-            if (!processorResult.Success)
-            {
-                return processorResult;
-            }
-
-            // Set up git user
-            var username = GitHubTokenManager.GitHubUsername ?? "Unity User";
-            var email = U3DAuthenticator.UserEmail ?? "user@example.com";
-            await GitIntegration.SetupGitUser(localPath, username, email);
-
-            // Add all files (including processed template and creator README)
-            var addResult = await GitIntegration.AddAllFiles(localPath);
-            if (!addResult.Success)
-            {
-                return addResult;
-            }
-
-            // Commit changes with creator-specific message
-            var creatorUsername = U3DAuthenticator.CreatorUsername;
-            var commitMessage = $"Creator content: {Application.productName} by {creatorUsername}";
-            var commitResult = await GitIntegration.CommitChanges(localPath, commitMessage);
-            if (!commitResult.Success)
-            {
-                return commitResult;
-            }
-
-            // Push to GitHub (using enhanced PushToRemote with force handling)
-            var pushResult = await GitIntegration.PushToRemote(localPath, "main");
-            return pushResult;
         }
 
-        // SINGLE RunUnityTemplateProcessor method (runs processor from cloned repo)
+        // Unity template processor method (runs processor from cloned repo)
         private async Task<GitOperationResult> RunUnityTemplateProcessor(string repositoryPath)
         {
             try
@@ -504,73 +519,6 @@ namespace U3D.Editor
                     Success = false,
                     ErrorMessage = $"Template processor execution failed: {ex.Message}"
                 };
-            }
-        }
-
-        private string GetUnityBuildPath()
-        {
-            // Look for Unity WebGL build in common locations
-            var projectPath = Directory.GetParent(Application.dataPath).FullName;
-            var buildPaths = new[]
-            {
-                Path.Combine(projectPath, "Build"),
-                Path.Combine(projectPath, "WebGL"),
-                Path.Combine(projectPath, "WebGLBuild"),
-                Path.Combine(projectPath, "Builds", "WebGL")
-            };
-
-            foreach (var path in buildPaths)
-            {
-                if (Directory.Exists(path))
-                {
-                    // Check if this contains Unity WebGL files
-                    var files = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories);
-                    if (files.Any(f => f.EndsWith(".wasm") || f.EndsWith(".loader.js")))
-                    {
-                        return path;
-                    }
-                }
-            }
-
-            return Path.Combine(projectPath, "Build"); // Default
-        }
-
-        private bool CopyUnityBuildFiles(string sourcePath, string destinationPath)
-        {
-            try
-            {
-                var buildDestination = Path.Combine(destinationPath, "Build");
-
-                if (Directory.Exists(buildDestination))
-                {
-                    Directory.Delete(buildDestination, true);
-                }
-
-                Directory.CreateDirectory(buildDestination);
-
-                if (!Directory.Exists(sourcePath))
-                {
-                    Debug.LogError($"Unity build source path not found: {sourcePath}");
-                    return false;
-                }
-
-                // Copy all build files
-                foreach (var file in Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories))
-                {
-                    var relativePath = Path.GetRelativePath(sourcePath, file);
-                    var destFile = Path.Combine(buildDestination, relativePath);
-
-                    Directory.CreateDirectory(Path.GetDirectoryName(destFile));
-                    File.Copy(file, destFile, true);
-                }
-
-                Debug.Log($"Unity build files copied from {sourcePath} to {buildDestination}");
-                return true;
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Failed to copy Unity build files: {ex.Message}");
-                return false;
             }
         }
 

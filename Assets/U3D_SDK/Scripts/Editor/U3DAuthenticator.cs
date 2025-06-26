@@ -567,33 +567,78 @@ public static class U3DAuthenticator
                         measurementId = firebaseConfig.ContainsKey("measurementId") ? firebaseConfig["measurementId"].ToString() : ""
                     };
 
-                    // Set up development config as well
-                    var developmentConfig = new FirebaseEnvironmentConfig
+                    // Fetch development config from secure endpoint too
+                    var developmentConfig = new FirebaseEnvironmentConfig();
+
+                    try
                     {
-                        apiKey = "AIzaSyCKXaLA86md04yqv_xlno8ZW_ZhNqWaGzg",
-                        authDomain = "unreality3d2025.firebaseapp.com",
-                        projectId = "unreality3d2025",
-                        storageBucket = "unreality3d2025.firebasestorage.app",
-                        messagingSenderId = "244081840635",
-                        appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                        measurementId = "G-YXC3XB3PFL"
-                    };
+                        var devConfigUrl = "https://unreality3d2025.web.app/api/config";
+                        var devResponse = await client.GetAsync(devConfigUrl);
+
+                        if (devResponse.IsSuccessStatusCode)
+                        {
+                            var devConfigJson = await devResponse.Content.ReadAsStringAsync();
+                            var devFirebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(devConfigJson);
+
+                            developmentConfig = new FirebaseEnvironmentConfig
+                            {
+                                apiKey = devFirebaseConfig.ContainsKey("apiKey") ? devFirebaseConfig["apiKey"].ToString() : "setup-required",
+                                authDomain = "unreality3d2025.firebaseapp.com",
+                                projectId = "unreality3d2025",
+                                storageBucket = "unreality3d2025.firebasestorage.app",
+                                messagingSenderId = "244081840635",
+                                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                                measurementId = "G-YXC3XB3PFL"
+                            };
+                            Debug.Log("Development Firebase configuration loaded securely");
+                        }
+                        else
+                        {
+                            // Fallback if dev endpoint unavailable
+                            developmentConfig = new FirebaseEnvironmentConfig
+                            {
+                                apiKey = "setup-required", // No hardcoded keys
+                                authDomain = "unreality3d2025.firebaseapp.com",
+                                projectId = "unreality3d2025",
+                                storageBucket = "unreality3d2025.firebasestorage.app",
+                                messagingSenderId = "244081840635",
+                                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                                measurementId = "G-YXC3XB3PFL"
+                            };
+                            Debug.LogWarning("Development config endpoint unavailable, using fallback");
+                        }
+                    }
+                    catch (Exception devEx)
+                    {
+                        Debug.LogWarning($"Could not fetch development config: {devEx.Message}");
+                        // Safe fallback
+                        developmentConfig = new FirebaseEnvironmentConfig
+                        {
+                            apiKey = "setup-required", // No hardcoded keys
+                            authDomain = "unreality3d2025.firebaseapp.com",
+                            projectId = "unreality3d2025",
+                            storageBucket = "unreality3d2025.firebasestorage.app",
+                            messagingSenderId = "244081840635",
+                            appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                            measurementId = "G-YXC3XB3PFL"
+                        };
+                    }
 
                     FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
                     FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
 
-                    Debug.Log("Firebase configuration established dynamically");
+                    Debug.Log("Firebase configuration established securely - no hardcoded API keys");
                 }
                 else
                 {
-                    Debug.LogError($"Failed to fetch dynamic configuration: {response.StatusCode}");
-                    throw new Exception("Unable to establish Firebase configuration");
+                    Debug.LogError($"Failed to fetch secure configuration: {response.StatusCode}");
+                    throw new Exception("Unable to establish Firebase configuration securely");
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Configuration establishment failed: {ex.Message}");
+            Debug.LogError($"Secure configuration establishment failed: {ex.Message}");
             throw;
         }
     }
