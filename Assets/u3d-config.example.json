@@ -1,0 +1,8 @@
+{
+    "NOTE": "Configuration loaded securely at runtime",
+    "productionApiKey": "LOADED_FROM_SECURE_ENDPOINT",
+    "productionProjectId": "unreality3d", 
+    "developmentApiKey": "LOADED_FROM_SECURE_ENDPOINT",
+    "developmentProjectId": "unreality3d2025",
+    "securityInfo": "API keys fetched from https://unreality3d.web.app/api/config"
+}
