@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -129,7 +129,8 @@ namespace U3D.Editor
             {
                 using (var client = new HttpClient())
                 {
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_githubToken}");
+                    // FIXED: Use "token" instead of "Bearer"
+                    client.DefaultRequestHeaders.Add("Authorization", $"token {_githubToken}");
                     client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
                     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 
@@ -145,7 +146,7 @@ namespace U3D.Editor
             }
         }
 
-        // NEW: Unity licensing automation methods
+        // FIXED: Unity licensing automation methods with correct authorization
         public static async Task<bool> SetRepositorySecret(string repositoryName, string secretName, string secretValue)
         {
             if (!HasValidToken)
@@ -158,19 +159,24 @@ namespace U3D.Editor
             {
                 using (var client = new HttpClient())
                 {
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_githubToken}");
+                    // FIXED: Use "token" format consistently
+                    client.DefaultRequestHeaders.Add("Authorization", $"token {_githubToken}");
                     client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
                     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
                     client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
 
+                    Debug.Log($"Setting GitHub secret: {secretName} for repository: {repositoryName}");
+
                     // Step 1: Get repository public key for encryption
                     var publicKeyUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/public-key";
+                    Debug.Log($"Fetching public key from: {publicKeyUrl}");
+
                     var keyResponse = await client.GetAsync(publicKeyUrl);
 
                     if (!keyResponse.IsSuccessStatusCode)
                     {
                         var keyError = await keyResponse.Content.ReadAsStringAsync();
-                        Debug.LogError($"Failed to get repository public key: {keyError}");
+                        Debug.LogError($"Failed to get repository public key: {keyResponse.StatusCode} - {keyError}");
                         return false;
                     }
 
@@ -178,8 +184,12 @@ namespace U3D.Editor
                     var publicKey = keyData["key"].ToString();
                     var keyId = keyData["key_id"].ToString();
 
-                    // Step 2: Encrypt the secret value using libsodium-compatible encryption
+                    Debug.Log($"Retrieved public key successfully. Key ID: {keyId}");
+
+                    // Step 2: Encrypt the secret value using Firebase Cloud Function
+                    Debug.Log("Encrypting secret value...");
                     var encryptedValue = await EncryptSecretValue(secretValue, publicKey);
+                    Debug.Log("Secret encrypted successfully");
 
                     // Step 3: Set the repository secret
                     var secretData = new
@@ -192,24 +202,26 @@ namespace U3D.Editor
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                     var secretUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/{secretName}";
+                    Debug.Log($"Setting secret at: {secretUrl}");
+
                     var secretResponse = await client.PutAsync(secretUrl, content);
 
                     if (secretResponse.IsSuccessStatusCode)
                     {
-                        Debug.Log($"Successfully set repository secret: {secretName}");
+                        Debug.Log($"✅ Successfully set repository secret: {secretName}");
                         return true;
                     }
                     else
                     {
                         var secretError = await secretResponse.Content.ReadAsStringAsync();
-                        Debug.LogError($"Failed to set repository secret {secretName}: {secretError}");
+                        Debug.LogError($"❌ Failed to set repository secret {secretName}: {secretResponse.StatusCode} - {secretError}");
                         return false;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error setting repository secret {secretName}: {ex.Message}");
+                Debug.LogError($"❌ Error setting repository secret {secretName}: {ex.Message}");
                 return false;
             }
         }
@@ -224,47 +236,56 @@ namespace U3D.Editor
 
             try
             {
-                Debug.Log($"Setting up Unity repository secrets for: {repositoryName}");
+                Debug.Log($"🔧 Setting up Unity repository secrets for: {repositoryName}");
 
                 // Set UNITY_EMAIL secret
                 if (!string.IsNullOrEmpty(credentials.Email))
                 {
+                    Debug.Log("Setting UNITY_EMAIL secret...");
                     var emailResult = await SetRepositorySecret(repositoryName, "UNITY_EMAIL", credentials.Email);
                     if (!emailResult)
                     {
-                        Debug.LogError("Failed to set UNITY_EMAIL secret");
+                        Debug.LogError("❌ Failed to set UNITY_EMAIL secret");
                         return false;
                     }
+                    Debug.Log("✅ UNITY_EMAIL secret set successfully");
                 }
 
                 // Set UNITY_PASSWORD secret
                 if (!string.IsNullOrEmpty(credentials.Password))
                 {
+                    Debug.Log("Setting UNITY_PASSWORD secret...");
                     var passwordResult = await SetRepositorySecret(repositoryName, "UNITY_PASSWORD", credentials.Password);
                     if (!passwordResult)
                     {
-                        Debug.LogError("Failed to set UNITY_PASSWORD secret");
+                        Debug.LogError("❌ Failed to set UNITY_PASSWORD secret");
                         return false;
                     }
+                    Debug.Log("✅ UNITY_PASSWORD secret set successfully");
                 }
 
                 // Set UNITY_AUTHENTICATOR_KEY secret (optional for 2FA)
                 if (!string.IsNullOrEmpty(credentials.AuthenticatorKey))
                 {
+                    Debug.Log("Setting UNITY_AUTHENTICATOR_KEY secret...");
                     var authKeyResult = await SetRepositorySecret(repositoryName, "UNITY_AUTHENTICATOR_KEY", credentials.AuthenticatorKey);
                     if (!authKeyResult)
                     {
-                        Debug.LogWarning("Failed to set UNITY_AUTHENTICATOR_KEY secret (this is optional for 2FA)");
+                        Debug.LogWarning("⚠️ Failed to set UNITY_AUTHENTICATOR_KEY secret (this is optional for 2FA)");
                         // Don't return false here since 2FA key is optional
+                    }
+                    else
+                    {
+                        Debug.Log("✅ UNITY_AUTHENTICATOR_KEY secret set successfully");
                     }
                 }
 
-                Debug.Log("Unity repository secrets configured successfully");
+                Debug.Log("🎉 Unity repository secrets configured successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error setting up Unity repository secrets: {ex.Message}");
+                Debug.LogError($"❌ Error setting up Unity repository secrets: {ex.Message}");
                 return false;
             }
         }
@@ -272,7 +293,15 @@ namespace U3D.Editor
         // Encrypt secret value using GitHub-compatible sealed box encryption
         private static async Task<string> EncryptSecretValue(string secretValue, string base64PublicKey)
         {
-            return await GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
+            try
+            {
+                return await GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Secret encryption failed: {ex.Message}");
+                throw;
+            }
         }
 
         public static void ClearToken()
