@@ -14,6 +14,146 @@ namespace U3D.Editor
         private const string TEMPLATE_REPO_OWNER = "unreality3d-platform";
         private const string TEMPLATE_REPO_NAME = "u3d-sdk-template";
 
+        private static async Task<bool> CheckRateLimit()
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return false;
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var response = await client.GetAsync($"{GITHUB_API_BASE}/rate_limit");
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var rateLimit = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        var resources = JsonConvert.DeserializeObject<Dictionary<string, object>>(rateLimit["resources"].ToString());
+                        var core = JsonConvert.DeserializeObject<Dictionary<string, object>>(resources["core"].ToString());
+
+                        var remaining = int.Parse(core["remaining"].ToString());
+                        var resetTime = long.Parse(core["reset"].ToString());
+
+                        if (remaining < 5)
+                        {
+                            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            var waitTime = resetTime - currentTime;
+
+                            Debug.LogWarning($"GitHub API rate limit low: {remaining} requests remaining. Reset in {waitTime} seconds.");
+
+                            if (waitTime > 300) // Don't wait more than 5 minutes
+                            {
+                                return false;
+                            }
+                        }
+
+                        return remaining > 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Rate limit check failed: {ex.Message}");
+            }
+
+            return true; // Assume OK if check fails
+        }
+
+        // ENHANCE your CopyFromTemplate method with rate limiting:
+        public static async Task<GitHubRepositoryResult> CopyFromTemplate(string newRepositoryName, string description = "")
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = "No valid GitHub token available"
+                };
+            }
+
+            // Check rate limit before making API call
+            if (!await CheckRateLimit())
+            {
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = "GitHub API rate limit exceeded. Please wait and try again."
+                };
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    // Add timeout for long operations
+                    client.Timeout = TimeSpan.FromMinutes(2);
+
+                    var templateData = new
+                    {
+                        name = newRepositoryName,
+                        description = string.IsNullOrEmpty(description) ? $"Unity project created with Unreality3D SDK" : description,
+                        @private = false,
+                        include_all_branches = false
+                    };
+
+                    var json = JsonConvert.SerializeObject(templateData);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var templateUrl = $"{GITHUB_API_BASE}/repos/{TEMPLATE_REPO_OWNER}/{TEMPLATE_REPO_NAME}/generate";
+                    var response = await client.PostAsync(templateUrl, content);
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                        // Wait a moment for GitHub to finish repository setup
+                        await Task.Delay(2000);
+
+                        return new GitHubRepositoryResult
+                        {
+                            Success = true,
+                            RepositoryName = newRepositoryName,
+                            FullName = result.ContainsKey("full_name") ? result["full_name"].ToString() : $"{GitHubTokenManager.GitHubUsername}/{newRepositoryName}",
+                            CloneUrl = result.ContainsKey("clone_url") ? result["clone_url"].ToString() : "",
+                            SshUrl = result.ContainsKey("ssh_url") ? result["ssh_url"].ToString() : "",
+                            HtmlUrl = result.ContainsKey("html_url") ? result["html_url"].ToString() : "",
+                            Message = "Repository created from template successfully"
+                        };
+                    }
+                    else
+                    {
+                        var errorMessage = await ParseGitHubError(responseText);
+                        return new GitHubRepositoryResult
+                        {
+                            Success = false,
+                            ErrorMessage = errorMessage
+                        };
+                    }
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = "GitHub repository creation timed out. The repository may still be created - check your GitHub account."
+                };
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"GitHub template copy error: {ex.Message}");
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Template copy failed: {ex.Message}"
+                };
+            }
+        }
+
         public static async Task<GitHubRepositoryResult> CreateRepository(string repositoryName, string description = "")
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -79,73 +219,6 @@ namespace U3D.Editor
                 {
                     Success = false,
                     ErrorMessage = $"Repository creation failed: {ex.Message}"
-                };
-            }
-        }
-
-        public static async Task<GitHubRepositoryResult> CopyFromTemplate(string newRepositoryName, string description = "")
-        {
-            if (!GitHubTokenManager.HasValidToken)
-            {
-                return new GitHubRepositoryResult
-                {
-                    Success = false,
-                    ErrorMessage = "No valid GitHub token available"
-                };
-            }
-
-            try
-            {
-                using (var client = CreateAuthenticatedClient())
-                {
-                    var templateData = new
-                    {
-                        name = newRepositoryName,
-                        description = string.IsNullOrEmpty(description) ? $"Unity project created with Unreality3D SDK" : description,
-                        @private = false,
-                        include_all_branches = false
-                    };
-
-                    var json = JsonConvert.SerializeObject(templateData);
-                    var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                    var templateUrl = $"{GITHUB_API_BASE}/repos/{TEMPLATE_REPO_OWNER}/{TEMPLATE_REPO_NAME}/generate";
-                    var response = await client.PostAsync(templateUrl, content);
-                    var responseText = await response.Content.ReadAsStringAsync();
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-
-                        return new GitHubRepositoryResult
-                        {
-                            Success = true,
-                            RepositoryName = newRepositoryName,
-                            FullName = result.ContainsKey("full_name") ? result["full_name"].ToString() : $"{GitHubTokenManager.GitHubUsername}/{newRepositoryName}",
-                            CloneUrl = result.ContainsKey("clone_url") ? result["clone_url"].ToString() : "",
-                            SshUrl = result.ContainsKey("ssh_url") ? result["ssh_url"].ToString() : "",
-                            HtmlUrl = result.ContainsKey("html_url") ? result["html_url"].ToString() : "",
-                            Message = "Repository created from template successfully"
-                        };
-                    }
-                    else
-                    {
-                        var errorMessage = await ParseGitHubError(responseText);
-                        return new GitHubRepositoryResult
-                        {
-                            Success = false,
-                            ErrorMessage = errorMessage
-                        };
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"GitHub template copy error: {ex.Message}");
-                return new GitHubRepositoryResult
-                {
-                    Success = false,
-                    ErrorMessage = $"Template copy failed: {ex.Message}"
                 };
             }
         }

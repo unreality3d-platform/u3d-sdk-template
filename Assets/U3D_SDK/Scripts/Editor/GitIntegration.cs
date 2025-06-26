@@ -98,17 +98,62 @@ namespace U3D.Editor
         {
             try
             {
-                // First, try to set upstream and push
-                var result = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
+                // First attempt: try direct push
+                var directPush = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
 
-                if (!result.Success && result.ErrorMessage.Contains("src refspec"))
+                if (directPush.Success)
                 {
-                    // If branch doesn't exist, create it first
-                    await RunGitCommand(repositoryPath, $"checkout -b {branch}");
-                    result = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
+                    return directPush;
                 }
 
-                return result;
+                // If rejected due to divergent histories, fetch and merge
+                if (directPush.ErrorMessage.Contains("fetch first") ||
+                    directPush.ErrorMessage.Contains("rejected") ||
+                    directPush.ErrorMessage.Contains("Updates were rejected"))
+                {
+                    Debug.Log("Push rejected, attempting to fetch and merge remote changes...");
+
+                    // Fetch remote changes
+                    var fetchResult = await RunGitCommand(repositoryPath, "fetch origin");
+                    if (!fetchResult.Success)
+                    {
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = $"Failed to fetch from remote: {fetchResult.ErrorMessage}"
+                        };
+                    }
+
+                    // Try to merge remote changes with unrelated histories flag
+                    var mergeResult = await RunGitCommand(repositoryPath, $"merge origin/{branch} --allow-unrelated-histories --no-edit");
+                    if (!mergeResult.Success)
+                    {
+                        // If merge fails, it might be due to conflicts or other issues
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = $"Failed to merge remote changes. This usually means your project conflicts with template files. Error: {mergeResult.ErrorMessage}"
+                        };
+                    }
+
+                    Debug.Log("Successfully merged remote changes, attempting push again...");
+
+                    // Now try push again
+                    var finalPush = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
+                    return finalPush;
+                }
+
+                // Handle other push failures (like missing branch)
+                if (directPush.ErrorMessage.Contains("src refspec"))
+                {
+                    Debug.Log("Branch doesn't exist, creating and pushing...");
+                    await RunGitCommand(repositoryPath, $"checkout -b {branch}");
+                    var retryPush = await RunGitCommand(repositoryPath, $"push -u origin {branch}");
+                    return retryPush;
+                }
+
+                // Return original error if we can't handle it
+                return directPush;
             }
             catch (Exception ex)
             {

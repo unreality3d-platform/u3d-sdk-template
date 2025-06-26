@@ -408,8 +408,8 @@
             try {
                 // Get Firebase config from your secure endpoint
                 const configEndpoint = environment.isProduction
-                    ? 'https://unreality3d.web.app/api/getFirebaseConfig'
-                    : 'https://unreality3d2025.web.app/api/getFirebaseConfig';
+                    ? 'https://us-central1-unreality3d.cloudfunctions.net/getFirebaseConfig'
+                    : 'https://us-central1-unreality3d2025.cloudfunctions.net/getFirebaseConfig';
 
                 const response = await fetch(configEndpoint);
                 if (!response.ok) {

@@ -87,15 +87,218 @@ function processUnityTemplate() {
 }
 
 /**
- * Detects Unity WebGL build files automatically
+ * Generates creator-specific README.md file
+ */
+function generateCreatorReadme() {
+    try {
+        console.log('📝 Generating creator-specific README...');
+
+        // Load the creator README template
+        const readmeTemplate = `# {{{ PRODUCT_NAME }}}
+
+**Unity WebGL Experience by {{{ CREATOR_USERNAME }}}**
+
+🎮 **[Play Experience](https://{{{ CREATOR_USERNAME }}}.unreality3d.com/{{{ PROJECT_NAME }}}/)**
+
+---
+
+## About This Project
+
+This is an interactive Unity WebGL experience created using the [Unreality3D Platform](https://unreality3d.com).
+
+- **Creator**: {{{ CREATOR_USERNAME }}}
+- **Built with**: Unity 6+ WebGL
+- **Platform**: [Unreality3D](https://unreality3d.com)
+- **Deployment**: Automated via GitHub Actions
+
+## How to Play
+
+🎮 **Controls**: WASD to move, mouse to look around
+💰 **Monetization**: Supports PayPal payments for premium content
+🌐 **Professional URL**: https://{{{ CREATOR_USERNAME }}}.unreality3d.com/{{{ PROJECT_NAME }}}/
+
+---
+
+## Technical Details
+
+### Built With
+- **Unity**: 6+ WebGL
+- **Deployment**: GitHub Pages + Load Balancer
+- **Payments**: PayPal Business Integration
+- **Backend**: Firebase Functions
+- **Platform**: [Unreality3D SDK](https://github.com/unreality3d-platform/u3d-sdk-template)
+
+### Repository Structure
+\`\`\`
+├── Build/                 # Unity WebGL build files
+├── index.html            # Processed Unity template
+├── manifest.webmanifest  # PWA configuration
+├── sw.js                 # Service worker for caching
+└── README.md            # This file
+\`\`\`
+
+### Deployment Status
+- ✅ **Auto-deployed**: Push to main branch triggers deployment
+- ✅ **Professional URL**: Custom subdomain routing
+- ✅ **PayPal Ready**: Monetization system active
+- ✅ **Performance Optimized**: Brotli compression, caching, CDN
+
+---
+
+## For Developers
+
+### Local Development
+\`\`\`bash
+# Clone this repository
+git clone https://github.com/{{{ GITHUB_OWNER }}}/{{{ REPOSITORY_NAME }}}.git
+
+# Serve locally (requires local server)
+python -m http.server 8000
+# or
+npx serve .
+\`\`\`
+
+### Updating Content
+1. **Unity**: Modify project and build for WebGL
+2. **GitHub**: Push changes to trigger auto-deployment
+3. **Live**: Changes appear at professional URL automatically
+
+---
+
+## Platform Information
+
+This experience was created using **[Unreality3D](https://unreality3d.com)** - the PayPal-powered Unity WebGL platform.
+
+### 🎯 Want to Create Your Own?
+- **Download SDK**: [Get Unity Template](https://unreality3d.com/download-template)
+- **Documentation**: [Platform Docs](https://unreality3d.com/docs)
+- **Creator Dashboard**: [Unity SDK Setup](https://unreality3d.com)
+
+### 🔧 Platform Features
+- **Zero Setup**: Download template, build, deploy
+- **Professional URLs**: Custom subdomains for every creator
+- **PayPal Integration**: Built-in monetization system  
+- **Auto-Deployment**: GitHub Actions handle everything
+- **Performance**: Optimized for fast loading and smooth gameplay
+
+---
+
+**Powered by [Unreality3D](https://unreality3d.com) | Created by {{{ CREATOR_USERNAME }}}**`;
+
+        // Replace template variables
+        let processedReadme = readmeTemplate;
+        processedReadme = processedReadme.replace(/{{{ PRODUCT_NAME }}}/g, CONFIG.productName);
+        processedReadme = processedReadme.replace(/{{{ CREATOR_USERNAME }}}/g, extractCreatorUsername());
+        processedReadme = processedReadme.replace(/{{{ PROJECT_NAME }}}/g, CONFIG.contentId);
+        processedReadme = processedReadme.replace(/{{{ GITHUB_OWNER }}}/g, extractGitHubOwner());
+        processedReadme = processedReadme.replace(/{{{ REPOSITORY_NAME }}}/g, extractRepositoryName());
+
+        // Write the creator-specific README
+        fs.writeFileSync('README.md', processedReadme);
+        console.log('✅ Creator-specific README.md generated');
+
+        return true;
+
+    } catch (error) {
+        console.error('❌ Error generating README:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Extract creator username from current directory or config
+ */
+function extractCreatorUsername() {
+    // Try to get from current directory name or environment
+    const currentDir = process.cwd();
+    const dirName = path.basename(currentDir);
+
+    // Pattern matching for creator repositories
+    const match = dirName.match(/^([a-zA-Z0-9-]+)/);
+    return match ? match[1] : 'creator';
+}
+
+/**
+ * Extract GitHub owner from environment or directory
+ */
+function extractGitHubOwner() {
+    // Try to get from git remote or environment variables
+    try {
+        const { execSync } = require('child_process');
+        const remoteUrl = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
+        const match = remoteUrl.match(/github\.com[:/]([^/]+)\//);
+        return match ? match[1] : 'creator';
+    } catch {
+        return extractCreatorUsername(); // Fallback to creator username
+    }
+}
+
+/**
+ * Extract repository name from git or directory
+ */
+function extractRepositoryName() {
+    try {
+        const { execSync } = require('child_process');
+        const remoteUrl = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
+        const match = remoteUrl.match(/\/([^/]+)\.git$/);
+        return match ? match[1] : CONFIG.contentId;
+    } catch {
+        return CONFIG.contentId; // Fallback to content ID
+    }
+}
+
+/**
+ * Enhanced Unity WebGL build file detection with multiple fallback paths
  */
 function detectUnityBuildFiles(buildPath) {
-    if (!fs.existsSync(buildPath)) {
-        console.error(`Build directory not found: ${buildPath}`);
+    console.log(`🔍 Searching for Unity build files in: ${buildPath}`);
+
+    // Multiple potential build paths to check
+    const potentialPaths = [
+        buildPath,                           // Direct build path
+        path.join(buildPath, 'Build'),       // Build subdirectory
+        path.join('.', 'Build'),             // Root Build directory
+        path.join('.', 'WebGL'),             // WebGL directory
+        path.join('.', 'WebGLBuild'),        // Alternative build directory
+    ];
+
+    let foundPath = null;
+    let files = [];
+
+    // Try each potential path
+    for (const testPath of potentialPaths) {
+        if (fs.existsSync(testPath)) {
+            try {
+                const testFiles = fs.readdirSync(testPath);
+                console.log(`📁 Found directory: ${testPath} with ${testFiles.length} files`);
+
+                // Check if this directory contains Unity WebGL files
+                const hasUnityFiles = testFiles.some(f =>
+                    f.endsWith('.loader.js') ||
+                    f.endsWith('.wasm') ||
+                    f.endsWith('.data') ||
+                    f.endsWith('.framework.js')
+                );
+
+                if (hasUnityFiles) {
+                    foundPath = testPath;
+                    files = testFiles;
+                    console.log(`✅ Unity files detected in: ${testPath}`);
+                    break;
+                }
+            } catch (error) {
+                console.log(`⚠️  Cannot read directory ${testPath}: ${error.message}`);
+            }
+        }
+    }
+
+    if (!foundPath) {
+        console.error('❌ No Unity build directory found. Searched paths:');
+        potentialPaths.forEach(p => console.error(`   - ${p}`));
         return null;
     }
 
-    const files = fs.readdirSync(buildPath);
+    // Auto-detect build files with flexible naming
     const buildFiles = {
         loader: files.find(f => f.endsWith('.loader.js')),
         data: files.find(f => f.endsWith('.data')),
@@ -104,13 +307,121 @@ function detectUnityBuildFiles(buildPath) {
     };
 
     // Validate all required files exist
-    if (!buildFiles.loader || !buildFiles.data || !buildFiles.framework || !buildFiles.wasm) {
-        console.error('Missing Unity build files. Expected: .loader.js, .data, .framework.js, .wasm');
-        console.log('Found files:', files);
+    const missingFiles = [];
+    if (!buildFiles.loader) missingFiles.push('.loader.js');
+    if (!buildFiles.data) missingFiles.push('.data');
+    if (!buildFiles.framework) missingFiles.push('.framework.js');
+    if (!buildFiles.wasm) missingFiles.push('.wasm');
+
+    if (missingFiles.length > 0) {
+        console.error(`❌ Missing Unity build files: ${missingFiles.join(', ')}`);
+        console.error('📋 Available files:');
+        files.forEach(f => console.error(`   - ${f}`));
+
+        // Show file extensions for debugging
+        const extensions = [...new Set(files.map(f => path.extname(f)))];
+        console.error(`📋 Available extensions: ${extensions.join(', ')}`);
+
         return null;
     }
 
+    // Update CONFIG.buildOutputPath to the found path for later use
+    CONFIG.buildOutputPath = foundPath;
+
+    console.log(`✅ All Unity build files found in: ${foundPath}`);
     return buildFiles;
+}
+
+// ENHANCE the processUnityTemplate function with better error handling:
+function processUnityTemplate() {
+    try {
+        console.log('🚀 Processing Unity WebGL template...');
+        console.log('📋 Build search configuration:');
+        console.log(`   Initial build path: ${CONFIG.buildOutputPath}`);
+        console.log(`   Template path: ${CONFIG.templatePath}`);
+        console.log(`   Output path: ${CONFIG.outputPath}`);
+
+        // Read template file
+        if (!fs.existsSync(CONFIG.templatePath)) {
+            console.error(`❌ Template file not found: ${CONFIG.templatePath}`);
+
+            // Try to find template in common locations
+            const alternatePaths = [
+                path.join('.', 'template.html'),
+                path.join('..', 'template.html'),
+                path.join('Assets', 'WebGLTemplates', 'template.html')
+            ];
+
+            for (const altPath of alternatePaths) {
+                if (fs.existsSync(altPath)) {
+                    console.log(`✅ Found template at alternate location: ${altPath}`);
+                    CONFIG.templatePath = altPath;
+                    break;
+                }
+            }
+
+            if (!fs.existsSync(CONFIG.templatePath)) {
+                console.error('❌ Template file not found in any expected location');
+                return false;
+            }
+        }
+
+        let template = fs.readFileSync(CONFIG.templatePath, 'utf8');
+        console.log('✅ Template loaded successfully');
+
+        // Auto-detect Unity build files with enhanced detection
+        const buildFiles = detectUnityBuildFiles(CONFIG.buildOutputPath);
+        if (!buildFiles) {
+            console.error('❌ Unity build files not found. Build detection failed.');
+            console.error('💡 Ensure you have built your Unity project for WebGL first.');
+            console.error('💡 Build files should be in: Build/, WebGL/, or WebGLBuild/ directory');
+            return false;
+        }
+
+        // Rest of the function remains the same...
+        console.log('✅ Unity build files detected:');
+        console.log(`   Loader: ${buildFiles.loader}`);
+        console.log(`   Data: ${buildFiles.data}`);
+        console.log(`   Framework: ${buildFiles.framework}`);
+        console.log(`   WASM: ${buildFiles.wasm}`);
+
+        // Replace all template variables
+        template = template.replace(/{{{ PRODUCT_NAME }}}/g, CONFIG.productName);
+        template = template.replace(/{{{ CONTENT_ID }}}/g, CONFIG.contentId);
+        template = template.replace(/{{{ LOADER_FILENAME }}}/g, buildFiles.loader);
+        template = template.replace(/{{{ DATA_FILENAME }}}/g, buildFiles.data);
+        template = template.replace(/{{{ FRAMEWORK_FILENAME }}}/g, buildFiles.framework);
+        template = template.replace(/{{{ CODE_FILENAME }}}/g, buildFiles.wasm);
+        template = template.replace(/{{{ COMPANY_NAME }}}/g, CONFIG.companyName);
+        template = template.replace(/{{{ PRODUCT_VERSION }}}/g, CONFIG.productVersion);
+
+        // Add cache-busting timestamp
+        const timestamp = Date.now();
+        const cachePattern = /buildUrl \+ "\/([^"]+)"/g;
+        template = template.replace(cachePattern, `buildUrl + "/$1?v=${timestamp}"`);
+
+        // Validate and write
+        if (!validateFirebaseIntegration(template)) {
+            console.error('❌ Firebase/PayPal integration validation failed');
+            return false;
+        }
+
+        fs.writeFileSync(CONFIG.outputPath, template);
+        console.log(`✅ Processed template saved to: ${CONFIG.outputPath}`);
+
+        createEnhancedPWAManifest();
+        createOptimizedServiceWorker();
+        generateCreatorReadme();
+
+        console.log('🎉 Template processing complete!');
+        showEnvironmentAwareCompletion();
+        return true;
+
+    } catch (error) {
+        console.error('❌ Error processing template:', error.message);
+        console.error('📋 Error details:', error.stack);
+        return false;
+    }
 }
 
 /**

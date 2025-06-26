@@ -164,12 +164,29 @@ namespace U3D.Editor
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
 
+            // CRITICAL ADDITIONS for deployment success:
+            PlayerSettings.WebGL.decompressionFallback = true;  // Critical for loading
+            PlayerSettings.stripEngineCode = true;             // Reduces build size  
+            PlayerSettings.WebGL.dataCaching = true;           // Better performance
+            PlayerSettings.WebGL.debugSymbols = false;         // Reduce build size
+            PlayerSettings.WebGL.threadsSupport = false;       // WebGL doesn't support threads
+
+            // Ensure proper build settings
+            PlayerSettings.productName = Application.productName;
+            PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ?
+                PlayerSettings.companyName : "Unity Creator";
+
             // Set quality settings for WebGL
             QualitySettings.pixelLightCount = 1;
             QualitySettings.shadows = ShadowQuality.Disable;
             QualitySettings.shadowResolution = ShadowResolution.Low;
 
-            Debug.Log("WebGL build settings optimized for web deployment");
+            // Additional WebGL optimizations
+            QualitySettings.anisotropicFiltering = AnisotropicFiltering.Disable;
+            QualitySettings.antiAliasing = 0;
+            QualitySettings.softVegetation = false;
+
+            Debug.Log("Enhanced WebGL build settings applied for production deployment");
         }
 
         public static string GetDefaultBuildPath()
