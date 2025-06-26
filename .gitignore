@@ -7,6 +7,12 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 
+# Add to .gitignore in u3d-sdk-template
+u3d-config.json
+*.config.json
+firebase-config.json
+*-api-keys.*
+
 # Memory captures (can be extremely large and contain sensitive data)
 /[Mm]emoryCaptures/
 
