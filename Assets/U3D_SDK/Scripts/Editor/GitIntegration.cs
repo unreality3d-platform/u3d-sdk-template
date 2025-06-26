@@ -38,6 +38,42 @@ namespace U3D.Editor
             }
         }
 
+        public static async Task<GitOperationResult> CloneRepository(string remoteUrl, string localPath)
+        {
+            try
+            {
+                // Ensure the local directory doesn't exist or is empty
+                if (Directory.Exists(localPath))
+                {
+                    Directory.Delete(localPath, true);
+                }
+
+                Directory.CreateDirectory(localPath);
+
+                // Clone the repository
+                var result = await RunGitCommand("", $"clone {remoteUrl} \"{localPath}\"");
+
+                if (result.Success)
+                {
+                    return new GitOperationResult
+                    {
+                        Success = true,
+                        Message = $"Repository cloned successfully to {localPath}"
+                    };
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Failed to clone repository: {ex.Message}"
+                };
+            }
+        }
+
         public static async Task<GitOperationResult> AddRemoteOrigin(string repositoryPath, string remoteUrl)
         {
             try

@@ -2,6 +2,7 @@
 using UnityEditor;
 using System.IO;
 using System.Threading.Tasks;
+using System.Linq; // ADDED: Required for .Any() method
 
 namespace U3D.Editor
 {
@@ -340,11 +341,32 @@ namespace U3D.Editor
                 };
             }
 
-            // Initialize git repository
-            var initResult = await GitIntegration.InitializeRepository(localPath);
-            if (!initResult.Success)
+            // Clone the template repository first to get existing structure
+            currentStatus = "Cloning template repository...";
+            var cloneResult = await GitIntegration.CloneRepository(cloneUrl, localPath);
+            if (!cloneResult.Success)
             {
-                return initResult;
+                return cloneResult;
+            }
+
+            // Copy Unity build files to the cloned repository
+            currentStatus = "Copying Unity build files...";
+            var unityBuildPath = GetUnityBuildPath();
+            if (!CopyUnityBuildFiles(unityBuildPath, localPath))
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = "Failed to copy Unity build files to repository"
+                };
+            }
+
+            // **CRITICAL: Run unity-template-processor to replace organization content**
+            currentStatus = "Processing Unity template and generating creator files...";
+            var processorResult = await RunUnityTemplateProcessor(localPath);
+            if (!processorResult.Success)
+            {
+                return processorResult;
             }
 
             // Set up git user
@@ -352,31 +374,204 @@ namespace U3D.Editor
             var email = U3DAuthenticator.UserEmail ?? "user@example.com";
             await GitIntegration.SetupGitUser(localPath, username, email);
 
-            // Add remote origin
-            var remoteResult = await GitIntegration.AddRemoteOrigin(localPath, cloneUrl);
-            if (!remoteResult.Success)
-            {
-                return remoteResult;
-            }
-
-            // Add all files
+            // Add all files (including processed template and creator README)
             var addResult = await GitIntegration.AddAllFiles(localPath);
             if (!addResult.Success)
             {
                 return addResult;
             }
 
-            // Commit changes
-            var commitMessage = $"Initial Unity WebGL build for {Application.productName}";
+            // Commit changes with creator-specific message
+            var creatorUsername = U3DAuthenticator.CreatorUsername;
+            var commitMessage = $"Creator content: {Application.productName} by {creatorUsername}";
             var commitResult = await GitIntegration.CommitChanges(localPath, commitMessage);
             if (!commitResult.Success)
             {
                 return commitResult;
             }
 
-            // Push to GitHub
+            // Push to GitHub (using enhanced PushToRemote with force handling)
             var pushResult = await GitIntegration.PushToRemote(localPath, "main");
             return pushResult;
+        }
+
+        // SINGLE RunUnityTemplateProcessor method (runs processor from cloned repo)
+        private async Task<GitOperationResult> RunUnityTemplateProcessor(string repositoryPath)
+        {
+            try
+            {
+                currentStatus = "Running Unity template processor...";
+
+                // The processor should be in the cloned template repository root
+                var processorPath = Path.Combine(repositoryPath, "unity-template-processor.js");
+
+                if (!File.Exists(processorPath))
+                {
+                    return new GitOperationResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"Unity template processor not found in template repository at: {processorPath}"
+                    };
+                }
+
+                // Create unity-template-config.json with project-specific settings
+                var configPath = Path.Combine(repositoryPath, "unity-template-config.json");
+                var config = new
+                {
+                    templatePath = Path.Combine(repositoryPath, "template.html"),
+                    buildOutputPath = Path.Combine(repositoryPath, "Build"),
+                    outputPath = Path.Combine(repositoryPath, "index.html"),
+                    contentId = GitHubAPI.SanitizeRepositoryName(Application.productName),
+                    companyName = U3DAuthenticator.CreatorUsername ?? "Unity Creator",
+                    productName = Application.productName,
+                    productVersion = Application.version
+                };
+
+                // Write config file in the repository (where processor expects it)
+                File.WriteAllText(configPath, UnityEngine.JsonUtility.ToJson(config, true));
+
+                // Run the processor using Node.js from within the template repository
+                var processInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "node",
+                    Arguments = "unity-template-processor.js", // Relative path since we're in the repo directory
+                    WorkingDirectory = repositoryPath,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = System.Diagnostics.Process.Start(processInfo))
+                {
+                    if (process == null)
+                    {
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = "Failed to start Node.js process for template processor"
+                        };
+                    }
+
+                    await Task.Run(() => process.WaitForExit());
+
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    var error = await process.StandardError.ReadToEndAsync();
+
+                    Debug.Log($"Template processor output: {output}");
+
+                    if (process.ExitCode != 0)
+                    {
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = $"Template processor failed: {error}"
+                        };
+                    }
+
+                    // Verify that critical files were generated
+                    var requiredFiles = new[]
+                    {
+                        Path.Combine(repositoryPath, "index.html"),
+                        Path.Combine(repositoryPath, "README.md"),
+                        Path.Combine(repositoryPath, "manifest.webmanifest")
+                    };
+
+                    foreach (var file in requiredFiles)
+                    {
+                        if (!File.Exists(file))
+                        {
+                            return new GitOperationResult
+                            {
+                                Success = false,
+                                ErrorMessage = $"Template processor did not generate required file: {Path.GetFileName(file)}"
+                            };
+                        }
+                    }
+
+                    currentStatus = "✅ Creator files generated successfully";
+                    return new GitOperationResult
+                    {
+                        Success = true,
+                        Message = "Unity template processor completed successfully"
+                    };
+                }
+            }
+            catch (System.Exception ex)
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Template processor execution failed: {ex.Message}"
+                };
+            }
+        }
+
+        private string GetUnityBuildPath()
+        {
+            // Look for Unity WebGL build in common locations
+            var projectPath = Directory.GetParent(Application.dataPath).FullName;
+            var buildPaths = new[]
+            {
+                Path.Combine(projectPath, "Build"),
+                Path.Combine(projectPath, "WebGL"),
+                Path.Combine(projectPath, "WebGLBuild"),
+                Path.Combine(projectPath, "Builds", "WebGL")
+            };
+
+            foreach (var path in buildPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    // Check if this contains Unity WebGL files
+                    var files = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories);
+                    if (files.Any(f => f.EndsWith(".wasm") || f.EndsWith(".loader.js")))
+                    {
+                        return path;
+                    }
+                }
+            }
+
+            return Path.Combine(projectPath, "Build"); // Default
+        }
+
+        private bool CopyUnityBuildFiles(string sourcePath, string destinationPath)
+        {
+            try
+            {
+                var buildDestination = Path.Combine(destinationPath, "Build");
+
+                if (Directory.Exists(buildDestination))
+                {
+                    Directory.Delete(buildDestination, true);
+                }
+
+                Directory.CreateDirectory(buildDestination);
+
+                if (!Directory.Exists(sourcePath))
+                {
+                    Debug.LogError($"Unity build source path not found: {sourcePath}");
+                    return false;
+                }
+
+                // Copy all build files
+                foreach (var file in Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories))
+                {
+                    var relativePath = Path.GetRelativePath(sourcePath, file);
+                    var destFile = Path.Combine(buildDestination, relativePath);
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destFile));
+                    File.Copy(file, destFile, true);
+                }
+
+                Debug.Log($"Unity build files copied from {sourcePath} to {buildDestination}");
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Failed to copy Unity build files: {ex.Message}");
+                return false;
+            }
         }
 
         private void DrawSuccessSection()
