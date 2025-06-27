@@ -45,7 +45,7 @@ jobs:
             Library-WebGL-
             Library-
 
-      # === NEW: Unity License Automation ===
+      # === NEW: Unity License Automation (Robust Version) ===
       # Setup Node.js for license activation
       - name: Setup Node.js for License Automation
         uses: actions/setup-node@v4
@@ -56,31 +56,38 @@ jobs:
       - name: Install Unity License Activator
         run: npm install -g unity-license-activate
 
-      # Generate Unity activation file
+      # Install Unity 6+ (auto-detect version from project)
+      - name: Install Unity for License Generation
+        uses: game-ci/unity-installer@v2
+        with:
+          version: auto  # Auto-detect from ProjectSettings/ProjectVersion.txt
+          install-components: |
+            webgl
+
+      # Generate Unity activation file with proper paths
       - name: Generate Unity Activation File
         run: |
           echo "Generating Unity activation file..."
           
-          # Use the correct Unity path for GitHub Actions Ubuntu runners
-          if [ -d "/opt/unity/Editor" ]; then
-            /opt/unity/Editor/Unity -batchmode -createManualActivationFile -logfile -
-          elif [ -d "/opt/Unity/Editor" ]; then
-            /opt/Unity/Editor/Unity -batchmode -createManualActivationFile -logfile -
+          # Find Unity installation path (multiple possible locations)
+          UNITY_PATH=""
+          if [ -f "/opt/unity/Editor/Unity" ]; then
+            UNITY_PATH="/opt/unity/Editor/Unity"
+          elif [ -f "/opt/Unity/Editor/Unity" ]; then
+            UNITY_PATH="/opt/Unity/Editor/Unity"
+          elif command -v unity-editor &> /dev/null; then
+            UNITY_PATH="unity-editor"
           else
             echo "❌ Unity installation not found"
-            echo "Available directories:"
+            echo "Available paths:"
             ls -la /opt/ | grep -i unity || echo "No Unity directories found"
             exit 1
           fi
           
-          # Verify .alf file was created
-          if ls Unity_*.alf 1> /dev/null 2>&1; then
-            echo "✅ Unity activation file generated"
-            ls -la Unity_*.alf
-          else
-            echo "❌ Unity activation file generation failed"
-            exit 1
-          fi
+          echo "Using Unity at: ${UNITY_PATH}"
+          
+          # Generate activation file
+          ${UNITY_PATH} -batchmode -createManualActivationFile -logfile -
           
           # Verify .alf file was created
           if ls Unity_*.alf 1> /dev/null 2>&1; then
@@ -88,57 +95,101 @@ jobs:
             ls -la Unity_*.alf
           else
             echo "❌ Unity activation file generation failed"
+            echo "Available files:"
+            ls -la .
             exit 1
           fi
 
-      # Activate Unity license automatically
+      # Activate Unity license with retry logic
       - name: Activate Unity License
         run: |
           echo "Activating Unity license..."
           
-          # Run license activation with error handling
-          if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
-            echo "Using 2FA authentication"
-            unity-license-activate \
-              "${{ env.UNITY_EMAIL }}" \
-              "${{ env.UNITY_PASSWORD }}" \
-              Unity_*.alf \
-              --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
-          else
-            echo "Using email/password authentication"
-            unity-license-activate \
-              "${{ env.UNITY_EMAIL }}" \
-              "${{ env.UNITY_PASSWORD }}" \
-              Unity_*.alf
-          fi
+          # Function to attempt license activation
+          activate_license() {
+            if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
+              echo "Using 2FA authentication"
+              unity-license-activate \
+                "${{ env.UNITY_EMAIL }}" \
+                "${{ env.UNITY_PASSWORD }}" \
+                Unity_*.alf \
+                --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
+            else
+              echo "Using email/password authentication"
+              unity-license-activate \
+                "${{ env.UNITY_EMAIL }}" \
+                "${{ env.UNITY_PASSWORD }}" \
+                Unity_*.alf
+            fi
+          }
           
-          # Verify .ulf file was created and set as environment variable
+          # Retry logic for license activation (network issues are common)
+          for attempt in 1 2 3; do
+            echo "License activation attempt ${attempt}/3..."
+            
+            if activate_license; then
+              echo "✅ License activation succeeded on attempt ${attempt}"
+              break
+            else
+              echo "❌ License activation failed on attempt ${attempt}"
+              if [ ${attempt} -eq 3 ]; then
+                echo "❌ All license activation attempts failed"
+                echo "Debug: Checking for error files..."
+                ls -la *.png *.html 2>/dev/null || echo "No error files found"
+                exit 1
+              else
+                echo "Waiting 10 seconds before retry..."
+                sleep 10
+              fi
+            fi
+          done
+          
+          # Verify .ulf file was created and handle properly
           if ls Unity_*.ulf 1> /dev/null 2>&1; then
             echo "✅ Unity license activated successfully"
             ls -la Unity_*.ulf
             
-            # Set license content as environment variable for unity-builder
-            echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
-            cat Unity_*.ulf >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            # Set proper permissions for license file
+            chmod 644 Unity_*.ulf
+            
+            # Create license file instead of using environment variable (avoids size limits)
+            cp Unity_*.ulf license.ulf
+            echo "License file copied to license.ulf"
+            
+            # Also set environment variable as backup (truncated if too large)
+            LICENSE_CONTENT=$(cat Unity_*.ulf)
+            LICENSE_SIZE=${#LICENSE_CONTENT}
+            
+            if [ ${LICENSE_SIZE} -lt 30000 ]; then
+              echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
+              cat Unity_*.ulf >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              echo "License set as environment variable (${LICENSE_SIZE} bytes)"
+            else
+              echo "License file too large (${LICENSE_SIZE} bytes), using file-based approach only"
+              echo "UNITY_LICENSE_FILE=license.ulf" >> $GITHUB_ENV
+            fi
           else
-            echo "❌ Unity license activation failed"
+            echo "❌ Unity license activation failed - no .ulf file generated"
+            echo "Available files after activation:"
+            ls -la .
             exit 1
           fi
-            
-            # Build Unity project for WebGL using Personal license
+
+      # Build Unity project with enhanced license handling
       - name: Build Unity Project
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ env.UNITY_LICENSE }}
+          UNITY_LICENSE_FILE: ${{ env.UNITY_LICENSE_FILE }}
           UNITY_EMAIL: ${{ env.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
         with:
           targetPlatform: WebGL
           allowDirtyBuild: true
 
-      # Setup Node.js for template processing
-      - name: Setup Node.js
+      # Setup Node.js for template processing (second installation for clarity)
+      - name: Setup Node.js for Template Processing
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -187,7 +238,7 @@ jobs:
           # Create the repository-specific directory
           mkdir -p "${REPO_NAME}"
           
-          # Copy Unity build to repository directory
+          # Copy Unity build to repository directory with enhanced error handling
           if [ -d "build/WebGL/WebGL/Build" ]; then
              # Copy Unity WebGL files from the Build subdirectory
              cp -r build/WebGL/WebGL/Build "${REPO_NAME}/"
@@ -196,11 +247,19 @@ jobs:
              # Debug: List what's actually in Build directory
              echo "📁 Contents of ${REPO_NAME}/Build/:"
              ls -la "${REPO_NAME}/Build/" || echo "Build directory listing failed"
+          elif [ -d "build/WebGL/WebGL" ]; then
+            # Fallback: copy entire WebGL directory
+            cp -r build/WebGL/WebGL/* "${REPO_NAME}/"
+            echo "Unity build copied directly to ${REPO_NAME}/"
+            echo "📁 Contents of ${REPO_NAME}/:"
+            ls -la "${REPO_NAME}/"
           else
             echo "Unity Build directory not found"
-            echo "📁 Available in build/WebGL/WebGL/:"
-            ls -la build/WebGL/WebGL/ || echo "WebGL directory listing failed"
-            find build -name "*.loader.js" -o -name "*.wasm" -o -name "*.data" 2>/dev/null || echo "No Unity files found"
+            echo "📁 Available build directories:"
+            find build -type d -name "*WebGL*" 2>/dev/null || echo "No WebGL directories found"
+            echo "📁 All build contents:"
+            ls -la build/ 2>/dev/null || echo "No build directory found"
+            exit 1
           fi
 
       # Process Unity template
