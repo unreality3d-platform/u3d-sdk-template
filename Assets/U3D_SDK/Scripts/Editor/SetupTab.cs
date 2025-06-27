@@ -446,6 +446,15 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
+            // Stay logged in checkbox
+            bool newStayLoggedIn = EditorGUILayout.ToggleLeft("Stay logged in", U3DAuthenticator.StayLoggedIn);
+            if (newStayLoggedIn != U3DAuthenticator.StayLoggedIn)
+            {
+                U3DAuthenticator.StayLoggedIn = newStayLoggedIn;
+            }
+
+            EditorGUILayout.Space(10);
+
             if (GUILayout.Button("🔗 Authenticate with PayPal", GUILayout.Height(40)))
             {
                 StartPayPalAuthentication();
@@ -532,6 +541,15 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
+            // Stay logged in checkbox
+            bool newStayLoggedIn = EditorGUILayout.ToggleLeft("Stay logged in", U3DAuthenticator.StayLoggedIn);
+            if (newStayLoggedIn != U3DAuthenticator.StayLoggedIn)
+            {
+                U3DAuthenticator.StayLoggedIn = newStayLoggedIn;
+            }
+
+            EditorGUILayout.Space(10);
+
             bool canLogin = !string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(password);
 
             EditorGUI.BeginDisabledGroup(!canLogin);
@@ -564,6 +582,15 @@ namespace U3D.Editor
             email = EditorGUILayout.TextField("Email", email);
             password = EditorGUILayout.PasswordField("Password", password);
             confirmPassword = EditorGUILayout.PasswordField("Confirm Password", confirmPassword);
+
+            EditorGUILayout.Space(10);
+
+            // Stay logged in checkbox
+            bool newStayLoggedIn = EditorGUILayout.ToggleLeft("Stay logged in", U3DAuthenticator.StayLoggedIn);
+            if (newStayLoggedIn != U3DAuthenticator.StayLoggedIn)
+            {
+                U3DAuthenticator.StayLoggedIn = newStayLoggedIn;
+            }
 
             EditorGUILayout.Space(10);
 
