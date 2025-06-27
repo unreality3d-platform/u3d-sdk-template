@@ -3,6 +3,8 @@ using System.Collections;
 using UnityEngine;
 using UnityEditor;
 using System.Threading.Tasks;
+using System.IO;
+using System.Diagnostics;
 
 namespace U3D.Editor
 {
@@ -116,6 +118,195 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
         }
 
+        private void DrawUnityLicenseSetup()
+        {
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("Unity License (for automated builds)", EditorStyles.boldLabel);
+
+            bool hasUnityLicense = EditorPrefs.GetBool("U3D_UnityLicenseGenerated", false);
+
+            if (!hasUnityLicense)
+            {
+                EditorGUILayout.HelpBox(
+                    "Generate your Unity license file for GitHub Actions automation.\n" +
+                    "This uses your Unity account to create the license file automatically.",
+                    MessageType.Info);
+
+                if (GUILayout.Button("🔧 Generate Unity License File", GUILayout.Height(35)))
+                {
+                    GenerateUnityLicenseForGitHub();
+                }
+            }
+            else
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("✅ Unity license file generated", EditorStyles.miniLabel);
+                if (GUILayout.Button("🔄 Regenerate", GUILayout.Width(100)))
+                {
+                    GenerateUnityLicenseForGitHub();
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        private async void GenerateUnityLicenseForGitHub()
+        {
+            try
+            {
+                // Load Unity credentials from PublishTab storage
+                var unityCredentials = new UnityCredentials
+                {
+                    Email = EditorPrefs.GetString("U3D_UnityEmail", ""),
+                    Password = EditorPrefs.GetString("U3D_UnityPassword", ""),
+                    AuthenticatorKey = EditorPrefs.GetString("U3D_UnityAuthKey", "")
+                };
+
+                // Check if credentials exist
+                if (string.IsNullOrEmpty(unityCredentials.Email) || string.IsNullOrEmpty(unityCredentials.Password))
+                {
+                    EditorUtility.DisplayDialog("Unity Credentials Required",
+                        "Please set up your Unity credentials in the Publish tab first.",
+                        "OK");
+                    return;
+                }
+
+                // Generate license file using Unity's command line
+                bool success = await GenerateUnityLicenseFile(unityCredentials);
+
+                if (success)
+                {
+                    EditorPrefs.SetBool("U3D_UnityLicenseGenerated", true);
+                    EditorUtility.DisplayDialog("Success!",
+                        "Unity license file generated and copied to clipboard!\n\n" +
+                        "This will be automatically added to your GitHub repository secrets when you publish.",
+                        "Great!");
+                }
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("License Generation Failed",
+                    $"Failed to generate Unity license: {ex.Message}",
+                    "OK");
+            }
+        }
+
+        private async Task<bool> GenerateUnityLicenseFile(UnityCredentials credentials)
+        {
+            try
+            {
+                // Create temp directory for license generation
+                string tempDir = Path.Combine(Application.temporaryCachePath, "LicenseGeneration");
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                Directory.CreateDirectory(tempDir);
+
+                // Step 1: Generate ALF file using current Unity installation
+                string unityPath = EditorApplication.applicationPath;
+
+                var alfProcess = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = unityPath,
+                    Arguments = "-batchmode -createManualActivationFile -logfile",
+                    WorkingDirectory = tempDir,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                var process = System.Diagnostics.Process.Start(alfProcess);
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception("Failed to generate Unity activation file");
+                }
+
+                // Step 2: Find generated ALF file
+                string[] alfFiles = Directory.GetFiles(tempDir, "Unity_*.alf");
+                if (alfFiles.Length == 0)
+                {
+                    throw new Exception("Unity activation file not generated");
+                }
+
+                string alfPath = alfFiles[0];
+
+                // Step 3: Use unity-license-activate if available
+                if (await TryAutomaticLicenseActivation(alfPath, credentials, tempDir))
+                {
+                    return true;
+                }
+                else
+                {
+                    // Fallback to manual instructions
+                    ShowManualLicenseInstructions(alfPath);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"License generation failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task<bool> TryAutomaticLicenseActivation(string alfPath, UnityCredentials credentials, string workingDir)
+        {
+            try
+            {
+                // Try to use unity-license-activate
+                string activateCmd = string.IsNullOrEmpty(credentials.AuthenticatorKey)
+                    ? $"unity-license-activate \"{credentials.Email}\" \"{credentials.Password}\" \"{Path.GetFileName(alfPath)}\""
+                    : $"unity-license-activate \"{credentials.Email}\" \"{credentials.Password}\" \"{Path.GetFileName(alfPath)}\" --authenticator-key \"{credentials.AuthenticatorKey}\"";
+
+                var processInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c npm install -g unity-license-activate && {activateCmd}",
+                    WorkingDirectory = workingDir,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                var process = System.Diagnostics.Process.Start(processInfo);
+                await Task.Run(() => process.WaitForExit());
+
+                // Check if ULF file was generated
+                string[] ulfFiles = Directory.GetFiles(workingDir, "Unity_*.ulf");
+                if (ulfFiles.Length > 0)
+                {
+                    string ulfContent = File.ReadAllText(ulfFiles[0]);
+                    EditorGUIUtility.systemCopyBuffer = ulfContent;
+
+                    // Store for later use in publishing
+                    EditorPrefs.SetString("U3D_GeneratedUnityLicense", ulfContent);
+
+                    return true;
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        private void ShowManualLicenseInstructions(string alfPath)
+        {
+            EditorUtility.DisplayDialog("Manual License Setup",
+                $"Automated license generation requires Node.js. Please follow these steps:\n\n" +
+                $"1. Go to: https://license.unity3d.com/manual\n" +
+                $"2. Upload the ALF file from: {alfPath}\n" +
+                $"3. Download the ULF file\n" +
+                $"4. Copy the ULF content and paste it in the Publish tab\n\n" +
+                $"The ALF file will open in your file explorer.",
+                "Got it");
+
+            EditorUtility.RevealInFinder(alfPath);
+        }
+
         private void DrawGitHubSetup()
         {
             EditorGUILayout.LabelField("🚀 Connect to GitHub", EditorStyles.boldLabel);
@@ -200,6 +391,8 @@ namespace U3D.Editor
             // Continue button (only show if validated)
             if (tokenValidated)
             {
+                DrawUnityLicenseSetup();
+
                 if (GUILayout.Button("🎉 All Set! Continue to Publishing", GUILayout.Height(40)))
                 {
                     currentState = AuthState.LoggedIn;
@@ -728,7 +921,7 @@ namespace U3D.Editor
                     authStartTime = Time.realtimeSinceStartup;
                     lastPollTime = Time.realtimeSinceStartup;
 
-                    Debug.Log("PayPal authentication started, polling for completion...");
+                    UnityEngine.Debug.Log("PayPal authentication started, polling for completion...");
                 }
                 else
                 {
@@ -760,7 +953,7 @@ namespace U3D.Editor
                     authStartTime = Time.realtimeSinceStartup;
                     lastPollTime = Time.realtimeSinceStartup;
 
-                    Debug.Log("PayPal linking started, polling for completion...");
+                    UnityEngine.Debug.Log("PayPal linking started, polling for completion...");
                 }
                 else
                 {
@@ -827,7 +1020,7 @@ namespace U3D.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"PayPal polling error: {ex.Message}");
+                UnityEngine.Debug.LogError($"PayPal polling error: {ex.Message}");
             }
         }
 

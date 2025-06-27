@@ -411,6 +411,17 @@ namespace U3D.Editor
                     throw new System.Exception("Failed to configure Unity build secrets. Publishing cannot continue.");
                 }
 
+                string generatedLicense = EditorPrefs.GetString("U3D_GeneratedUnityLicense", "");
+                if (!string.IsNullOrEmpty(generatedLicense))
+                {
+                    currentStatus = "Adding Unity license to repository secrets...";
+                    bool licenseSet = await GitHubTokenManager.SetRepositorySecret(repoResult.RepositoryName, "UNITY_LICENSE", generatedLicense);
+                    if (licenseSet)
+                    {
+                        currentStatus = "Unity license configured in repository";
+                    }
+                }
+
                 currentStatus = "Unity build secrets configured successfully";
 
                 // Step 2: Clone template repository first

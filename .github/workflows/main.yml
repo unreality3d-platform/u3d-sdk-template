@@ -45,7 +45,7 @@ jobs:
             Library-WebGL-
             Library-
 
-      # === NEW: Unity License Automation (Corrected) ===
+      # === Unity License Automation ===
       # Setup Node.js for license activation
       - name: Setup Node.js for License Automation
         uses: actions/setup-node@v4
@@ -56,78 +56,16 @@ jobs:
       - name: Install Unity License Activator
         run: npm install -g unity-license-activate
 
-      # Request activation file using GameCI action
-      - name: Request Unity Activation File
-        uses: game-ci/unity-request-activation-file@v2
-        id: getManualLicenseFile
-
-      # Activate Unity license automatically
-      - name: Activate Unity License
-        run: |
-          echo "Activating Unity license..."
-          
-          # Run license activation with retry logic
-          for attempt in 1 2 3; do
-            echo "License activation attempt ${attempt}/3..."
-            
-            if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
-              echo "Using 2FA authentication"
-              unity-license-activate \
-                "${{ env.UNITY_EMAIL }}" \
-                "${{ env.UNITY_PASSWORD }}" \
-                ${{ steps.getManualLicenseFile.outputs.filePath }} \
-                --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
-            else
-              echo "Using email/password authentication"
-              unity-license-activate \
-                "${{ env.UNITY_EMAIL }}" \
-                "${{ env.UNITY_PASSWORD }}" \
-                ${{ steps.getManualLicenseFile.outputs.filePath }}
-            fi
-            
-            if [ $? -eq 0 ]; then
-              echo "✅ License activation succeeded on attempt ${attempt}"
-              break
-            else
-              echo "❌ License activation failed on attempt ${attempt}"
-              if [ ${attempt} -eq 3 ]; then
-                echo "❌ All license activation attempts failed"
-                exit 1
-              else
-                echo "Waiting 10 seconds before retry..."
-                sleep 10
-              fi
-            fi
-          done
-          
-          # Set license content as environment variable
-          if ls Unity_*.ulf 1> /dev/null 2>&1; then
-            echo "✅ Unity license activated successfully"
-            echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
-            cat Unity_*.ulf >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-          else
-            echo "❌ Unity license activation failed"
-            exit 1
-          fi
-
-      # Build Unity project with enhanced license handling
-      - name: Build Unity Project
+      # Build Unity project (unity-builder installs Unity automatically)
+      - name: Build Unity Project with License Automation
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ env.UNITY_LICENSE }}
-          UNITY_LICENSE_FILE: ${{ env.UNITY_LICENSE_FILE }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ env.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
         with:
           targetPlatform: WebGL
           allowDirtyBuild: true
-
-      # Setup Node.js for template processing (second installation for clarity)
-      - name: Setup Node.js for Template Processing
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       # Extract repository and creator information
       - name: Extract Repository Information
