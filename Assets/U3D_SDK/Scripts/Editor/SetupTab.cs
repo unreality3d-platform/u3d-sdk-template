@@ -254,7 +254,7 @@ namespace U3D.Editor
         {
             try
             {
-                // Try to use unity-license-activate
+                // Build the command with proper 2FA support
                 string activateCmd = string.IsNullOrEmpty(credentials.AuthenticatorKey)
                     ? $"unity-license-activate \"{credentials.Email}\" \"{credentials.Password}\" \"{Path.GetFileName(alfPath)}\""
                     : $"unity-license-activate \"{credentials.Email}\" \"{credentials.Password}\" \"{Path.GetFileName(alfPath)}\" --authenticator-key \"{credentials.AuthenticatorKey}\"";
@@ -271,28 +271,29 @@ namespace U3D.Editor
                 };
 
                 var process = System.Diagnostics.Process.Start(processInfo);
-                await Task.Run(() => process.WaitForExit());
+                await Task.Run(() => process.WaitForExit(300000)); // 5 minute timeout
 
-                // Check if ULF file was generated
+                // Check results
                 string[] ulfFiles = Directory.GetFiles(workingDir, "Unity_*.ulf");
                 if (ulfFiles.Length > 0)
                 {
                     string ulfContent = File.ReadAllText(ulfFiles[0]);
-                    EditorGUIUtility.systemCopyBuffer = ulfContent;
-
-                    // Store for later use in publishing
                     EditorPrefs.SetString("U3D_GeneratedUnityLicense", ulfContent);
-
                     return true;
                 }
 
+                // Log the error for debugging
+                string error = process.StandardError.ReadToEnd();
+                Debug.LogError($"License activation failed: {error}");
                 return false;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.LogError($"License activation exception: {ex.Message}");
                 return false;
             }
         }
+
         private void ShowManualLicenseInstructions(string alfPath)
         {
             EditorUtility.DisplayDialog("Manual License Setup",
