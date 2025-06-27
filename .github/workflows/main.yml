@@ -60,7 +60,27 @@ jobs:
       - name: Generate Unity Activation File
         run: |
           echo "Generating Unity activation file..."
-          unity-editor -batchmode -createManualActivationFile -logfile -
+          
+          # Use the correct Unity path for GitHub Actions Ubuntu runners
+          if [ -d "/opt/unity/Editor" ]; then
+            /opt/unity/Editor/Unity -batchmode -createManualActivationFile -logfile -
+          elif [ -d "/opt/Unity/Editor" ]; then
+            /opt/Unity/Editor/Unity -batchmode -createManualActivationFile -logfile -
+          else
+            echo "❌ Unity installation not found"
+            echo "Available directories:"
+            ls -la /opt/ | grep -i unity || echo "No Unity directories found"
+            exit 1
+          fi
+          
+          # Verify .alf file was created
+          if ls Unity_*.alf 1> /dev/null 2>&1; then
+            echo "✅ Unity activation file generated"
+            ls -la Unity_*.alf
+          else
+            echo "❌ Unity activation file generation failed"
+            exit 1
+          fi
           
           # Verify .alf file was created
           if ls Unity_*.alf 1> /dev/null 2>&1; then
