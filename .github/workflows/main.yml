@@ -1,124 +1,226 @@
-﻿name: Unity Build and Deploy
+﻿name: Build and Deploy Unity Project 🚀
 
-on:
+on: 
   push:
-    branches: [ main, development ]
+    branches: 
+      - main
+      - master
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: 
+      - main
+      - master
 
+# Environment variables for Unity Personal License
 env:
-  UNITY_VERSION: 2022.3.21f1
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
 
 jobs:
   build:
-    name: Build Unity Project
+    name: Build Unity WebGL Project ✨
     runs-on: ubuntu-latest
     
     outputs:
-      ENVIRONMENT: ${{ steps.env_info.outputs.ENVIRONMENT }}
       REPO_NAME: ${{ steps.repo_info.outputs.REPO_NAME }}
-      
+      CREATOR_USERNAME: ${{ steps.repo_info.outputs.CREATOR_USERNAME }}
+      PROJECT_NAME: ${{ steps.repo_info.outputs.PROJECT_NAME }}
+      ENVIRONMENT: ${{ steps.env_info.outputs.ENVIRONMENT }}
+    
     steps:
-      # Environment Detection (Production vs Development)
-      - name: Detect Environment
-        id: env_info
-        run: |
-          REPO_NAME="${{ github.repository }}"
-          BRANCH_REF="${{ github.ref }}"
-          
-          echo "Repository: $REPO_NAME"
-          echo "Branch: $BRANCH_REF"
-          
-          # Development: Template repository on feature branches
-          if [[ "$REPO_NAME" == "unreality3d-platform/u3d-sdk-template" && "$BRANCH_REF" != "refs/heads/main" ]]; then
-            echo "ENVIRONMENT=development" >> $GITHUB_OUTPUT
-            echo "PROJECT_ID=unreality3d2025" >> $GITHUB_OUTPUT
-            echo "SERVICE_ACCOUNT_SECRET=FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025" >> $GITHUB_OUTPUT
-            echo "Deploying to: development"
-          # Production: All creator repositories and template main branch
-          else
-            echo "ENVIRONMENT=production" >> $GITHUB_OUTPUT
-            echo "PROJECT_ID=unreality3d" >> $GITHUB_OUTPUT
-            echo "SERVICE_ACCOUNT_SECRET=FIREBASE_SERVICE_ACCOUNT_UNREALITY3D" >> $GITHUB_OUTPUT
-            echo "Deploying to: production"
-          fi
-      
-      # Repository name processing
-      - name: Process Repository Info
-        id: repo_info
-        run: |
-          FULL_REPO="${{ github.repository }}"
-          REPO_NAME="${FULL_REPO##*/}"
-          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_OUTPUT
-          echo "Processed repo name: $REPO_NAME"
-
-      # Checkout repository
-      - name: Checkout Repository
+      # Checkout repository with LFS support
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           lfs: true
 
-      # Cache Unity Library folder
+      # Cache Unity Library to speed up builds
       - name: Cache Unity Library
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: Library
-          key: Library-${{ env.UNITY_VERSION }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-${{ env.UNITY_VERSION }}-
+            Library-WebGL-
             Library-
 
-      # Build Unity project using GameCI
+      # === NEW: Unity License Automation (Corrected) ===
+      # Setup Node.js for license activation
+      - name: Setup Node.js for License Automation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install unity-license-activate tool
+      - name: Install Unity License Activator
+        run: npm install -g unity-license-activate
+
+      # Request activation file using GameCI action
+      - name: Request Unity Activation File
+        uses: game-ci/unity-request-activation-file@v2
+        id: getManualLicenseFile
+
+      # Activate Unity license automatically
+      - name: Activate Unity License
+        run: |
+          echo "Activating Unity license..."
+          
+          # Run license activation with retry logic
+          for attempt in 1 2 3; do
+            echo "License activation attempt ${attempt}/3..."
+            
+            if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
+              echo "Using 2FA authentication"
+              unity-license-activate \
+                "${{ env.UNITY_EMAIL }}" \
+                "${{ env.UNITY_PASSWORD }}" \
+                ${{ steps.getManualLicenseFile.outputs.filePath }} \
+                --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
+            else
+              echo "Using email/password authentication"
+              unity-license-activate \
+                "${{ env.UNITY_EMAIL }}" \
+                "${{ env.UNITY_PASSWORD }}" \
+                ${{ steps.getManualLicenseFile.outputs.filePath }}
+            fi
+            
+            if [ $? -eq 0 ]; then
+              echo "✅ License activation succeeded on attempt ${attempt}"
+              break
+            else
+              echo "❌ License activation failed on attempt ${attempt}"
+              if [ ${attempt} -eq 3 ]; then
+                echo "❌ All license activation attempts failed"
+                exit 1
+              else
+                echo "Waiting 10 seconds before retry..."
+                sleep 10
+              fi
+            fi
+          done
+          
+          # Set license content as environment variable
+          if ls Unity_*.ulf 1> /dev/null 2>&1; then
+            echo "✅ Unity license activated successfully"
+            echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
+            cat Unity_*.ulf >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "❌ Unity license activation failed"
+            exit 1
+          fi
+
+      # Build Unity project with enhanced license handling
       - name: Build Unity Project
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ env.UNITY_LICENSE }}
+          UNITY_LICENSE_FILE: ${{ env.UNITY_LICENSE_FILE }}
+          UNITY_EMAIL: ${{ env.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
         with:
           targetPlatform: WebGL
-          buildName: ${{ steps.repo_info.outputs.REPO_NAME }}
-          buildsPath: build
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          allowDirtyBuild: true
 
-      # Post-build processing
-      - name: Post-Build Processing
+      # Setup Node.js for template processing (second installation for clarity)
+      - name: Setup Node.js for Template Processing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Extract repository and creator information
+      - name: Extract Repository Information
+        id: repo_info
         run: |
-          BUILD_PATH="build/WebGL/${{ steps.repo_info.outputs.REPO_NAME }}"
-          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          CREATOR_USERNAME="${GITHUB_REPOSITORY%%/*}"
+          PROJECT_NAME="${REPO_NAME}"
           
-          echo "Build completed. Processing output..."
+          echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_OUTPUT
+          echo "CREATOR_USERNAME=${CREATOR_USERNAME}" >> $GITHUB_OUTPUT
+          echo "PROJECT_NAME=${PROJECT_NAME}" >> $GITHUB_OUTPUT
           
-          # Create target directory for deployment
-          mkdir -p "$REPO_NAME"
-          
-          # Copy build output to deployment directory
-          if [ -d "$BUILD_PATH" ]; then
-            cp -r "$BUILD_PATH"/* "$REPO_NAME"/
-            echo "✅ Build files copied to deployment directory"
+          echo "Repository name: ${REPO_NAME}"
+          echo "Creator username: ${CREATOR_USERNAME}"
+          echo "Project name: ${PROJECT_NAME}"
+
+      # Determine deployment environment - PRESERVE YOUR LOGIC
+      - name: Determine Environment  
+        id: env_info
+        run: |
+          # Check if this is YOUR development repository
+          if [[ "${{ github.repository }}" == "unreality3d-platform/u3d-sdk-template" ]] && [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            # Only YOUR template repo can deploy to development on non-main branches
+            echo "ENVIRONMENT=development" >> $GITHUB_OUTPUT
+            echo "DEPLOY_TO_GITHUB_PAGES=false" >> $GITHUB_OUTPUT
           else
-            echo "❌ Build directory not found: $BUILD_PATH"
+            # All creator repositories and main branch deploy to GitHub Pages + Load Balancer
+            echo "ENVIRONMENT=production" >> $GITHUB_OUTPUT
+            echo "DEPLOY_TO_GITHUB_PAGES=true" >> $GITHUB_OUTPUT
+          fi
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Environment: $(cat $GITHUB_OUTPUT | grep ENVIRONMENT | cut -d'=' -f2)"
+          echo "Deploy to GitHub Pages: $(cat $GITHUB_OUTPUT | grep DEPLOY_TO_GITHUB_PAGES | cut -d'=' -f2)"
+
+      # Create repository-specific directory structure
+      - name: Prepare Repository Directory
+        run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
+          echo "Creating directory structure for repository: ${REPO_NAME}"
+          
+          # Create the repository-specific directory
+          mkdir -p "${REPO_NAME}"
+          
+          # Copy Unity build to repository directory with enhanced error handling
+          if [ -d "build/WebGL/WebGL/Build" ]; then
+             # Copy Unity WebGL files from the Build subdirectory
+             cp -r build/WebGL/WebGL/Build "${REPO_NAME}/"
+             echo "Unity build copied to ${REPO_NAME}/Build/" 
+             
+             # Debug: List what's actually in Build directory
+             echo "📁 Contents of ${REPO_NAME}/Build/:"
+             ls -la "${REPO_NAME}/Build/" || echo "Build directory listing failed"
+          elif [ -d "build/WebGL/WebGL" ]; then
+            # Fallback: copy entire WebGL directory
+            cp -r build/WebGL/WebGL/* "${REPO_NAME}/"
+            echo "Unity build copied directly to ${REPO_NAME}/"
+            echo "📁 Contents of ${REPO_NAME}/:"
+            ls -la "${REPO_NAME}/"
+          else
+            echo "Unity Build directory not found"
+            echo "📁 Available build directories:"
+            find build -type d -name "*WebGL*" 2>/dev/null || echo "No WebGL directories found"
+            echo "📁 All build contents:"
+            ls -la build/ 2>/dev/null || echo "No build directory found"
             exit 1
           fi
+
+      # Process Unity template
+      - name: Process Unity Template
+        run: |
+          REPO_NAME="${{ steps.repo_info.outputs.REPO_NAME }}"
           
-          # Check for template processor (unity-template-processor.js)
           if [ -f "unity-template-processor.js" ]; then
-            echo "Running Unity template processor..."
+            echo "Processing Unity template with repository name: ${REPO_NAME}"
             
-            # Set up Node.js for template processing
-            npm install
+            # Copy template processor and template to repository directory
+            cp unity-template-processor.js "${REPO_NAME}/"
+            cp template.html "${REPO_NAME}/"
             
-            # Run template processor
-            node unity-template-processor.js
+            # Change to repository directory and run processor
+            cd "${REPO_NAME}"
             
-            echo "Template processing completed"
+            node unity-template-processor.js \
+              --contentId "${REPO_NAME}" \
+              --productName "${REPO_NAME}"
+            
+            echo "Template processing completed - index.html generated"
             
             # Verify the processed file exists
             if [ -f "index.html" ]; then
               echo "✅ Processed index.html created successfully"
-              # Copy processed file to deployment directory
-              cp index.html "$REPO_NAME"/
             else
               echo "❌ Template processing failed - no index.html generated"
               exit 1
@@ -127,7 +229,7 @@ jobs:
             echo "No template processor found, using build output directly"
           fi
 
-      # Upload build artifacts
+      # Upload build artifacts for deployment jobs
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -135,17 +237,19 @@ jobs:
           path: ${{ steps.repo_info.outputs.REPO_NAME }}
           retention-days: 7
 
-  # Deploy to Firebase
-  deploy:
-    name: Deploy to Firebase
+  # DEVELOPMENT: Deploy to Firebase (for template development only)
+  deployToFirebase:
+    name: Deploy to Firebase (Development)
     runs-on: ubuntu-latest
     needs: build
+    # Only deploy to Firebase for template development branches
+    if: needs.build.outputs.ENVIRONMENT == 'development'
     
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Download build artifacts
+      # Download the build artifacts
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -157,7 +261,7 @@ jobs:
         run: |
           REPO_NAME="${{ needs.build.outputs.REPO_NAME }}"
           
-          # Create firebase.json with minimal headers (avoid COEP warnings)
+          # Create firebase.json with Unity WebGL headers
           cat > firebase.json << EOF
           {
             "hosting": {
@@ -167,31 +271,237 @@ jobs:
                 "**/.*",
                 "**/node_modules/**"
               ],
+              "rewrites": [
+                {
+                  "source": "**",
+                  "destination": "/index.html"
+                }
+              ],
               "headers": [
                 {
                   "source": "**/*.wasm",
-                  "headers": [{"key": "Content-Type", "value": "application/wasm"}]
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/wasm"
+                    }
+                  ]
                 },
                 {
-                  "source": "**/*.data", 
-                  "headers": [{"key": "Content-Type", "value": "application/octet-stream"}]
+                  "source": "**/*.data",
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/octet-stream"
+                    }
+                  ]
                 },
                 {
                   "source": "**/*.js",
-                  "headers": [{"key": "Content-Type", "value": "application/javascript"}]
+                  "headers": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/javascript"
+                    }
+                  ]
                 }
               ]
             }
           }
           EOF
           
-          echo "Firebase configuration created for deployment directory: ${REPO_NAME}"
+          echo "Created firebase.json for development deployment"
 
-      # Deploy to Firebase
-      - name: Deploy to Firebase
+      # Deploy to Firebase for development
+      - name: Deploy to Firebase Hosting (Development)
+        id: deploy_firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets[needs.build.outputs.SERVICE_ACCOUNT_SECRET] }}'
-          projectId: '${{ needs.build.outputs.PROJECT_ID }}'
-          channelId: live
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UNREALITY3D2025 }}
+          projectId: unreality3d2025
+          channelId: ${{ needs.build.outputs.REPO_NAME }}
+          entryPoint: '.'
+          expires: 30d
+
+      - name: Output Firebase Development URL
+        run: |
+          echo "🔧 Development deployment complete!"
+          echo "🔗 Firebase URL: ${{ steps.deploy_firebase.outputs.details_url }}"
+
+  # PRODUCTION: Deploy to GitHub Pages ONLY (for Load Balancer routing)
+  deployToGitHubPages:
+    name: Deploy to GitHub Pages + Load Balancer
+    runs-on: ubuntu-latest
+    needs: build
+    # Deploy to GitHub Pages for all production deployments
+    if: needs.build.outputs.ENVIRONMENT == 'production'
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Download the build artifacts
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Unity-WebGL-Build-${{ needs.build.outputs.REPO_NAME }}
+          path: build-artifacts
+
+      # Prepare for GitHub Pages deployment
+      - name: Prepare GitHub Pages Deployment
+        run: |
+          CREATOR_USERNAME="${{ needs.build.outputs.CREATOR_USERNAME }}"
+          PROJECT_NAME="${{ needs.build.outputs.PROJECT_NAME }}"
+          
+          # Create GitHub Pages directory
+          mkdir -p gh-pages
+          
+          # Copy Unity WebGL build to root for GitHub Pages
+          if [ -d "build-artifacts" ]; then
+            cp -r build-artifacts/* gh-pages/
+            echo "✅ Unity build copied to GitHub Pages directory"
+            
+            # List what we copied
+            echo "📁 GitHub Pages directory contents:"
+            ls -la gh-pages/
+          else
+            echo "❌ No build artifacts found"
+            exit 1
+          fi
+          
+          # Disable Jekyll processing for GitHub Pages
+          touch gh-pages/.nojekyll
+          
+          # ⚠️ DO NOT CREATE CNAME - Load Balancer handles routing
+          echo "📝 CNAME creation skipped - Load Balancer handles routing"
+          
+          echo "✅ GitHub Pages deployment prepared"
+
+      # Register with Load Balancer system
+      - name: Register Project with Load Balancer
+        id: register_project
+        run: |
+          CREATOR_USERNAME="${{ needs.build.outputs.CREATOR_USERNAME }}"
+          PROJECT_NAME="${{ needs.build.outputs.PROJECT_NAME }}"
+          GITHUB_PAGES_URL="https://${CREATOR_USERNAME}.github.io/${PROJECT_NAME}/"
+          PROFESSIONAL_URL="https://${CREATOR_USERNAME}.unreality3d.com/${PROJECT_NAME}/"
+          
+          echo "🔄 Registering with Load Balancer system..."
+          
+          # Register with enhanced backend API (with proper security headers)
+          REGISTRATION_RESPONSE=$(curl -s -X POST \
+            "https://unreality3d.web.app/api/registerCreatorProject" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions/1.0" \
+            -H "X-GitHub-Repository: ${{ github.repository }}" \
+            -H "X-GitHub-Event: push" \
+            -d "{
+              \"creatorUsername\": \"${CREATOR_USERNAME}\",
+              \"projectName\": \"${PROJECT_NAME}\",
+              \"githubPagesUrl\": \"${GITHUB_PAGES_URL}\",
+              \"professionalUrl\": \"${PROFESSIONAL_URL}\",
+              \"repositoryUrl\": \"https://github.com/${{ github.repository }}\",
+              \"deploymentType\": \"github-pages-loadbalancer\",
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }")
+          
+          echo "Registration response: ${REGISTRATION_RESPONSE}"
+          
+          # Parse registration response
+          if echo "$REGISTRATION_RESPONSE" | grep -q '"success":true'; then
+            echo "✅ Project registered successfully with Load Balancer!"
+            echo "REGISTRATION_SUCCESS=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Registration failed or creator not found - using fallback URL"
+            echo "REGISTRATION_SUCCESS=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Output URLs for display
+          echo "GITHUB_PAGES_URL=${GITHUB_PAGES_URL}" >> $GITHUB_OUTPUT
+          echo "PROFESSIONAL_URL=${PROFESSIONAL_URL}" >> $GITHUB_OUTPUT
+
+      # Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: gh-pages
+          branch: gh-pages
+          commit-message: 'Deploy Unity WebGL to GitHub Pages'
+          single-commit: true
+          clean: true
+
+      # Output deployment information
+      - name: Output Deployment Information
+        run: |
+          CREATOR_USERNAME="${{ needs.build.outputs.CREATOR_USERNAME }}"
+          PROJECT_NAME="${{ needs.build.outputs.PROJECT_NAME }}"
+          GITHUB_PAGES_URL="${{ steps.register_project.outputs.GITHUB_PAGES_URL }}"
+          PROFESSIONAL_URL="${{ steps.register_project.outputs.PROFESSIONAL_URL }}"
+          REGISTRATION_SUCCESS="${{ steps.register_project.outputs.REGISTRATION_SUCCESS }}"
+          
+          echo "🎉 Deployment completed successfully!"
+          echo "🌍 Environment: production"
+          echo "📦 Deployment: GitHub Pages + Load Balancer"
+          echo "📱 Repository: ${{ needs.build.outputs.REPO_NAME }}"
+          echo "👤 Creator: ${CREATOR_USERNAME}"
+          echo "🎯 Project Name: ${PROJECT_NAME}"
+          echo ""
+          
+          if [[ "$REGISTRATION_SUCCESS" == "true" ]]; then
+            echo "✅ Project registered with Load Balancer system"
+            echo "🌐 Your Professional URL:"
+            echo "$PROFESSIONAL_URL"
+            echo ""
+            echo "📋 Professional Features Active:"
+            echo "• Load Balancer routing with unlimited scaling"
+            echo "• Professional subdomain (${CREATOR_USERNAME}.unreality3d.com)"
+            echo "• Zero hosting costs (GitHub Pages backend)"
+            echo "• PayPal monetization enabled"
+            echo "• Creator analytics tracking" 
+            echo "• Professional SEO-friendly URL"
+            echo "• Portfolio page generation"
+          else
+            echo "⚠️ Using fallback URL (creator not registered)"
+            echo "🌐 Your URL:"
+            echo "$PROFESSIONAL_URL"
+            echo ""
+            echo "💡 To enable professional features:"
+            echo "1. Open Unity → U3D → Setup Tab"
+            echo "2. Sign up and reserve your creator username"
+            echo "3. Redeploy this repository"
+          fi
+          
+          echo ""
+          echo "🔧 GitHub Pages Direct URL:"
+          echo "$GITHUB_PAGES_URL"
+          echo ""
+          echo "🎮 How to use:"
+          echo "• WASD to move, mouse to look around"
+          echo "• Share your professional URL with others"
+          echo "• URL is permanent and indexed by search engines"
+          echo "• Content served from GitHub Pages (zero hosting costs)"
+          echo ""
+          echo "🔄 To update: Push changes to this repository"
+          
+          # GitHub step summary
+          echo "## 🚀 Unity WebGL Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$REGISTRATION_SUCCESS" == "true" ]]; then
+            echo "**🎮 Professional URL:** [$PROFESSIONAL_URL]($PROFESSIONAL_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "**✅ Status:** Registered with Load Balancer system" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**🎮 Project URL:** [$PROFESSIONAL_URL]($PROFESSIONAL_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "**⚠️ Status:** Fallback URL (register creator for full features)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "**🔧 GitHub Pages URL:** [$GITHUB_PAGES_URL]($GITHUB_PAGES_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "**👤 Creator:** $CREATOR_USERNAME" >> $GITHUB_STEP_SUMMARY
+          echo "**🎯 Project:** $PROJECT_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🌍 Environment:** production" >> $GITHUB_STEP_SUMMARY
+          echo "**📦 Deployment:** GitHub Pages + Load Balancer" >> $GITHUB_STEP_SUMMARY
+          echo "**📱 Repository:** ${{ needs.build.outputs.REPO_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**🎯 Controls:** WASD to move, mouse to look" >> $GITHUB_STEP_SUMMARY
+          echo "**💰 Hosting Cost:** $0 (GitHub Pages)" >> $GITHUB_STEP_SUMMARY
