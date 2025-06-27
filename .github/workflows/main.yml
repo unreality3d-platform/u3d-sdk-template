@@ -12,9 +12,9 @@ on:
 
 # Environment variables for Unity Personal License
 env:
-  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
   UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
   UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
 
 jobs:
   build:
@@ -45,7 +45,68 @@ jobs:
             Library-WebGL-
             Library-
 
-      # Build Unity project for WebGL using Personal license
+      # === NEW: Unity License Automation ===
+      # Setup Node.js for license activation
+      - name: Setup Node.js for License Automation
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install unity-license-activate tool
+      - name: Install Unity License Activator
+        run: npm install -g unity-license-activate
+
+      # Generate Unity activation file
+      - name: Generate Unity Activation File
+        run: |
+          echo "Generating Unity activation file..."
+          unity-editor -batchmode -createManualActivationFile -logfile -
+          
+          # Verify .alf file was created
+          if ls Unity_*.alf 1> /dev/null 2>&1; then
+            echo "✅ Unity activation file generated"
+            ls -la Unity_*.alf
+          else
+            echo "❌ Unity activation file generation failed"
+            exit 1
+          fi
+
+      # Activate Unity license automatically
+      - name: Activate Unity License
+        run: |
+          echo "Activating Unity license..."
+          
+          # Run license activation with error handling
+          if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
+            echo "Using 2FA authentication"
+            unity-license-activate \
+              "${{ env.UNITY_EMAIL }}" \
+              "${{ env.UNITY_PASSWORD }}" \
+              Unity_*.alf \
+              --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
+          else
+            echo "Using email/password authentication"
+            unity-license-activate \
+              "${{ env.UNITY_EMAIL }}" \
+              "${{ env.UNITY_PASSWORD }}" \
+              Unity_*.alf
+          fi
+          
+          # Verify .ulf file was created and set as environment variable
+          if ls Unity_*.ulf 1> /dev/null 2>&1; then
+            echo "✅ Unity license activated successfully"
+            ls -la Unity_*.ulf
+            
+            # Set license content as environment variable for unity-builder
+            echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
+            cat Unity_*.ulf >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "❌ Unity license activation failed"
+            exit 1
+          fi
+            
+            # Build Unity project for WebGL using Personal license
       - name: Build Unity Project
         uses: game-ci/unity-builder@v4
         env:
