@@ -361,7 +361,7 @@ namespace U3D.Editor
             }
         }
 
-        private async void ValidateAndSaveUnityCredentials()
+        private void ValidateAndSaveUnityCredentials()
         {
             validatingUnityCredentials = true;
             unityValidationMessage = "Validating Unity credentials...";
@@ -1010,7 +1010,7 @@ namespace U3D.Editor
                     "Would you like to open GitHub Actions where you can manually trigger builds with 2FA codes?",
                     "Open GitHub", "Later"))
                 {
-                    string actionsUrl = $"https://github.com/{GitHubTokenManager.GetUsername()}/{repositoryName}/actions";
+                    string actionsUrl = $"https://github.com/{GitHubTokenManager.GitHubUsername}/{repositoryName}/actions";
                     Application.OpenURL(actionsUrl);
                 }
             }
