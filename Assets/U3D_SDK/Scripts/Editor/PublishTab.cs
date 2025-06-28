@@ -177,7 +177,6 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
         }
 
-        // NEW: Unity credentials management UI
         private void DrawUnityCredentialsSection()
         {
             EditorGUILayout.LabelField("Unity Account (for automated builds)", EditorStyles.boldLabel);
@@ -205,9 +204,78 @@ namespace U3D.Editor
                 EditorGUILayout.LabelField("Unity Password:", EditorStyles.miniLabel);
                 unityCredentials.Password = EditorGUILayout.PasswordField(unityCredentials.Password);
 
-                EditorGUILayout.LabelField("2FA Key (optional):", EditorStyles.miniLabel);
-                unityCredentials.AuthenticatorKey = EditorGUILayout.TextField(unityCredentials.AuthenticatorKey);
-                EditorGUILayout.LabelField("Only needed if you have 2FA enabled on your Unity account", EditorStyles.miniLabel);
+                EditorGUILayout.Space(5);
+
+                // NEW: 2FA Detection and Setup UI
+                bool has2FA = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey);
+                bool new2FAState = EditorGUILayout.Toggle("I have 2FA enabled on my Unity account", has2FA);
+
+                if (new2FAState != has2FA)
+                {
+                    if (!new2FAState)
+                    {
+                        // User disabled 2FA checkbox - clear the key
+                        unityCredentials.AuthenticatorKey = "";
+                    }
+                }
+
+                if (new2FAState) // If 2FA is enabled
+                {
+                    EditorGUILayout.Space(5);
+
+                    // Help box with current Unity instructions
+                    EditorGUILayout.HelpBox(
+                        "You'll need your authenticator secret key (not the 6-digit codes).\n" +
+                        "This is the long string of letters/numbers used to set up your authenticator app.",
+                        MessageType.Info);
+
+                    EditorGUILayout.BeginHorizontal();
+
+                    if (GUILayout.Button("📱 Open Unity 2FA Settings", GUILayout.Height(25)))
+                    {
+                        // Use current Unity ID security URL from web search
+                        Application.OpenURL("https://id.unity.com/en/account/edit");
+                    }
+
+                    if (GUILayout.Button("❓ How to find my key?", GUILayout.Height(25)))
+                    {
+                        EditorUtility.DisplayDialog("Finding Your 2FA Secret Key",
+                            "1. Go to Unity ID → Security\n" +
+                            "2. Find 'Two Factor Authentication' section\n" +
+                            "3. If setting up new: Look for 'Manual entry key' or 'Secret key'\n" +
+                            "4. If already set up: You may need to reconfigure to see the key\n\n" +
+                            "The key looks like: JBSWY3DPEHPK3PXP\n" +
+                            "(NOT the 6-digit codes that change every 30 seconds)",
+                            "Got it!");
+                    }
+
+                    EditorGUILayout.EndHorizontal();
+
+                    EditorGUILayout.Space(3);
+
+                    EditorGUILayout.LabelField("Authenticator Secret Key:", EditorStyles.miniLabel);
+                    unityCredentials.AuthenticatorKey = EditorGUILayout.TextField(unityCredentials.AuthenticatorKey);
+
+                    // Validation for the key format
+                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+                    {
+                        if (unityCredentials.AuthenticatorKey.Length < 16)
+                        {
+                            EditorGUILayout.HelpBox("⚠️ This seems too short for a secret key. Make sure you're using the secret key, not a 6-digit code.", MessageType.Warning);
+                        }
+                        else if (unityCredentials.AuthenticatorKey.Contains(" "))
+                        {
+                            EditorGUILayout.HelpBox("ℹ️ Secret keys usually don't contain spaces. Remove any spaces if copied incorrectly.", MessageType.Info);
+                            // Auto-remove spaces
+                            unityCredentials.AuthenticatorKey = unityCredentials.AuthenticatorKey.Replace(" ", "");
+                        }
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.Space(3);
+                    EditorGUILayout.LabelField("No 2FA key needed", EditorStyles.miniLabel);
+                }
 
                 EditorGUILayout.Space(5);
 
@@ -221,7 +289,8 @@ namespace U3D.Editor
 
                 bool canValidate = !string.IsNullOrEmpty(unityCredentials.Email) &&
                                  !string.IsNullOrEmpty(unityCredentials.Password) &&
-                                 !validatingUnityCredentials;
+                                 !validatingUnityCredentials &&
+                                 (!new2FAState || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey));
 
                 EditorGUI.BeginDisabledGroup(!canValidate);
                 if (GUILayout.Button(validatingUnityCredentials ? "🔄 Validating..." : "✅ Save Credentials"))
@@ -240,7 +309,10 @@ namespace U3D.Editor
             else
             {
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("✅ Unity credentials configured", EditorStyles.miniLabel);
+                string statusText = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", "")) ?
+                    "✅ Unity credentials configured (with 2FA)" :
+                    "✅ Unity credentials configured";
+                EditorGUILayout.LabelField(statusText, EditorStyles.miniLabel);
                 if (GUILayout.Button("📝 Update", GUILayout.Width(70)))
                 {
                     showUnityCredentials = true;

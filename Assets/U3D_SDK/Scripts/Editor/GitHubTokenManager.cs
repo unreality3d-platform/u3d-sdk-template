@@ -267,16 +267,16 @@ namespace U3D.Editor
                 // Set UNITY_AUTHENTICATOR_KEY secret (optional for 2FA)
                 if (!string.IsNullOrEmpty(credentials.AuthenticatorKey))
                 {
-                    Debug.Log("Setting UNITY_AUTHENTICATOR_KEY secret...");
-                    var authKeyResult = await SetRepositorySecret(repositoryName, "UNITY_AUTHENTICATOR_KEY", credentials.AuthenticatorKey);
+                    Debug.Log("Setting UNITY_TOTP_KEY secret...");
+                    var authKeyResult = await SetRepositorySecret(repositoryName, "UNITY_TOTP_KEY", credentials.AuthenticatorKey);
                     if (!authKeyResult)
                     {
-                        Debug.LogWarning("⚠️ Failed to set UNITY_AUTHENTICATOR_KEY secret (this is optional for 2FA)");
+                        Debug.LogWarning("⚠️ Failed to set UNITY_TOTP_KEY secret (this is optional for 2FA)");
                         // Don't return false here since 2FA key is optional
                     }
                     else
                     {
-                        Debug.Log("✅ UNITY_AUTHENTICATOR_KEY secret set successfully");
+                        Debug.Log("✅ UNITY_TOTP_KEY secret set successfully");
                     }
                 }
 
