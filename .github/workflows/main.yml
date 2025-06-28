@@ -68,9 +68,10 @@ jobs:
           # Pull Unity Docker image for ALF generation (Unity 6.0)
           docker pull unityci/editor:ubuntu-6000.0.30f1-base-3.1.0
           
-          # Generate ALF file using Unity in Docker
+          # Generate ALF file using Unity in Docker with proper volume mounting
           docker run --rm \
             -v "${PWD}:/workspace" \
+            -w /workspace \
             unityci/editor:ubuntu-6000.0.30f1-base-3.1.0 \
             unity-editor \
             -batchmode \
