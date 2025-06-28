@@ -5,6 +5,7 @@ using UnityEditor;
 using System.Threading.Tasks;
 using System.IO;
 using System.Diagnostics;
+using UnityDebug = UnityEngine.Debug;
 
 namespace U3D.Editor
 {
@@ -284,12 +285,12 @@ namespace U3D.Editor
 
                 // Log the error for debugging
                 string error = process.StandardError.ReadToEnd();
-                Debug.LogError($"License activation failed: {error}");
+                UnityDebug.LogError($"License activation failed: {error}");
                 return false;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"License activation exception: {ex.Message}");
+                UnityDebug.LogError($"License activation exception: {ex.Message}");
                 return false;
             }
         }
