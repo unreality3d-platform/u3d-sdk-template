@@ -23,6 +23,7 @@ namespace U3D.Editor
 
         // NEW: Unity credentials management
         private UnityCredentials unityCredentials;
+        private bool unity2FAEnabled = false; 
         private bool showUnityCredentials = false;
         private bool validatingUnityCredentials = false;
         private string unityValidationMessage = "";
@@ -206,20 +207,10 @@ namespace U3D.Editor
 
                 EditorGUILayout.Space(5);
 
-                // NEW: 2FA Detection and Setup UI
-                bool has2FA = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey);
-                bool new2FAState = EditorGUILayout.Toggle("I have 2FA enabled on my Unity account", has2FA);
+                // FIXED: 2FA Detection and Setup UI with separate boolean
+                unity2FAEnabled = EditorGUILayout.Toggle("I have 2FA enabled on my Unity account", unity2FAEnabled);
 
-                if (new2FAState != has2FA)
-                {
-                    if (!new2FAState)
-                    {
-                        // User disabled 2FA checkbox - clear the key
-                        unityCredentials.AuthenticatorKey = "";
-                    }
-                }
-
-                if (new2FAState) // If 2FA is enabled
+                if (unity2FAEnabled) // If 2FA is enabled
                 {
                     EditorGUILayout.Space(5);
 
@@ -273,6 +264,8 @@ namespace U3D.Editor
                 }
                 else
                 {
+                    // Clear the authenticator key when 2FA is disabled
+                    unityCredentials.AuthenticatorKey = "";
                     EditorGUILayout.Space(3);
                     EditorGUILayout.LabelField("No 2FA key needed", EditorStyles.miniLabel);
                 }
@@ -287,10 +280,11 @@ namespace U3D.Editor
 
                 EditorGUILayout.BeginHorizontal();
 
+                // FIXED: Use unity2FAEnabled instead of checking key content
                 bool canValidate = !string.IsNullOrEmpty(unityCredentials.Email) &&
                                  !string.IsNullOrEmpty(unityCredentials.Password) &&
                                  !validatingUnityCredentials &&
-                                 (!new2FAState || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey));
+                                 (!unity2FAEnabled || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey));
 
                 EditorGUI.BeginDisabledGroup(!canValidate);
                 if (GUILayout.Button(validatingUnityCredentials ? "🔄 Validating..." : "✅ Save Credentials"))
@@ -397,6 +391,8 @@ namespace U3D.Editor
                 Password = EditorPrefs.GetString("U3D_UnityPassword", ""),
                 AuthenticatorKey = EditorPrefs.GetString("U3D_UnityAuthKey", "")
             };
+            // Restore 2FA preference based on whether we have a saved key
+            unity2FAEnabled = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey);
         }
 
         private bool HasValidUnityCredentials()
