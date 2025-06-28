@@ -64,7 +64,11 @@ jobs:
       - name: Generate Real Unity Activation File
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: "fake-license-to-trigger-alf-generation"
+          UNITY_LICENSE: ""
+          UNITY_EMAIL: ""
+          UNITY_PASSWORD: ""
+          UNITY_SERIAL: ""
+          SKIP_ACTIVATION: true
         with:
           targetPlatform: WebGL
           buildMethod: ""
