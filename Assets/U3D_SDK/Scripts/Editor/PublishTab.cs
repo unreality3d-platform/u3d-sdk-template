@@ -207,24 +207,26 @@ namespace U3D.Editor
 
                 EditorGUILayout.Space(5);
 
-                // FIXED: 2FA Detection and Setup UI with separate boolean
                 unity2FAEnabled = EditorGUILayout.Toggle("I have 2FA enabled on my Unity account", unity2FAEnabled);
 
-                if (unity2FAEnabled) // If 2FA is enabled
+                if (unity2FAEnabled)
                 {
                     EditorGUILayout.Space(5);
 
-                    // Help box with current Unity instructions
+                    // Enhanced 2FA options with interactive support
+                    EditorGUILayout.LabelField("2FA Configuration Options:", EditorStyles.boldLabel);
+
+                    // Method 1: TOTP Key (Automated)
+                    EditorGUILayout.BeginVertical("box");
+                    EditorGUILayout.LabelField("🔑 Method 1: TOTP Key (Fully Automated)", EditorStyles.boldLabel);
                     EditorGUILayout.HelpBox(
                         "You'll need your authenticator secret key (not the 6-digit codes).\n" +
                         "This is the long string of letters/numbers used to set up your authenticator app.",
                         MessageType.Info);
 
                     EditorGUILayout.BeginHorizontal();
-
                     if (GUILayout.Button("📱 Open Unity 2FA Settings", GUILayout.Height(25)))
                     {
-                        // Use current Unity ID security URL from web search
                         Application.OpenURL("https://id.unity.com/en/account/edit");
                     }
 
@@ -239,11 +241,9 @@ namespace U3D.Editor
                             "(NOT the 6-digit codes that change every 30 seconds)",
                             "Got it!");
                     }
-
                     EditorGUILayout.EndHorizontal();
 
                     EditorGUILayout.Space(3);
-
                     EditorGUILayout.LabelField("Authenticator Secret Key:", EditorStyles.miniLabel);
                     unityCredentials.AuthenticatorKey = EditorGUILayout.TextField(unityCredentials.AuthenticatorKey);
 
@@ -257,17 +257,66 @@ namespace U3D.Editor
                         else if (unityCredentials.AuthenticatorKey.Contains(" "))
                         {
                             EditorGUILayout.HelpBox("ℹ️ Secret keys usually don't contain spaces. Remove any spaces if copied incorrectly.", MessageType.Info);
-                            // Auto-remove spaces
                             unityCredentials.AuthenticatorKey = unityCredentials.AuthenticatorKey.Replace(" ", "");
                         }
+                        else
+                        {
+                            EditorGUILayout.HelpBox("✅ TOTP key provided - builds will be fully automated!", MessageType.Info);
+                        }
                     }
+                    EditorGUILayout.EndVertical();
+
+                    EditorGUILayout.Space(5);
+
+                    // Method 2: Interactive 2FA
+                    EditorGUILayout.BeginVertical("box");
+                    EditorGUILayout.LabelField("🎯 Method 2: Interactive 2FA", EditorStyles.boldLabel);
+                    bool useInteractive2FA = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
+                    useInteractive2FA = EditorGUILayout.Toggle("Enable Interactive 2FA Mode", useInteractive2FA);
+                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", useInteractive2FA);
+
+                    if (useInteractive2FA)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "Interactive mode benefits:\n" +
+                            "• No need to find your TOTP secret key\n" +
+                            "• You can manually enter 2FA codes when needed\n" +
+                            "• Fallback option if TOTP key doesn't work\n" +
+                            "• Uses GitHub's workflow dispatch feature",
+                            MessageType.Info);
+
+                        EditorGUILayout.Space(3);
+                        EditorGUILayout.LabelField("Current 2FA Code (optional for immediate publish):", EditorStyles.miniLabel);
+                        string current2FACode = EditorPrefs.GetString("U3D_Current2FACode", "");
+                        current2FACode = EditorGUILayout.TextField(current2FACode);
+                        EditorPrefs.SetString("U3D_Current2FACode", current2FACode);
+
+                        if (!string.IsNullOrEmpty(current2FACode))
+                        {
+                            if (current2FACode.Length == 6 && current2FACode.All(char.IsDigit))
+                            {
+                                EditorGUILayout.HelpBox("✅ Valid 2FA code - will be used for immediate publishing", MessageType.Info);
+                            }
+                            else
+                            {
+                                EditorGUILayout.HelpBox("⚠️ 2FA codes are typically 6 digits", MessageType.Warning);
+                            }
+                        }
+                        else
+                        {
+                            EditorGUILayout.HelpBox("💡 Leave empty to manually trigger builds via GitHub Actions interface", MessageType.Info);
+                        }
+                    }
+                    EditorGUILayout.EndVertical();
                 }
                 else
                 {
-                    // Clear the authenticator key when 2FA is disabled
+                    // Clear 2FA related fields when disabled
                     unityCredentials.AuthenticatorKey = "";
+                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", false);
+                    EditorPrefs.SetString("U3D_Current2FACode", "");
                     EditorGUILayout.Space(3);
-                    EditorGUILayout.LabelField("No 2FA key needed", EditorStyles.miniLabel);
+                    EditorGUILayout.LabelField("No 2FA configuration needed", EditorStyles.miniLabel);
                 }
 
                 EditorGUILayout.Space(5);
@@ -280,11 +329,10 @@ namespace U3D.Editor
 
                 EditorGUILayout.BeginHorizontal();
 
-                // FIXED: Use unity2FAEnabled instead of checking key content
                 bool canValidate = !string.IsNullOrEmpty(unityCredentials.Email) &&
                                  !string.IsNullOrEmpty(unityCredentials.Password) &&
                                  !validatingUnityCredentials &&
-                                 (!unity2FAEnabled || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey));
+                                 (!unity2FAEnabled || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey) || EditorPrefs.GetBool("U3D_UnityInteractive2FA", false));
 
                 EditorGUI.BeginDisabledGroup(!canValidate);
                 if (GUILayout.Button(validatingUnityCredentials ? "🔄 Validating..." : "✅ Save Credentials"))
@@ -303,9 +351,7 @@ namespace U3D.Editor
             else
             {
                 EditorGUILayout.BeginHorizontal();
-                string statusText = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", "")) ?
-                    "✅ Unity credentials configured (with 2FA)" :
-                    "✅ Unity credentials configured";
+                string statusText = GetUnityCredentialsStatusText();
                 EditorGUILayout.LabelField(statusText, EditorStyles.miniLabel);
                 if (GUILayout.Button("📝 Update", GUILayout.Width(70)))
                 {
@@ -315,7 +361,6 @@ namespace U3D.Editor
             }
         }
 
-        // NEW: Unity credentials validation
         private async void ValidateAndSaveUnityCredentials()
         {
             validatingUnityCredentials = true;
@@ -342,13 +387,45 @@ namespace U3D.Editor
                     return;
                 }
 
-                // Save credentials (encrypted via EditorPrefs)
-                SaveUnityCredentials();
+                // Enhanced 2FA validation
+                if (unity2FAEnabled)
+                {
+                    bool hasValidTOTP = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey) &&
+                                       unityCredentials.AuthenticatorKey.Length >= 16;
+                    bool useInteractive2FA = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
 
-                unityValidationMessage = "✅ Unity credentials saved successfully";
+                    if (!hasValidTOTP && !useInteractive2FA)
+                    {
+                        unityValidationMessage = "❌ Please provide TOTP key or enable Interactive 2FA mode";
+                        return;
+                    }
+
+                    if (hasValidTOTP && useInteractive2FA)
+                    {
+                        unityValidationMessage = "💡 Both TOTP and Interactive enabled - TOTP will be tried first";
+                    }
+                }
+
+                // Save credentials with enhanced options
+                SaveEnhancedUnityCredentials();
+
+                string successMessage = "✅ Unity credentials saved successfully";
+                if (unity2FAEnabled)
+                {
+                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+                    {
+                        successMessage += " (TOTP automated)";
+                    }
+                    else if (EditorPrefs.GetBool("U3D_UnityInteractive2FA", false))
+                    {
+                        successMessage += " (Interactive 2FA enabled)";
+                    }
+                }
+
+                unityValidationMessage = successMessage;
                 showUnityCredentials = false;
 
-                Debug.Log("Unity credentials validated and saved");
+                Debug.Log("Enhanced Unity credentials validated and saved");
             }
             catch (System.Exception ex)
             {
@@ -361,12 +438,11 @@ namespace U3D.Editor
             }
         }
 
-        // NEW: Unity credentials storage methods
-        private void SaveUnityCredentials()
+        private void SaveEnhancedUnityCredentials()
         {
             if (unityCredentials != null)
             {
-                // Store encrypted in EditorPrefs (similar to GitHub token approach)
+                // Store basic credentials
                 if (!string.IsNullOrEmpty(unityCredentials.Email))
                 {
                     EditorPrefs.SetString("U3D_UnityEmail", unityCredentials.Email);
@@ -375,10 +451,25 @@ namespace U3D.Editor
                 {
                     EditorPrefs.SetString("U3D_UnityPassword", unityCredentials.Password);
                 }
-                if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+
+                // Store 2FA configuration
+                if (unity2FAEnabled)
                 {
-                    EditorPrefs.SetString("U3D_UnityAuthKey", unityCredentials.AuthenticatorKey);
+                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+                    {
+                        EditorPrefs.SetString("U3D_UnityAuthKey", unityCredentials.AuthenticatorKey);
+                    }
+                    EditorPrefs.SetBool("U3D_Unity2FAEnabled", true);
                 }
+                else
+                {
+                    // Clear 2FA settings when disabled
+                    EditorPrefs.DeleteKey("U3D_UnityAuthKey");
+                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", false);
+                    EditorPrefs.SetBool("U3D_Unity2FAEnabled", false);
+                    EditorPrefs.SetString("U3D_Current2FACode", "");
+                }
+
                 EditorPrefs.SetBool("U3D_UnityCredentialsValid", true);
             }
         }
@@ -391,8 +482,16 @@ namespace U3D.Editor
                 Password = EditorPrefs.GetString("U3D_UnityPassword", ""),
                 AuthenticatorKey = EditorPrefs.GetString("U3D_UnityAuthKey", "")
             };
-            // Restore 2FA preference based on whether we have a saved key
-            unity2FAEnabled = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey);
+
+            // Restore 2FA preferences
+            unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
+
+            // Auto-detect 2FA if we have saved keys
+            if (!unity2FAEnabled && !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
+            {
+                unity2FAEnabled = true;
+                EditorPrefs.SetBool("U3D_Unity2FAEnabled", true);
+            }
         }
 
         private bool HasValidUnityCredentials()
@@ -400,6 +499,25 @@ namespace U3D.Editor
             return EditorPrefs.GetBool("U3D_UnityCredentialsValid", false) &&
                    !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityEmail", "")) &&
                    !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityPassword", ""));
+        }
+
+        private string GetUnityCredentialsStatusText()
+        {
+            bool hasAuthKey = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", ""));
+            bool hasInteractive = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
+
+            if (hasAuthKey)
+            {
+                return "✅ Unity credentials configured (TOTP automated)";
+            }
+            else if (hasInteractive)
+            {
+                return "✅ Unity credentials configured (Interactive 2FA)";
+            }
+            else
+            {
+                return "✅ Unity credentials configured";
+            }
         }
 
         private void DrawPublishingSteps()
@@ -469,28 +587,17 @@ namespace U3D.Editor
                 githubConnected = true;
                 currentStatus = $"Repository created: {repoResult.RepositoryName}";
 
-                // NEW: Step 1.5: Configure Unity secrets automatically
-                currentStatus = "Configuring Unity build secrets...";
+                // Step 1.5: Configure Unity secrets with enhanced 2FA support
+                currentStatus = "Configuring Unity build secrets with 2FA support...";
                 LoadUnityCredentials(); // Ensure we have the latest credentials
 
-                bool secretsConfigured = await GitHubTokenManager.SetupUnityRepositorySecrets(repoResult.RepositoryName, unityCredentials);
+                bool secretsConfigured = await SetupEnhancedUnityRepositorySecrets(repoResult.RepositoryName, unityCredentials);
                 if (!secretsConfigured)
                 {
                     throw new System.Exception("Failed to configure Unity build secrets. Publishing cannot continue.");
                 }
 
-                string generatedLicense = EditorPrefs.GetString("U3D_GeneratedUnityLicense", "");
-                if (!string.IsNullOrEmpty(generatedLicense))
-                {
-                    currentStatus = "Adding Unity license to repository secrets...";
-                    bool licenseSet = await GitHubTokenManager.SetRepositorySecret(repoResult.RepositoryName, "UNITY_LICENSE", generatedLicense);
-                    if (licenseSet)
-                    {
-                        currentStatus = "Unity license configured in repository";
-                    }
-                }
-
-                currentStatus = "Unity build secrets configured successfully";
+                currentStatus = "Unity build secrets and enhanced 2FA workflow configured successfully";
 
                 // Step 2: Clone template repository first
                 currentStep = PublishStep.SavingProject;
@@ -536,6 +643,9 @@ namespace U3D.Editor
                 EditorPrefs.SetString("U3D_PublishedURL", publishUrl);
 
                 currentStatus = "Publishing completed successfully!";
+
+                // Show deployment summary with 2FA info
+                ShowDeploymentSummary(repoResult.RepositoryName);
             }
             catch (System.Exception ex)
             {
@@ -553,6 +663,66 @@ namespace U3D.Editor
             finally
             {
                 isPublishing = false;
+            }
+        }
+
+        private async Task<bool> SetupEnhancedUnityRepositorySecrets(string repositoryName, UnityCredentials credentials)
+        {
+            try
+            {
+                Debug.Log("🔧 Setting up enhanced Unity repository secrets...");
+
+                // Set basic Unity credentials
+                bool emailSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_EMAIL", credentials.Email);
+                bool passwordSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_PASSWORD", credentials.Password);
+
+                if (!emailSet || !passwordSet)
+                {
+                    Debug.LogError("Failed to set basic Unity credentials");
+                    return false;
+                }
+
+                // Set 2FA credentials based on configuration
+                bool unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
+                if (unity2FAEnabled)
+                {
+                    string authKey = EditorPrefs.GetString("U3D_UnityAuthKey", "");
+                    if (!string.IsNullOrEmpty(authKey))
+                    {
+                        bool totpSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_TOTP_KEY", authKey);
+                        if (totpSet)
+                        {
+                            Debug.Log("✅ TOTP key configured - builds will be fully automated");
+                        }
+                        else
+                        {
+                            Debug.LogWarning("Failed to set TOTP key - will fall back to interactive mode");
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log("🎯 No TOTP key provided - interactive 2FA mode will be available");
+                    }
+                }
+
+                // Add any existing Unity license if available
+                string existingLicense = EditorPrefs.GetString("U3D_GeneratedUnityLicense", "");
+                if (!string.IsNullOrEmpty(existingLicense))
+                {
+                    bool licenseSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_LICENSE", existingLicense);
+                    if (licenseSet)
+                    {
+                        Debug.Log("✅ Existing Unity license added to repository");
+                    }
+                }
+
+                Debug.Log("✅ Enhanced Unity repository secrets configured successfully");
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Failed to setup enhanced Unity repository secrets: {ex.Message}");
+                return false;
             }
         }
 
@@ -789,6 +959,60 @@ namespace U3D.Editor
                     Success = false,
                     ErrorMessage = $"Template processor execution failed: {ex.Message}"
                 };
+            }
+        }
+
+        private void ShowDeploymentSummary(string repositoryName)
+        {
+            bool unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
+            bool hasAuthKey = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", ""));
+            bool hasInteractive = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
+
+            string summaryMessage = "🎉 Publishing completed successfully!\n\n";
+            summaryMessage += $"🌐 Your URL: {publishUrl}\n\n";
+            summaryMessage += "🔧 Build Configuration:\n";
+
+            if (unity2FAEnabled)
+            {
+                if (hasAuthKey)
+                {
+                    summaryMessage += "• Unity license: Fully automated (TOTP)\n";
+                    summaryMessage += "• Future builds: Automatic on every push\n";
+                }
+                else if (hasInteractive)
+                {
+                    summaryMessage += "• Unity license: Interactive 2FA enabled\n";
+                    summaryMessage += "• Manual builds: Available via GitHub Actions\n";
+                    summaryMessage += "• You can trigger builds with 2FA codes when needed\n";
+                }
+            }
+            else
+            {
+                summaryMessage += "• Unity license: Standard automation\n";
+                summaryMessage += "• Builds: Automatic on every push\n";
+            }
+
+            summaryMessage += "\n💡 Next steps:\n";
+            summaryMessage += "• Your content is live and accessible\n";
+            summaryMessage += "• Push changes to trigger new builds\n";
+
+            if (unity2FAEnabled && !hasAuthKey)
+            {
+                summaryMessage += "• Use GitHub Actions tab for manual 2FA builds\n";
+            }
+
+            EditorUtility.DisplayDialog("Publishing Success", summaryMessage, "Great!");
+
+            // Optionally open the GitHub Actions page for interactive 2FA users
+            if (unity2FAEnabled && !hasAuthKey && hasInteractive)
+            {
+                if (EditorUtility.DisplayDialog("GitHub Actions",
+                    "Would you like to open GitHub Actions where you can manually trigger builds with 2FA codes?",
+                    "Open GitHub", "Later"))
+                {
+                    string actionsUrl = $"https://github.com/{GitHubTokenManager.GetUsername()}/{repositoryName}/actions";
+                    Application.OpenURL(actionsUrl);
+                }
             }
         }
 
