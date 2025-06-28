@@ -7,65 +7,52 @@ namespace U3D.Editor
 {
     public class PerformanceValidation : IValidationCategory
     {
-        public string CategoryName => "Performance";
+        public string CategoryName => "Performance Analysis";
 
         public async System.Threading.Tasks.Task<List<ValidationResult>> RunChecks()
         {
             var results = new List<ValidationResult>();
 
-            results.Add(await ValidateBuildSize());
-            results.Add(await ValidatePolyCount());
-            results.Add(await ValidateLightingSetup());
-            results.Add(await ValidateShaderComplexity());
-            results.Add(await ValidateBatchingOptimization());
+            // REMOVED per your request:
+            // - Shadow settings validation
+            // - Anti-aliasing level checks
+            // - Lighting setup optimization
+            // - Shader complexity analysis
+
+            // Keeping only asset-level performance checks that don't relate to quality settings
+            results.Add(await ValidatePolygonCount());
+            results.Add(await ValidateTextureMemoryUsage());
+            results.Add(await ValidateAudioFileCount());
 
             return results;
         }
 
-        private async System.Threading.Tasks.Task<ValidationResult> ValidateBuildSize()
+        private async System.Threading.Tasks.Task<ValidationResult> ValidatePolygonCount()
         {
-            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
-            var audioGuids = AssetDatabase.FindAssets("t:AudioClip");
-            var meshGuids = AssetDatabase.FindAssets("t:Mesh");
-
-            var estimatedSizeMB = (textureGuids.Length * 0.5f) + (audioGuids.Length * 0.3f) + (meshGuids.Length * 0.1f);
-
-            await System.Threading.Tasks.Task.Delay(50);
-
-            var isAcceptable = estimatedSizeMB < 512;
-            return new ValidationResult(
-                isAcceptable,
-                isAcceptable ? $"Estimated build size: {estimatedSizeMB:F1}MB (within 512MB limit)" : $"Estimated build size: {estimatedSizeMB:F1}MB (exceeds 512MB limit)",
-                isAcceptable ? ValidationSeverity.Info : ValidationSeverity.Critical
-            );
-        }
-
-        private async System.Threading.Tasks.Task<ValidationResult> ValidatePolyCount()
-        {
-            var meshFilters = Object.FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
-            var totalTris = 0;
+            var meshFilters = UnityEngine.Object.FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
+            int totalTris = 0;
             var highPolyObjects = new List<GameObject>();
 
-            foreach (var mf in meshFilters)
+            foreach (var meshFilter in meshFilters)
             {
-                if (mf.sharedMesh != null)
+                if (meshFilter.sharedMesh != null)
                 {
-                    var tris = mf.sharedMesh.triangles.Length / 3;
+                    int tris = meshFilter.sharedMesh.triangles.Length / 3;
                     totalTris += tris;
 
-                    if (tris > 10000)
+                    if (tris > 10000) // High poly threshold
                     {
-                        highPolyObjects.Add(mf.gameObject);
+                        highPolyObjects.Add(meshFilter.gameObject);
                     }
                 }
             }
 
             await System.Threading.Tasks.Task.Delay(50);
 
-            var isOptimal = totalTris < 500000 && highPolyObjects.Count == 0;
+            var isOptimal = totalTris < 100000; // WebGL optimal threshold
             var message = isOptimal ?
-                $"Total triangles: {totalTris:N0} (optimal for WebGL)" :
-                $"Total triangles: {totalTris:N0}, {highPolyObjects.Count} high-poly objects found";
+                $"✅ Total triangles: {totalTris:N0} (good for WebGL)" :
+                $"⚠️ Total triangles: {totalTris:N0}, consider optimizing {highPolyObjects.Count} high-poly objects";
 
             var result = new ValidationResult(isOptimal, message, isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning);
             result.affectedObjects.AddRange(highPolyObjects.Cast<UnityEngine.Object>());
@@ -73,62 +60,63 @@ namespace U3D.Editor
             return result;
         }
 
-        private async System.Threading.Tasks.Task<ValidationResult> ValidateLightingSetup()
+        private async System.Threading.Tasks.Task<ValidationResult> ValidateTextureMemoryUsage()
         {
-            var lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
-            var realtimeLights = lights.Where(l => l.lightmapBakeType == LightmapBakeType.Realtime).ToList();
+            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
+            long totalTextureMemory = 0;
+            int largeTextureCount = 0;
 
-            await System.Threading.Tasks.Task.Delay(50);
-
-            var isOptimal = realtimeLights.Count <= 4;
-            return new ValidationResult(
-                isOptimal,
-                isOptimal ? $"{realtimeLights.Count} real-time lights (optimal)" : $"{realtimeLights.Count} real-time lights (consider baking some for WebGL performance)",
-                isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
-            );
-        }
-
-        private async System.Threading.Tasks.Task<ValidationResult> ValidateShaderComplexity()
-        {
-            var renderers = Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None);
-            var complexMaterials = new List<Material>();
-
-            foreach (var renderer in renderers)
+            foreach (var guid in textureGuids.Take(100)) // Sample for performance
             {
-                foreach (var material in renderer.sharedMaterials)
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+
+                if (texture != null)
                 {
-                    if (material != null && material.shader != null)
+                    var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+                    if (importer != null)
                     {
-                        var shaderName = material.shader.name.ToLower();
-                        if (shaderName.Contains("glass") || shaderName.Contains("water") || shaderName.Contains("transparent"))
+                        var settings = importer.GetDefaultPlatformTextureSettings();
+                        if (settings.maxTextureSize > 1024)
                         {
-                            complexMaterials.Add(material);
+                            largeTextureCount++;
                         }
                     }
+
+                    // Estimate memory usage (rough calculation)
+                    int pixels = texture.width * texture.height;
+                    totalTextureMemory += pixels * 4; // Assume 4 bytes per pixel
                 }
             }
 
             await System.Threading.Tasks.Task.Delay(50);
 
-            var isOptimal = complexMaterials.Count < 5;
+            var memoryMB = totalTextureMemory / (1024 * 1024);
+            var isOptimal = memoryMB < 100; // 100MB threshold for WebGL
+
             return new ValidationResult(
                 isOptimal,
-                isOptimal ? "Shader complexity appropriate for WebGL" : $"{complexMaterials.Count} potentially expensive shaders found",
+                isOptimal ?
+                    $"✅ Estimated texture memory: {memoryMB}MB (good for WebGL)" :
+                    $"⚠️ Estimated texture memory: {memoryMB}MB, {largeTextureCount} large textures found",
                 isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
 
-        private async System.Threading.Tasks.Task<ValidationResult> ValidateBatchingOptimization()
+        private async System.Threading.Tasks.Task<ValidationResult> ValidateAudioFileCount()
         {
-            var playerSettings = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
-            var hasBatching = true;
+            var audioClips = UnityEngine.Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None);
+            var playOnAwakeCount = audioClips.Count(a => a.playOnAwake);
 
             await System.Threading.Tasks.Task.Delay(50);
 
+            var isOptimal = playOnAwakeCount <= 2;
             return new ValidationResult(
-                hasBatching,
-                hasBatching ? "Batching optimization enabled" : "Enable static batching for better WebGL performance",
-                hasBatching ? ValidationSeverity.Info : ValidationSeverity.Warning
+                isOptimal,
+                isOptimal ?
+                    $"✅ Audio sources with Play On Awake: {playOnAwakeCount} (optimal for WebGL loading)" :
+                    $"⚠️ {playOnAwakeCount} audio sources set to Play On Awake (may slow WebGL loading)",
+                isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
     }

@@ -12,61 +12,41 @@ namespace U3D.Editor
         {
             var results = new List<ValidationResult>();
 
-            results.Add(ValidateQualitySettings());
-            results.Add(ValidateVSyncSettings());
-            results.Add(ValidateAntiAliasingSettings());
-            results.Add(ValidateShadowSettings());
+            // REMOVED per your request:
+            // - Shadow settings
+            // - Anti-aliasing levels  
+            // - Lighting setup
+            // - Shader complexity
+
+            // Only keeping non-quality related checks that are genuinely informational
+            results.Add(ValidateQualityLevelNaming());
+            results.Add(ValidateWebGLSpecificSettings());
 
             await System.Threading.Tasks.Task.Delay(100);
             return results;
         }
 
-        private ValidationResult ValidateQualitySettings()
+        private ValidationResult ValidateQualityLevelNaming()
         {
             var currentQuality = QualitySettings.GetQualityLevel();
             var qualityNames = QualitySettings.names;
             var qualityName = qualityNames[currentQuality];
 
-            var isOptimal = qualityName.ToLower().Contains("medium") || qualityName.ToLower().Contains("good");
-
+            // Simply report current quality level - no enforcement
             return new ValidationResult(
-                isOptimal,
-                isOptimal ? $"Quality level appropriate: {qualityName}" : $"Consider Medium quality settings for WebGL (current: {qualityName})",
-                isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
+                true, // Always pass - just informational
+                $"ℹ️ Current quality level: {qualityName}",
+                ValidationSeverity.Info
             );
         }
 
-        private ValidationResult ValidateVSyncSettings()
+        private ValidationResult ValidateWebGLSpecificSettings()
         {
-            var vSyncDisabled = QualitySettings.vSyncCount == 0;
+            // Just a general reminder about WebGL optimization - no specific enforcement
             return new ValidationResult(
-                vSyncDisabled,
-                vSyncDisabled ? "VSync disabled (optimal for WebGL)" : "Disable VSync for better WebGL performance",
-                vSyncDisabled ? ValidationSeverity.Info : ValidationSeverity.Warning
-            );
-        }
-
-        private ValidationResult ValidateAntiAliasingSettings()
-        {
-            var aaLevel = QualitySettings.antiAliasing;
-            var isOptimal = aaLevel <= 2;
-
-            return new ValidationResult(
-                isOptimal,
-                isOptimal ? $"Anti-aliasing level appropriate: {aaLevel}x" : $"High anti-aliasing ({aaLevel}x) may impact WebGL performance",
-                isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
-            );
-        }
-
-        private ValidationResult ValidateShadowSettings()
-        {
-            var shadowDistance = QualitySettings.shadowDistance;
-            var isOptimal = shadowDistance <= 50f;
-
-            return new ValidationResult(
-                isOptimal,
-                isOptimal ? $"Shadow distance appropriate: {shadowDistance:F1}m" : $"Shadow distance high ({shadowDistance:F1}m) - consider reducing for WebGL",
-                isOptimal ? ValidationSeverity.Info : ValidationSeverity.Warning
+                true, // Always pass - just informational
+                "💡 Remember: WebGL performance is primarily managed by UnityBuildHelper during build process",
+                ValidationSeverity.Info
             );
         }
     }

@@ -24,8 +24,8 @@ namespace U3D.Editor
 
         private ValidationResult ValidateRequiredComponents()
         {
-            var hasFirebaseIntegration = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "FirebaseIntegration");
-            var hasPlayerController = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "U3DPlayerController");
+            var hasFirebaseIntegration = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "FirebaseIntegration");
+            var hasPlayerController = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "U3DPlayerController");
 
             var componentsFound = 0;
             var missingComponents = new List<string>();
@@ -58,7 +58,7 @@ namespace U3D.Editor
 
         private ValidationResult ValidateAudioConfiguration()
         {
-            var audioSources = Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None);
+            var audioSources = UnityEngine.Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None);
             var playOnAwakeSources = audioSources.Where(a => a.playOnAwake).ToList();
 
             var isOptimal = playOnAwakeSources.Count <= 2;

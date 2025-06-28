@@ -15,39 +15,31 @@ namespace U3D.Editor
         private PublishStep currentStep = PublishStep.Ready;
         private string publishUrl = "";
         private bool githubConnected = false;
-        private bool projectSaved = false;
+        private bool projectBuilt = false;
         private bool deploymentComplete = false;
         private Vector2 scrollPosition;
         private string currentStatus = "";
         private bool isPublishing = false;
 
-        // NEW: Unity credentials management
-        private UnityCredentials unityCredentials;
-        private bool unity2FAEnabled = false; 
-        private bool showUnityCredentials = false;
-        private bool validatingUnityCredentials = false;
-        private string unityValidationMessage = "";
-
         private enum PublishStep
         {
             Ready,
-            ConnectingGitHub,
-            SavingProject,
-            MakingLive,
+            BuildingLocally,
+            CreatingRepository,
+            DeployingToGitHub,
             Complete
         }
 
         public void Initialize()
         {
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
-            LoadUnityCredentials();
 
             if (!string.IsNullOrEmpty(publishUrl))
             {
                 IsComplete = true;
                 currentStep = PublishStep.Complete;
                 githubConnected = true;
-                projectSaved = true;
+                projectBuilt = true;
                 deploymentComplete = true;
             }
         }
@@ -57,7 +49,7 @@ namespace U3D.Editor
             EditorPrefs.DeleteKey("U3D_PublishedURL");
             publishUrl = "";
             githubConnected = false;
-            projectSaved = false;
+            projectBuilt = false;
             deploymentComplete = false;
             currentStep = PublishStep.Ready;
             IsComplete = false;
@@ -151,373 +143,28 @@ namespace U3D.Editor
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Ready to go live?", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("This will:", EditorStyles.label);
+            EditorGUILayout.LabelField("• Build your Unity project for WebGL locally", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("• Create a GitHub repository for your project", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Build your Unity project for WebGL", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Deploy to GitHub Pages", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Deploy to GitHub Pages automatically", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("• Generate your professional URL", EditorStyles.miniLabel);
             EditorGUILayout.Space(10);
 
-            // NEW: Unity credentials section
-            DrawUnityCredentialsSection();
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("✨ Simplified Local Build Process", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Builds locally, deploys automatically." +
+                "You'll receive a professional URL that's ready to share in minutes!",
+                MessageType.Info);
+            EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);
 
-            // Enable publish button only if Unity credentials are configured
-            EditorGUI.BeginDisabledGroup(!HasValidUnityCredentials());
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
-                StartRealPublishProcess();
-            }
-            EditorGUI.EndDisabledGroup();
-
-            if (!HasValidUnityCredentials())
-            {
-                EditorGUILayout.HelpBox("⚠️ Unity credentials required for automated builds", MessageType.Warning);
+                StartSimplifiedPublishProcess();
             }
 
             EditorGUILayout.EndVertical();
-        }
-
-        private void DrawUnityCredentialsSection()
-        {
-            EditorGUILayout.LabelField("Unity Account (for automated builds)", EditorStyles.boldLabel);
-
-            if (!HasValidUnityCredentials())
-            {
-                EditorGUILayout.HelpBox(
-                    "Your Unity account credentials are needed to build your project automatically.\n\n" +
-                    "These are stored securely on your computer and used to configure GitHub Actions.",
-                    MessageType.Info);
-            }
-
-            EditorGUILayout.Space(5);
-
-            if (showUnityCredentials || !HasValidUnityCredentials())
-            {
-                if (unityCredentials == null)
-                {
-                    unityCredentials = new UnityCredentials();
-                }
-
-                EditorGUILayout.LabelField("Unity Email:", EditorStyles.miniLabel);
-                unityCredentials.Email = EditorGUILayout.TextField(unityCredentials.Email);
-
-                EditorGUILayout.LabelField("Unity Password:", EditorStyles.miniLabel);
-                unityCredentials.Password = EditorGUILayout.PasswordField(unityCredentials.Password);
-
-                EditorGUILayout.Space(5);
-
-                unity2FAEnabled = EditorGUILayout.Toggle("I have 2FA enabled on my Unity account", unity2FAEnabled);
-
-                if (unity2FAEnabled)
-                {
-                    EditorGUILayout.Space(5);
-
-                    // Enhanced 2FA options with interactive support
-                    EditorGUILayout.LabelField("2FA Configuration Options:", EditorStyles.boldLabel);
-
-                    // Method 1: TOTP Key (Automated)
-                    EditorGUILayout.BeginVertical("box");
-                    EditorGUILayout.LabelField("🔑 Method 1: TOTP Key (Fully Automated)", EditorStyles.boldLabel);
-                    EditorGUILayout.HelpBox(
-                        "You'll need your authenticator secret key (not the 6-digit codes).\n" +
-                        "This is the long string of letters/numbers used to set up your authenticator app.",
-                        MessageType.Info);
-
-                    EditorGUILayout.BeginHorizontal();
-                    if (GUILayout.Button("📱 Open Unity 2FA Settings", GUILayout.Height(25)))
-                    {
-                        Application.OpenURL("https://id.unity.com/en/account/edit");
-                    }
-
-                    if (GUILayout.Button("❓ How to find my key?", GUILayout.Height(25)))
-                    {
-                        EditorUtility.DisplayDialog("Finding Your 2FA Secret Key",
-                            "1. Go to Unity ID → Security\n" +
-                            "2. Find 'Two Factor Authentication' section\n" +
-                            "3. If setting up new: Look for 'Manual entry key' or 'Secret key'\n" +
-                            "4. If already set up: You may need to reconfigure to see the key\n\n" +
-                            "The key looks like: JBSWY3DPEHPK3PXP\n" +
-                            "(NOT the 6-digit codes that change every 30 seconds)",
-                            "Got it!");
-                    }
-                    EditorGUILayout.EndHorizontal();
-
-                    EditorGUILayout.Space(3);
-                    EditorGUILayout.LabelField("Authenticator Secret Key:", EditorStyles.miniLabel);
-                    unityCredentials.AuthenticatorKey = EditorGUILayout.TextField(unityCredentials.AuthenticatorKey);
-
-                    // Validation for the key format
-                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
-                    {
-                        if (unityCredentials.AuthenticatorKey.Length < 16)
-                        {
-                            EditorGUILayout.HelpBox("⚠️ This seems too short for a secret key. Make sure you're using the secret key, not a 6-digit code.", MessageType.Warning);
-                        }
-                        else if (unityCredentials.AuthenticatorKey.Contains(" "))
-                        {
-                            EditorGUILayout.HelpBox("ℹ️ Secret keys usually don't contain spaces. Remove any spaces if copied incorrectly.", MessageType.Info);
-                            unityCredentials.AuthenticatorKey = unityCredentials.AuthenticatorKey.Replace(" ", "");
-                        }
-                        else
-                        {
-                            EditorGUILayout.HelpBox("✅ TOTP key provided - builds will be fully automated!", MessageType.Info);
-                        }
-                    }
-                    EditorGUILayout.EndVertical();
-
-                    EditorGUILayout.Space(5);
-
-                    // Method 2: Interactive 2FA
-                    EditorGUILayout.BeginVertical("box");
-                    EditorGUILayout.LabelField("🎯 Method 2: Interactive 2FA", EditorStyles.boldLabel);
-                    bool useInteractive2FA = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
-                    useInteractive2FA = EditorGUILayout.Toggle("Enable Interactive 2FA Mode", useInteractive2FA);
-                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", useInteractive2FA);
-
-                    if (useInteractive2FA)
-                    {
-                        EditorGUILayout.HelpBox(
-                            "Interactive mode benefits:\n" +
-                            "• No need to find your TOTP secret key\n" +
-                            "• You can manually enter 2FA codes when needed\n" +
-                            "• Fallback option if TOTP key doesn't work\n" +
-                            "• Uses GitHub's workflow dispatch feature",
-                            MessageType.Info);
-
-                        EditorGUILayout.Space(3);
-                        EditorGUILayout.LabelField("Current 2FA Code (optional for immediate publish):", EditorStyles.miniLabel);
-                        string current2FACode = EditorPrefs.GetString("U3D_Current2FACode", "");
-                        current2FACode = EditorGUILayout.TextField(current2FACode);
-                        EditorPrefs.SetString("U3D_Current2FACode", current2FACode);
-
-                        if (!string.IsNullOrEmpty(current2FACode))
-                        {
-                            if (current2FACode.Length == 6 && current2FACode.All(char.IsDigit))
-                            {
-                                EditorGUILayout.HelpBox("✅ Valid 2FA code - will be used for immediate publishing", MessageType.Info);
-                            }
-                            else
-                            {
-                                EditorGUILayout.HelpBox("⚠️ 2FA codes are typically 6 digits", MessageType.Warning);
-                            }
-                        }
-                        else
-                        {
-                            EditorGUILayout.HelpBox("💡 Leave empty to manually trigger builds via GitHub Actions interface", MessageType.Info);
-                        }
-                    }
-                    EditorGUILayout.EndVertical();
-                }
-                else
-                {
-                    // Clear 2FA related fields when disabled
-                    unityCredentials.AuthenticatorKey = "";
-                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", false);
-                    EditorPrefs.SetString("U3D_Current2FACode", "");
-                    EditorGUILayout.Space(3);
-                    EditorGUILayout.LabelField("No 2FA configuration needed", EditorStyles.miniLabel);
-                }
-
-                EditorGUILayout.Space(5);
-
-                if (!string.IsNullOrEmpty(unityValidationMessage))
-                {
-                    var messageType = HasValidUnityCredentials() ? MessageType.Info : MessageType.Warning;
-                    EditorGUILayout.HelpBox(unityValidationMessage, messageType);
-                }
-
-                EditorGUILayout.BeginHorizontal();
-
-                bool canValidate = !string.IsNullOrEmpty(unityCredentials.Email) &&
-                                 !string.IsNullOrEmpty(unityCredentials.Password) &&
-                                 !validatingUnityCredentials &&
-                                 (!unity2FAEnabled || !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey) || EditorPrefs.GetBool("U3D_UnityInteractive2FA", false));
-
-                EditorGUI.BeginDisabledGroup(!canValidate);
-                if (GUILayout.Button(validatingUnityCredentials ? "🔄 Validating..." : "✅ Save Credentials"))
-                {
-                    ValidateAndSaveUnityCredentials();
-                }
-                EditorGUI.EndDisabledGroup();
-
-                if (HasValidUnityCredentials() && GUILayout.Button("👁️ Hide"))
-                {
-                    showUnityCredentials = false;
-                }
-
-                EditorGUILayout.EndHorizontal();
-            }
-            else
-            {
-                EditorGUILayout.BeginHorizontal();
-                string statusText = GetUnityCredentialsStatusText();
-                EditorGUILayout.LabelField(statusText, EditorStyles.miniLabel);
-                if (GUILayout.Button("📝 Update", GUILayout.Width(70)))
-                {
-                    showUnityCredentials = true;
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-        }
-
-        private void ValidateAndSaveUnityCredentials()
-        {
-            validatingUnityCredentials = true;
-            unityValidationMessage = "Validating Unity credentials...";
-
-            try
-            {
-                // Basic validation
-                if (string.IsNullOrEmpty(unityCredentials.Email) || string.IsNullOrEmpty(unityCredentials.Password))
-                {
-                    unityValidationMessage = "❌ Email and password are required";
-                    return;
-                }
-
-                if (!unityCredentials.Email.Contains("@"))
-                {
-                    unityValidationMessage = "❌ Please enter a valid email address";
-                    return;
-                }
-
-                if (unityCredentials.Password.Length < 6)
-                {
-                    unityValidationMessage = "❌ Password seems too short";
-                    return;
-                }
-
-                // Enhanced 2FA validation
-                if (unity2FAEnabled)
-                {
-                    bool hasValidTOTP = !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey) &&
-                                       unityCredentials.AuthenticatorKey.Length >= 16;
-                    bool useInteractive2FA = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
-
-                    if (!hasValidTOTP && !useInteractive2FA)
-                    {
-                        unityValidationMessage = "❌ Please provide TOTP key or enable Interactive 2FA mode";
-                        return;
-                    }
-
-                    if (hasValidTOTP && useInteractive2FA)
-                    {
-                        unityValidationMessage = "💡 Both TOTP and Interactive enabled - TOTP will be tried first";
-                    }
-                }
-
-                // Save credentials with enhanced options
-                SaveEnhancedUnityCredentials();
-
-                string successMessage = "✅ Unity credentials saved successfully";
-                if (unity2FAEnabled)
-                {
-                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
-                    {
-                        successMessage += " (TOTP automated)";
-                    }
-                    else if (EditorPrefs.GetBool("U3D_UnityInteractive2FA", false))
-                    {
-                        successMessage += " (Interactive 2FA enabled)";
-                    }
-                }
-
-                unityValidationMessage = successMessage;
-                showUnityCredentials = false;
-
-                Debug.Log("Enhanced Unity credentials validated and saved");
-            }
-            catch (System.Exception ex)
-            {
-                unityValidationMessage = $"❌ Validation failed: {ex.Message}";
-                Debug.LogError($"Unity credentials validation error: {ex.Message}");
-            }
-            finally
-            {
-                validatingUnityCredentials = false;
-            }
-        }
-
-        private void SaveEnhancedUnityCredentials()
-        {
-            if (unityCredentials != null)
-            {
-                // Store basic credentials
-                if (!string.IsNullOrEmpty(unityCredentials.Email))
-                {
-                    EditorPrefs.SetString("U3D_UnityEmail", unityCredentials.Email);
-                }
-                if (!string.IsNullOrEmpty(unityCredentials.Password))
-                {
-                    EditorPrefs.SetString("U3D_UnityPassword", unityCredentials.Password);
-                }
-
-                // Store 2FA configuration
-                if (unity2FAEnabled)
-                {
-                    if (!string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
-                    {
-                        EditorPrefs.SetString("U3D_UnityAuthKey", unityCredentials.AuthenticatorKey);
-                    }
-                    EditorPrefs.SetBool("U3D_Unity2FAEnabled", true);
-                }
-                else
-                {
-                    // Clear 2FA settings when disabled
-                    EditorPrefs.DeleteKey("U3D_UnityAuthKey");
-                    EditorPrefs.SetBool("U3D_UnityInteractive2FA", false);
-                    EditorPrefs.SetBool("U3D_Unity2FAEnabled", false);
-                    EditorPrefs.SetString("U3D_Current2FACode", "");
-                }
-
-                EditorPrefs.SetBool("U3D_UnityCredentialsValid", true);
-            }
-        }
-
-        private void LoadUnityCredentials()
-        {
-            unityCredentials = new UnityCredentials
-            {
-                Email = EditorPrefs.GetString("U3D_UnityEmail", ""),
-                Password = EditorPrefs.GetString("U3D_UnityPassword", ""),
-                AuthenticatorKey = EditorPrefs.GetString("U3D_UnityAuthKey", "")
-            };
-
-            // Restore 2FA preferences
-            unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
-
-            // Auto-detect 2FA if we have saved keys
-            if (!unity2FAEnabled && !string.IsNullOrEmpty(unityCredentials.AuthenticatorKey))
-            {
-                unity2FAEnabled = true;
-                EditorPrefs.SetBool("U3D_Unity2FAEnabled", true);
-            }
-        }
-
-        private bool HasValidUnityCredentials()
-        {
-            return EditorPrefs.GetBool("U3D_UnityCredentialsValid", false) &&
-                   !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityEmail", "")) &&
-                   !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityPassword", ""));
-        }
-
-        private string GetUnityCredentialsStatusText()
-        {
-            bool hasAuthKey = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", ""));
-            bool hasInteractive = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
-
-            if (hasAuthKey)
-            {
-                return "✅ Unity credentials configured (TOTP automated)";
-            }
-            else if (hasInteractive)
-            {
-                return "✅ Unity credentials configured (Interactive 2FA)";
-            }
-            else
-            {
-                return "✅ Unity credentials configured";
-            }
         }
 
         private void DrawPublishingSteps()
@@ -525,21 +172,21 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Publishing Progress", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
+            DrawStep("Local Unity Build",
+                projectBuilt,
+                currentStep == PublishStep.BuildingLocally,
+                "✓ Unity WebGL build completed",
+                "🔨 Building Unity WebGL project locally...");
+
             DrawStep("GitHub Repository",
                 githubConnected,
-                currentStep == PublishStep.ConnectingGitHub,
+                currentStep == PublishStep.CreatingRepository,
                 "✓ GitHub repository created",
                 "🔗 Creating GitHub repository...");
 
-            DrawStep("Unity WebGL Build",
-                projectSaved,
-                currentStep == PublishStep.SavingProject,
-                "✓ Unity project built successfully",
-                "🔨 Building Unity WebGL project...");
-
             DrawStep("Deploy to Web",
                 deploymentComplete,
-                currentStep == PublishStep.MakingLive,
+                currentStep == PublishStep.DeployingToGitHub,
                 "✓ Your content is now live!",
                 "🚀 Deploying to GitHub Pages...");
         }
@@ -568,14 +215,27 @@ namespace U3D.Editor
             EditorGUILayout.Space(3);
         }
 
-        private async void StartRealPublishProcess()
+        private async void StartSimplifiedPublishProcess()
         {
             isPublishing = true;
 
             try
             {
-                // Step 1: Create GitHub Repository
-                currentStep = PublishStep.ConnectingGitHub;
+                // Step 1: Build Unity WebGL Project Locally
+                currentStep = PublishStep.BuildingLocally;
+                currentStatus = "Building Unity WebGL project locally...";
+
+                var buildResult = await BuildUnityProjectLocally();
+                if (!buildResult.Success)
+                {
+                    throw new System.Exception(buildResult.ErrorMessage);
+                }
+
+                projectBuilt = true;
+                currentStatus = "Unity build completed successfully";
+
+                // Step 2: Create GitHub Repository
+                currentStep = PublishStep.CreatingRepository;
                 currentStatus = "Creating GitHub repository...";
 
                 var repoResult = await CreateGitHubRepository();
@@ -587,45 +247,11 @@ namespace U3D.Editor
                 githubConnected = true;
                 currentStatus = $"Repository created: {repoResult.RepositoryName}";
 
-                // Step 1.5: Configure Unity secrets with enhanced 2FA support
-                currentStatus = "Configuring Unity build secrets with 2FA support...";
-                LoadUnityCredentials(); // Ensure we have the latest credentials
-
-                bool secretsConfigured = await SetupEnhancedUnityRepositorySecrets(repoResult.RepositoryName, unityCredentials);
-                if (!secretsConfigured)
-                {
-                    throw new System.Exception("Failed to configure Unity build secrets. Publishing cannot continue.");
-                }
-
-                currentStatus = "Unity build secrets and enhanced 2FA workflow configured successfully";
-
-                // Step 2: Clone template repository first
-                currentStep = PublishStep.SavingProject;
-                currentStatus = "Cloning template repository...";
-
-                var cloneResult = await GitIntegration.CloneRepository(repoResult.CloneUrl, repoResult.LocalPath);
-                if (!cloneResult.Success)
-                {
-                    throw new System.Exception(cloneResult.ErrorMessage);
-                }
-
-                // Step 3: Build Unity WebGL Project directly into the repository
-                currentStatus = "Building Unity WebGL project...";
-
-                var buildResult = await BuildUnityProjectToRepository(repoResult.LocalPath);
-                if (!buildResult.Success)
-                {
-                    throw new System.Exception(buildResult.ErrorMessage);
-                }
-
-                projectSaved = true;
-                currentStatus = "Unity build completed successfully";
-
-                // Step 4: Deploy to GitHub Pages
-                currentStep = PublishStep.MakingLive;
+                // Step 3: Deploy to GitHub Pages
+                currentStep = PublishStep.DeployingToGitHub;
                 currentStatus = "Deploying to GitHub Pages...";
 
-                var deployResult = await FinalizeDeployment(repoResult.LocalPath);
+                var deployResult = await DeployToGitHubPages(repoResult.RepositoryName, repoResult.LocalPath, buildResult.BuildPath);
                 if (!deployResult.Success)
                 {
                     throw new System.Exception(deployResult.ErrorMessage);
@@ -644,7 +270,6 @@ namespace U3D.Editor
 
                 currentStatus = "Publishing completed successfully!";
 
-                // Show deployment summary with 2FA info
                 ShowDeploymentSummary(repoResult.RepositoryName);
             }
             catch (System.Exception ex)
@@ -657,7 +282,7 @@ namespace U3D.Editor
 
                 // Reset states
                 githubConnected = false;
-                projectSaved = false;
+                projectBuilt = false;
                 deploymentComplete = false;
             }
             finally
@@ -666,65 +291,39 @@ namespace U3D.Editor
             }
         }
 
-        private async Task<bool> SetupEnhancedUnityRepositorySecrets(string repositoryName, UnityCredentials credentials)
+        private async Task<UnityBuildResult> BuildUnityProjectLocally()
         {
             try
             {
-                Debug.Log("🔧 Setting up enhanced Unity repository secrets...");
-
-                // Set basic Unity credentials
-                bool emailSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_EMAIL", credentials.Email);
-                bool passwordSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_PASSWORD", credentials.Password);
-
-                if (!emailSet || !passwordSet)
+                // Validate build requirements
+                if (!UnityBuildHelper.ValidateBuildRequirements())
                 {
-                    Debug.LogError("Failed to set basic Unity credentials");
-                    return false;
+                    return new UnityBuildResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Build requirements not met. Please check the Console for details."
+                    };
                 }
 
-                // Set 2FA credentials based on configuration
-                bool unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
-                if (unity2FAEnabled)
+                // Build WebGL to temporary directory
+                var tempBuildPath = Path.Combine(Path.GetTempPath(), "U3D_WebGL_Build", System.Guid.NewGuid().ToString());
+                var buildResult = await UnityBuildHelper.BuildWebGL(tempBuildPath, (status) =>
                 {
-                    string authKey = EditorPrefs.GetString("U3D_UnityAuthKey", "");
-                    if (!string.IsNullOrEmpty(authKey))
-                    {
-                        bool totpSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_TOTP_KEY", authKey);
-                        if (totpSet)
-                        {
-                            Debug.Log("✅ TOTP key configured - builds will be fully automated");
-                        }
-                        else
-                        {
-                            Debug.LogWarning("Failed to set TOTP key - will fall back to interactive mode");
-                        }
-                    }
-                    else
-                    {
-                        Debug.Log("🎯 No TOTP key provided - interactive 2FA mode will be available");
-                    }
-                }
+                    currentStatus = status;
+                });
 
-                // Add any existing Unity license if available
-                string existingLicense = EditorPrefs.GetString("U3D_GeneratedUnityLicense", "");
-                if (!string.IsNullOrEmpty(existingLicense))
-                {
-                    bool licenseSet = await GitHubTokenManager.SetRepositorySecret(repositoryName, "UNITY_LICENSE", existingLicense);
-                    if (licenseSet)
-                    {
-                        Debug.Log("✅ Existing Unity license added to repository");
-                    }
-                }
-
-                Debug.Log("✅ Enhanced Unity repository secrets configured successfully");
-                return true;
+                return buildResult;
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"Failed to setup enhanced Unity repository secrets: {ex.Message}");
-                return false;
+                return new UnityBuildResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Local build failed: {ex.Message}"
+                };
             }
         }
+
 
         private async Task<GitHubRepositoryCreationResult> CreateGitHubRepository()
         {
@@ -757,57 +356,40 @@ namespace U3D.Editor
             };
         }
 
-        private async Task<UnityBuildResult> BuildUnityProjectToRepository(string repositoryPath)
-        {
-            // Validate build requirements
-            if (!UnityBuildHelper.ValidateBuildRequirements())
-            {
-                return new UnityBuildResult
-                {
-                    Success = false,
-                    ErrorMessage = "Build requirements not met. Please check the Console for details."
-                };
-            }
-
-            // Build WebGL directly to the repository's Build folder
-            var buildOutputPath = Path.Combine(repositoryPath, "Build");
-            var buildResult = await UnityBuildHelper.BuildWebGL(buildOutputPath, (status) =>
-            {
-                currentStatus = status;
-            });
-
-            return buildResult;
-        }
-
-        private async Task<GitOperationResult> FinalizeDeployment(string localPath)
+        private async Task<GitOperationResult> DeployToGitHubPages(string repositoryName, string localRepoPath, string buildPath)
         {
             try
             {
-                // Verify Unity build files exist in the repository
-                currentStatus = "Verifying Unity build files...";
-                var buildDirectory = Path.Combine(localPath, "Build");
-                if (!Directory.Exists(buildDirectory))
+                // Clone template repository
+                currentStatus = "Cloning template repository...";
+                var cloneResult = await GitIntegration.CloneRepository(
+                    $"https://github.com/{GitHubTokenManager.GitHubUsername}/{repositoryName}.git",
+                    localRepoPath);
+
+                if (!cloneResult.Success)
                 {
                     return new GitOperationResult
                     {
                         Success = false,
-                        ErrorMessage = "Unity build directory not found. Build may have failed."
+                        ErrorMessage = cloneResult.ErrorMessage
                     };
                 }
 
-                var webglFiles = Directory.GetFiles(buildDirectory, "*.*", SearchOption.AllDirectories);
-                if (!webglFiles.Any(f => f.EndsWith(".wasm") || f.EndsWith(".loader.js")))
+                // Copy build files to repository
+                currentStatus = "Copying build files to repository...";
+                var copyResult = await CopyBuildToRepository(buildPath, localRepoPath);
+                if (!copyResult)
                 {
                     return new GitOperationResult
                     {
                         Success = false,
-                        ErrorMessage = "Unity WebGL build files not found. Build may have failed."
+                        ErrorMessage = "Failed to copy build files to repository"
                     };
                 }
 
-                // Run unity-template-processor to replace organization content
+                // Process template with creator information
                 currentStatus = "Processing Unity template and generating creator files...";
-                var processorResult = await RunUnityTemplateProcessor(localPath);
+                var processorResult = await RunUnityTemplateProcessor(localRepoPath);
                 if (!processorResult.Success)
                 {
                     return processorResult;
@@ -816,28 +398,28 @@ namespace U3D.Editor
                 // Set up git user
                 var username = GitHubTokenManager.GitHubUsername ?? "Unity User";
                 var email = U3DAuthenticator.UserEmail ?? "user@example.com";
-                await GitIntegration.SetupGitUser(localPath, username, email);
+                await GitIntegration.SetupGitUser(localRepoPath, username, email);
 
-                // Add all files (including processed template and creator README)
+                // Add all files
                 currentStatus = "Committing files to repository...";
-                var addResult = await GitIntegration.AddAllFiles(localPath);
+                var addResult = await GitIntegration.AddAllFiles(localRepoPath);
                 if (!addResult.Success)
                 {
                     return addResult;
                 }
 
-                // Commit changes with creator-specific message
+                // Commit changes
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
                 var commitMessage = $"Creator content: {Application.productName} by {creatorUsername}";
-                var commitResult = await GitIntegration.CommitChanges(localPath, commitMessage);
+                var commitResult = await GitIntegration.CommitChanges(localRepoPath, commitMessage);
                 if (!commitResult.Success)
                 {
                     return commitResult;
                 }
 
-                // Push to GitHub (using enhanced PushToRemote with force handling)
+                // Push to GitHub
                 currentStatus = "Pushing to GitHub Pages...";
-                var pushResult = await GitIntegration.PushToRemote(localPath, "main");
+                var pushResult = await GitIntegration.PushToRemote(localRepoPath, "main");
                 return pushResult;
             }
             catch (System.Exception ex)
@@ -845,12 +427,69 @@ namespace U3D.Editor
                 return new GitOperationResult
                 {
                     Success = false,
-                    ErrorMessage = $"Deployment finalization failed: {ex.Message}"
+                    ErrorMessage = $"Deployment failed: {ex.Message}"
                 };
             }
         }
 
-        // Unity template processor method (runs processor from cloned repo)
+        private async Task<bool> CopyBuildToRepository(string buildPath, string repositoryPath)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    var buildDirectory = new DirectoryInfo(buildPath);
+                    var repoDirectory = new DirectoryInfo(Path.Combine(repositoryPath, "Build"));
+
+                    if (!buildDirectory.Exists)
+                    {
+                        Debug.LogError($"Build directory does not exist: {buildPath}");
+                        return false;
+                    }
+
+                    // Create Build directory in repository
+                    if (!repoDirectory.Exists)
+                    {
+                        repoDirectory.Create();
+                    }
+
+                    // Copy all build files
+                    CopyDirectoryRecursively(buildDirectory, repoDirectory);
+
+                    Debug.Log($"Build files copied from {buildPath} to {repoDirectory.FullName}");
+                    return true;
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Failed to copy build to repository: {ex.Message}");
+                    return false;
+                }
+            });
+        }
+
+        private void CopyDirectoryRecursively(DirectoryInfo source, DirectoryInfo target)
+        {
+            // Create target directory if it doesn't exist
+            if (!target.Exists)
+            {
+                target.Create();
+            }
+
+            // Copy all files
+            foreach (var file in source.GetFiles())
+            {
+                var targetFile = Path.Combine(target.FullName, file.Name);
+                file.CopyTo(targetFile, true);
+            }
+
+            // Copy all subdirectories
+            foreach (var subdir in source.GetDirectories())
+            {
+                var targetSubdir = target.CreateSubdirectory(subdir.Name);
+                CopyDirectoryRecursively(subdir, targetSubdir);
+            }
+        }
+
         private async Task<GitOperationResult> RunUnityTemplateProcessor(string repositoryPath)
         {
             try
@@ -882,14 +521,14 @@ namespace U3D.Editor
                     productVersion = Application.version
                 };
 
-                // Write config file in the repository (where processor expects it)
+                // Write config file
                 File.WriteAllText(configPath, UnityEngine.JsonUtility.ToJson(config, true));
 
-                // Run the processor using Node.js from within the template repository
+                // Run the processor using Node.js
                 var processInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "node",
-                    Arguments = "unity-template-processor.js", // Relative path since we're in the repo directory
+                    Arguments = "unity-template-processor.js",
                     WorkingDirectory = repositoryPath,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -964,56 +603,19 @@ namespace U3D.Editor
 
         private void ShowDeploymentSummary(string repositoryName)
         {
-            bool unity2FAEnabled = EditorPrefs.GetBool("U3D_Unity2FAEnabled", false);
-            bool hasAuthKey = !string.IsNullOrEmpty(EditorPrefs.GetString("U3D_UnityAuthKey", ""));
-            bool hasInteractive = EditorPrefs.GetBool("U3D_UnityInteractive2FA", false);
-
             string summaryMessage = "🎉 Publishing completed successfully!\n\n";
             summaryMessage += $"🌐 Your URL: {publishUrl}\n\n";
             summaryMessage += "🔧 Build Configuration:\n";
-
-            if (unity2FAEnabled)
-            {
-                if (hasAuthKey)
-                {
-                    summaryMessage += "• Unity license: Fully automated (TOTP)\n";
-                    summaryMessage += "• Future builds: Automatic on every push\n";
-                }
-                else if (hasInteractive)
-                {
-                    summaryMessage += "• Unity license: Interactive 2FA enabled\n";
-                    summaryMessage += "• Manual builds: Available via GitHub Actions\n";
-                    summaryMessage += "• You can trigger builds with 2FA codes when needed\n";
-                }
-            }
-            else
-            {
-                summaryMessage += "• Unity license: Standard automation\n";
-                summaryMessage += "• Builds: Automatic on every push\n";
-            }
-
+            summaryMessage += "• Unity build: Local (using your Unity license)\n";
+            summaryMessage += "• Repository: Creator-owned GitHub repository\n";
+            summaryMessage += "• Hosting: GitHub Pages (unlimited bandwidth)\n";
+            summaryMessage += "• Professional URL: Unreality3D Load Balancer\n";
             summaryMessage += "\n💡 Next steps:\n";
             summaryMessage += "• Your content is live and accessible\n";
-            summaryMessage += "• Push changes to trigger new builds\n";
-
-            if (unity2FAEnabled && !hasAuthKey)
-            {
-                summaryMessage += "• Use GitHub Actions tab for manual 2FA builds\n";
-            }
+            summaryMessage += "• Push changes to trigger new deployments\n";
+            summaryMessage += "• Share your professional URL with anyone\n";
 
             EditorUtility.DisplayDialog("Publishing Success", summaryMessage, "Great!");
-
-            // Optionally open the GitHub Actions page for interactive 2FA users
-            if (unity2FAEnabled && !hasAuthKey && hasInteractive)
-            {
-                if (EditorUtility.DisplayDialog("GitHub Actions",
-                    "Would you like to open GitHub Actions where you can manually trigger builds with 2FA codes?",
-                    "Open GitHub", "Later"))
-                {
-                    string actionsUrl = $"https://github.com/{GitHubTokenManager.GitHubUsername}/{repositoryName}/actions";
-                    Application.OpenURL(actionsUrl);
-                }
-            }
         }
 
         private void DrawSuccessSection()

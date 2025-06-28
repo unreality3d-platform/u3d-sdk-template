@@ -14,6 +14,9 @@ namespace U3D.Editor
         {
             var results = new List<ValidationResult>();
 
+            // NOTE: UnityBuildHelper now handles critical build validation as authority
+            // These checks are now INFORMATIONAL and provide guidance only
+
             results.Add(ValidateWebGLCompression());
             results.Add(ValidateWebGLMemorySize());
             results.Add(ValidateColorSpace());
@@ -27,21 +30,37 @@ namespace U3D.Editor
 
         private ValidationResult ValidateWebGLCompression()
         {
+            // INFORMATIONAL ONLY - UnityBuildHelper enforces this setting
             var compressionOk = PlayerSettings.WebGL.compressionFormat == WebGLCompressionFormat.Disabled;
             return new ValidationResult(
                 compressionOk,
-                compressionOk ? "WebGL compression properly disabled" : "WebGL compression must be disabled for GitHub Pages compatibility",
-                compressionOk ? ValidationSeverity.Info : ValidationSeverity.Critical
+                compressionOk ?
+                    "✅ WebGL compression properly disabled for GitHub Pages compatibility" :
+                    "ℹ️ UnityBuildHelper will set compression to Disabled for GitHub Pages compatibility during build",
+                ValidationSeverity.Info // Always informational now
             );
         }
 
         private ValidationResult ValidateWebGLMemorySize()
         {
-            var memorySizeOk = PlayerSettings.WebGL.memorySize == 512;
+            // INFORMATIONAL ONLY - UnityBuildHelper handles smart memory sizing
+            var currentMemory = PlayerSettings.WebGL.memorySize;
+            var isOptimal = currentMemory >= 512;
+
+            string message;
+            if (currentMemory >= 512)
+            {
+                message = $"✅ WebGL memory size appropriate: {currentMemory}MB";
+            }
+            else
+            {
+                message = $"ℹ️ UnityBuildHelper will optimize memory size (minimum 512MB, current: {currentMemory}MB)";
+            }
+
             return new ValidationResult(
-                memorySizeOk,
-                memorySizeOk ? "WebGL memory size set correctly (512MB)" : "WebGL memory size should be 512MB for optimal performance",
-                memorySizeOk ? ValidationSeverity.Info : ValidationSeverity.Warning
+                isOptimal,
+                message,
+                ValidationSeverity.Info // Always informational now
             );
         }
 
@@ -50,7 +69,7 @@ namespace U3D.Editor
             var colorSpaceOk = PlayerSettings.colorSpace == ColorSpace.Linear;
             return new ValidationResult(
                 colorSpaceOk,
-                colorSpaceOk ? "Color space set to Linear" : "Color space should be Linear for better rendering",
+                colorSpaceOk ? "✅ Color space set to Linear for optimal rendering" : "⚠️ Consider setting color space to Linear for better rendering quality",
                 colorSpaceOk ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
@@ -61,7 +80,7 @@ namespace U3D.Editor
             var hasURP = urpAsset != null;
             return new ValidationResult(
                 hasURP,
-                hasURP ? "Universal Render Pipeline configured" : "Consider using URP for better WebGL performance",
+                hasURP ? "✅ Universal Render Pipeline configured for enhanced WebGL features" : "💡 Consider using URP for enhanced WebGL performance and visual features",
                 hasURP ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
@@ -74,17 +93,20 @@ namespace U3D.Editor
             var hasIntegration = firebaseScript && firebasePlugin;
             return new ValidationResult(
                 hasIntegration,
-                hasIntegration ? "Firebase integration components found" : "Missing Firebase integration - required for U3D backend",
-                hasIntegration ? ValidationSeverity.Info : ValidationSeverity.Critical
+                hasIntegration ? "✅ Firebase integration components found" : "❌ Missing Firebase integration - required for U3D backend functionality",
+                hasIntegration ? ValidationSeverity.Info : ValidationSeverity.Error
             );
         }
 
         private ValidationResult ValidatePlayerControllerSetup()
         {
-            var hasPlayerController = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "U3DPlayerController");
+            var hasPlayerController = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
+                .Any(mb => mb.GetType().Name == "U3DPlayerController");
             return new ValidationResult(
                 hasPlayerController,
-                hasPlayerController ? "U3D Player Controller found in scene" : "Add U3D Player Controller for standard movement controls",
+                hasPlayerController ?
+                    "✅ U3D Player Controller found in scene" :
+                    "💡 Consider adding U3D Player Controller for standard movement controls",
                 hasPlayerController ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
