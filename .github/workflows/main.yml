@@ -203,21 +203,22 @@ jobs:
             done
           fi
           
-          # Final check and export
+          # Final check and export using GameCI standard method
           if [ "$ACTIVATION_SUCCESS" = true ]; then
             # Find and export the generated ULF file
             ULF_FILE=$(find . -name "Unity_*.ulf" -type f | head -n 1)
             if [ -n "$ULF_FILE" ]; then
               echo "✅ Unity license file generated: $ULF_FILE"
               
-              # Export license content to environment variable for unity-builder
-              echo "📝 Setting UNITY_LICENSE environment variable..."
+              # Export license content using GameCI standard multiline approach
+              echo "📝 Setting UNITY_LICENSE environment variable using GameCI standard..."
               
-              # Use GitHub Actions multiline format with random delimiter
-              EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-              echo "UNITY_LICENSE<<$EOF" >> $GITHUB_ENV
-              cat "$ULF_FILE" >> $GITHUB_ENV
-              echo "$EOF" >> $GITHUB_ENV
+              # Use simple HERE document approach (most reliable for GameCI)
+              {
+                echo "UNITY_LICENSE<<EOF_UNITY_LICENSE"
+                cat "$ULF_FILE"
+                echo "EOF_UNITY_LICENSE"
+              } >> $GITHUB_ENV
               
               echo "🎉 Unity license automation completed successfully!"
             else
