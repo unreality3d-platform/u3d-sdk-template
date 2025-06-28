@@ -52,17 +52,20 @@ jobs:
         with:
           node-version: '20'
 
-      # Install unity-license-activate tool
-      - name: Install Unity License Activator
-        run: npm install -g unity-license-activate
-
-      # Generate Unity license automatically
-      - name: Generate and Activate Unity License
+      # Install both Unity license activation tools
+      - name: Install Unity License Activators
         run: |
-          echo "🔧 Starting Unity license automation..."
+          echo "📦 Installing both Unity license activation tools..."
+          npm install -g unity-license-activate
+          npm install -g unity-activate
+          echo "✅ Both tools installed successfully"
+
+      # Generate Unity license automatically with dual-tool approach
+      - name: Generate and Activate Unity License (Dual Method)
+        run: |
+          echo "🔧 Starting Unity license automation with dual-tool approach..."
           
-          # Create a minimal Unity activation file (ALF)
-          # This is a basic ALF that works for license activation
+          # Create a complete Unity activation file (ALF) with required fields
           cat > Unity_activation.alf << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <root>
@@ -93,79 +96,144 @@ jobs:
               <MaxComputeBufferInputsCompute>8</MaxComputeBufferInputsCompute>
               <SupportedComputeShaderTargets>25</SupportedComputeShaderTargets>
             </SystemInfo>
+            <ClientProvidedVersion>6000.0.30f1</ClientProvidedVersion>
+            <DeveloperData Value="AQAAAEY4FzccBkkgrLP2jlWrpA==" />
           </root>
           EOF
           
           echo "✅ Unity activation file created"
           
-          # Activate Unity license with retry logic
-          for attempt in 1 2 3; do
-            echo "🔑 License activation attempt ${attempt}/3..."
+          # Initialize success flag
+          ACTIVATION_SUCCESS=false
+          
+          # Method 1: Try unity-license-activate (GameCI tool) with enhanced settings
+          echo "🔧 Method 1: Trying unity-license-activate (GameCI)..."
+          for attempt in 1 2; do
+            echo "🔑 GameCI tool attempt ${attempt}/2..."
+            
+            # Clean up any previous error files
+            rm -f error.png
             
             if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
               echo "Using 2FA authentication"
-              unity-license-activate \
+              timeout 300 unity-license-activate \
                 "${{ env.UNITY_EMAIL }}" \
                 "${{ env.UNITY_PASSWORD }}" \
                 "Unity_activation.alf" \
-                --authenticator-key "${{ env.UNITY_TOTP_KEY }}"
+                --authenticator-key "${{ env.UNITY_TOTP_KEY }}" \
+                --debug
             else
               echo "Using email/password authentication"
-              unity-license-activate \
+              timeout 300 unity-license-activate \
                 "${{ env.UNITY_EMAIL }}" \
                 "${{ env.UNITY_PASSWORD }}" \
-                "Unity_activation.alf"
+                "Unity_activation.alf" \
+                --debug
             fi
             
             # Check if activation succeeded
-            if [ $? -eq 0 ]; then
-              echo "✅ License activation succeeded on attempt ${attempt}"
+            if [ $? -eq 0 ] && [ -f "Unity_"*.ulf ]; then
+              echo "✅ GameCI tool succeeded on attempt ${attempt}"
+              ACTIVATION_SUCCESS=true
               break
             else
-              echo "❌ License activation failed on attempt ${attempt}"
-              if [ ${attempt} -eq 3 ]; then
-                echo "❌ All license activation attempts failed"
-                
-                # Upload error screenshot for debugging
-                if [ -f "error.png" ]; then
-                  echo "📸 Error screenshot found - uploading for debugging"
-                fi
-                
-                exit 1
-              else
-                echo "⏳ Waiting 10 seconds before retry..."
-                sleep 10
+              echo "❌ GameCI tool failed on attempt ${attempt}"
+              if [ -f "error.png" ]; then
+                cp error.png "gameci_error_attempt_${attempt}.png"
+              fi
+              
+              if [ ${attempt} -lt 2 ]; then
+                echo "⏳ Waiting 15 seconds before retry..."
+                sleep 15
               fi
             fi
           done
           
-          # Find and export the generated ULF file
-          ULF_FILE=$(find . -name "Unity_*.ulf" -type f | head -n 1)
-          if [ -n "$ULF_FILE" ]; then
-            echo "✅ Unity license file generated: $ULF_FILE"
-            
-            # Export license content to environment variable for unity-builder
-            echo "📝 Setting UNITY_LICENSE environment variable..."
-            echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
-            cat "$ULF_FILE" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-            
-            echo "🎉 Unity license automation completed successfully!"
+          # Method 2: Try unity-activate (mob-sakai tool) if Method 1 failed
+          if [ "$ACTIVATION_SUCCESS" = false ]; then
+            echo "🔧 Method 2: Trying unity-activate (mob-sakai)..."
+            for attempt in 1 2; do
+              echo "🔑 mob-sakai tool attempt ${attempt}/2..."
+              
+              # Clean up any previous files
+              rm -f Unity_*.ulf error.png
+              
+              if [ -n "${{ env.UNITY_TOTP_KEY }}" ]; then
+                echo "Using 2FA authentication"
+                unity-activate \
+                  --username "${{ env.UNITY_EMAIL }}" \
+                  --password "${{ env.UNITY_PASSWORD }}" \
+                  --key "${{ env.UNITY_TOTP_KEY }}" \
+                  --debug \
+                  Unity_activation.alf
+              else
+                echo "Using email/password authentication"
+                unity-activate \
+                  --username "${{ env.UNITY_EMAIL }}" \
+                  --password "${{ env.UNITY_PASSWORD }}" \
+                  --debug \
+                  Unity_activation.alf
+              fi
+              
+              # Check if activation succeeded
+              if [ $? -eq 0 ] && [ -f "Unity_"*.ulf ]; then
+                echo "✅ mob-sakai tool succeeded on attempt ${attempt}"
+                ACTIVATION_SUCCESS=true
+                break
+              else
+                echo "❌ mob-sakai tool failed on attempt ${attempt}"
+                if [ -f "error.html" ]; then
+                  cp error.html "mobskai_error_attempt_${attempt}.html"
+                fi
+                
+                if [ ${attempt} -lt 2 ]; then
+                  echo "⏳ Waiting 15 seconds before retry..."
+                  sleep 15
+                fi
+              fi
+            done
+          fi
+          
+          # Final check and export
+          if [ "$ACTIVATION_SUCCESS" = true ]; then
+            # Find and export the generated ULF file
+            ULF_FILE=$(find . -name "Unity_*.ulf" -type f | head -n 1)
+            if [ -n "$ULF_FILE" ]; then
+              echo "✅ Unity license file generated: $ULF_FILE"
+              
+              # Export license content to environment variable for unity-builder
+              echo "📝 Setting UNITY_LICENSE environment variable..."
+              echo "UNITY_LICENSE<<EOF" >> $GITHUB_ENV
+              cat "$ULF_FILE" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              
+              echo "🎉 Unity license automation completed successfully!"
+            else
+              echo "❌ No ULF file found despite success flag"
+              ls -la
+              exit 1
+            fi
           else
-            echo "❌ Unity license activation failed - no ULF file generated"
+            echo "❌ Both license activation methods failed"
             echo "📁 Files in current directory:"
             ls -la
+            echo "📸 Error files available for debugging"
             exit 1
           fi
 
-      # Upload error screenshot if license activation fails
-      - name: Upload License Activation Error Screenshot
+      # Upload license activation error files if both methods fail
+      - name: Upload License Activation Error Files
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: license-activation-error-screenshot
-          path: error.png
+          name: license-activation-error-files
+          path: |
+            error.png
+            error.html
+            gameci_error_attempt_*.png
+            mobskai_error_attempt_*.html
           retention-days: 7
+          if-no-files-found: ignore
 
       # Build Unity project with automated license
       - name: Build Unity Project
