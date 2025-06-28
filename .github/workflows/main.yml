@@ -212,11 +212,13 @@ jobs:
               
               # Export license content to environment variable for unity-builder
               echo "📝 Setting UNITY_LICENSE environment variable..."
-              {
-                echo "UNITY_LICENSE<<UNITY_LICENSE_EOF"
-                cat "$ULF_FILE"
-                echo "UNITY_LICENSE_EOF"
-              } >> $GITHUB_ENV
+              ULF_CONTENT=$(base64 -w 0 "$ULF_FILE")
+              echo "UNITY_LICENSE_BASE64=$ULF_CONTENT" >> $GITHUB_ENV
+              
+              # Decode for unity-builder
+              echo "UNITY_LICENSE<<UNITY_LICENSE_DELIMITER" >> $GITHUB_ENV
+              echo "$ULF_CONTENT" | base64 -d >> $GITHUB_ENV
+              echo "UNITY_LICENSE_DELIMITER" >> $GITHUB_ENV
               
               echo "🎉 Unity license automation completed successfully!"
             else
