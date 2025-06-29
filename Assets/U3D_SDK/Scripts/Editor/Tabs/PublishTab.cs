@@ -441,7 +441,7 @@ namespace U3D.Editor
 
                 Debug.Log($"Calling deployUnityBuild Firebase Function for repository: {repositoryName}");
 
-                // Use your existing U3DAuthenticator method instead of Firebase.Functions
+                // FIXED: Use your custom CallFirebaseFunction method with 10-minute timeout
                 var result = await CallFirebaseFunction("deployUnityBuild", deploymentData);
 
                 if (result == null)
