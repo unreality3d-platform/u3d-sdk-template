@@ -1,366 +1,113 @@
-﻿# Enhanced Unity License Automation with Interactive 2FA Support
-# This workflow maintains all existing automation while adding interactive 2FA capability
-
-name: Unity License Activation with Interactive 2FA
+﻿# Simplified Deployment Workflow for Local Unity Builds
+name: Deploy Pre-Built Unity WebGL to GitHub Pages
 
 on:
   push:
     branches: [main, master]
   workflow_dispatch:
-    inputs:
-      interactive_2fa:
-        description: 'Enable interactive 2FA mode'
-        required: false
-        default: 'false'
-        type: boolean
-      two_fa_code:
-        description: 'Manual 2FA code (if provided)'
-        required: false
-        type: string
-
-env:
-  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-  UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
-  INTERACTIVE_2FA: ${{ github.event.inputs.interactive_2fa || 'false' }}
-  MANUAL_2FA_CODE: ${{ github.event.inputs.two_fa_code || '' }}
 
 jobs:
-  build:
-    name: Unity Build with Smart 2FA Handling
+  deploy:
+    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     
-    outputs:
-      REPO_NAME: ${{ steps.repo_info.outputs.REPO_NAME }}
-      LICENSE_METHOD: ${{ steps.license_activation.outputs.LICENSE_METHOD }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: true
 
-      - name: Setup Node.js for License Automation
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Unity License Tools
+      - name: Verify Build Directory
         run: |
-          echo "📦 Installing Unity license activation tools..."
-          npm install -g unity-license-activate
-          npm install -g unity-activate
+          echo "🔍 Checking for Unity WebGL build files..."
           
-          # Install enhanced interactive 2FA tool
-          npm install -g readline-sync
-          echo "✅ License tools installed successfully"
-
-      - name: Generate Unity ALF File
-        run: |
-          echo "🔧 Generating Unity ALF file using Docker..."
-          
-          # Pull Unity Docker image for ALF generation
-          docker pull unityci/editor:ubuntu-6000.0.30f1-base-3.1.0
-          
-          # Generate ALF file
-          docker run --rm \
-            -v "${PWD}:/workspace" \
-            -w /workspace \
-            unityci/editor:ubuntu-6000.0.30f1-base-3.1.0 \
-            unity-editor \
-            -batchmode \
-            -quit \
-            -createManualActivationFile \
-            -logFile /dev/stdout
-          
-          # Verify ALF file was created
-          ALF_FILE=$(find . -name "*.alf" -type f | head -n 1)
-          if [ -n "$ALF_FILE" ]; then
-            echo "✅ ALF file generated: $ALF_FILE"
-            echo "ALF_FILE=$ALF_FILE" >> $GITHUB_ENV
-          else
-            echo "❌ Failed to generate ALF file"
-            exit 1
-          fi
-
-      - name: Smart Unity License Activation
-        id: license_activation
-        run: |
-          echo "🔑 Starting smart Unity license activation..."
-          
-          # Create interactive 2FA handler script
-          cat > interactive_2fa_handler.js << 'EOF'
-          const readline = require('readline');
-          const { spawn } = require('child_process');
-          
-          const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-          });
-          
-          async function promptFor2FA() {
-            return new Promise((resolve) => {
-              console.log('\n🔐 2FA Required - Unity License Activation Paused');
-              console.log('📱 Please check your authenticator app or SMS');
-              console.log('⏰ You have 5 minutes to respond...');
-              
-              const timeout = setTimeout(() => {
-                console.log('\n⏰ Timeout reached. Please restart the workflow with manual 2FA code.');
-                rl.close();
-                resolve(null);
-              }, 300000); // 5 minute timeout
-              
-              rl.question('Enter your 6-digit 2FA code: ', (answer) => {
-                clearTimeout(timeout);
-                rl.close();
-                resolve(answer.trim());
-              });
-            });
-          }
-          
-          async function activateWithInteractive2FA() {
-            console.log('🎯 Attempting license activation with interactive 2FA support...');
+          if [ -d "Build" ]; then
+            echo "✅ Build directory found"
+            echo "📁 Contents:"
+            ls -la Build/
             
-            const email = process.env.UNITY_EMAIL;
-            const password = process.env.UNITY_PASSWORD;
-            const alfFile = process.env.ALF_FILE;
-            const totpKey = process.env.UNITY_TOTP_KEY;
-            const manualCode = process.env.MANUAL_2FA_CODE;
-            const isInteractive = process.env.INTERACTIVE_2FA === 'true';
+            # Verify essential Unity WebGL files exist
+            REQUIRED_FILES=("index.html")
+            WEBGL_EXTENSIONS=(".wasm" ".data" ".loader.js" ".framework.js")
             
-            // Method 1: Try with TOTP key if available
-            if (totpKey && !isInteractive) {
-              console.log('🔧 Method 1: Attempting with stored TOTP key...');
-              try {
-                const result = await runLicenseActivation(email, password, alfFile, totpKey);
-                if (result.success) {
-                  console.log('✅ TOTP activation successful');
-                  return { success: true, method: 'totp' };
-                }
-              } catch (error) {
-                console.log('❌ TOTP method failed:', error.message);
-              }
-            }
+            for file in "${REQUIRED_FILES[@]}"; do
+              if [ ! -f "$file" ]; then
+                echo "❌ Missing required file: $file"
+                exit 1
+              fi
+            done
             
-            // Method 2: Try with manual code if provided
-            if (manualCode) {
-              console.log('🔧 Method 2: Attempting with manual 2FA code...');
-              try {
-                const result = await runLicenseActivationWithCode(email, password, alfFile, manualCode);
-                if (result.success) {
-                  console.log('✅ Manual code activation successful');
-                  return { success: true, method: 'manual' };
-                }
-              } catch (error) {
-                console.log('❌ Manual code method failed:', error.message);
-              }
-            }
+            # Check for WebGL build files
+            WEBGL_FILES_FOUND=false
+            for ext in "${WEBGL_EXTENSIONS[@]}"; do
+              if ls Build/*${ext} 1> /dev/null 2>&1; then
+                WEBGL_FILES_FOUND=true
+                break
+              fi
+            done
             
-            // Method 3: Interactive 2FA if enabled or other methods failed
-            if (isInteractive || (!totpKey && !manualCode)) {
-              console.log('🔧 Method 3: Interactive 2FA mode...');
-              
-              if (process.env.CI) {
-                console.log('🚫 Cannot use interactive mode in CI environment');
-                console.log('💡 Please either:');
-                console.log('   1. Add UNITY_TOTP_KEY secret with your authenticator key');
-                console.log('   2. Restart workflow with manual 2FA code input');
-                console.log('   3. Use workflow_dispatch with interactive_2fa: true and two_fa_code');
-                return { success: false, method: 'interactive_not_supported_in_ci' };
-              }
-              
-              const code = await promptFor2FA();
-              if (code) {
-                try {
-                  const result = await runLicenseActivationWithCode(email, password, alfFile, code);
-                  if (result.success) {
-                    console.log('✅ Interactive activation successful');
-                    return { success: true, method: 'interactive' };
-                  }
-                } catch (error) {
-                  console.log('❌ Interactive method failed:', error.message);
-                }
-              }
-            }
-            
-            return { success: false, method: 'all_failed' };
-          }
-          
-          function runLicenseActivation(email, password, alfFile, totpKey) {
-            return new Promise((resolve, reject) => {
-              const args = [email, password, alfFile];
-              if (totpKey) {
-                args.push('--authenticator-key', totpKey);
-              }
-              
-              const process = spawn('unity-license-activate', args, {
-                stdio: 'pipe'
-              });
-              
-              let output = '';
-              
-              process.stdout.on('data', (data) => {
-                output += data.toString();
-                console.log(data.toString());
-              });
-              
-              process.stderr.on('data', (data) => {
-                output += data.toString();
-                console.error(data.toString());
-              });
-              
-              process.on('close', (code) => {
-                if (code === 0) {
-                  resolve({ success: true, output });
-                } else {
-                  reject(new Error(`Process exited with code ${code}: ${output}`));
-                }
-              });
-            });
-          }
-          
-          function runLicenseActivationWithCode(email, password, alfFile, code) {
-            return new Promise((resolve, reject) => {
-              // Modified unity-activate call with manual code injection
-              const process = spawn('unity-activate', [
-                '--username', email,
-                '--password', password,
-                '--debug',
-                alfFile
-              ], {
-                stdio: 'pipe'
-              });
-              
-              let output = '';
-              let codeProvided = false;
-              
-              process.stdout.on('data', (data) => {
-                const text = data.toString();
-                output += text;
-                console.log(text);
-                
-                // Detect 2FA prompt and provide code
-                if ((text.includes('verification code') || text.includes('2FA') || text.includes('token')) && !codeProvided) {
-                  console.log('🔐 Providing 2FA code...');
-                  process.stdin.write(code + '\n');
-                  codeProvided = true;
-                }
-              });
-              
-              process.stderr.on('data', (data) => {
-                output += data.toString();
-                console.error(data.toString());
-              });
-              
-              process.on('close', (code) => {
-                if (code === 0) {
-                  resolve({ success: true, output });
-                } else {
-                  reject(new Error(`Process exited with code ${code}: ${output}`));
-                }
-              });
-            });
-          }
-          
-          // Run the activation
-          activateWithInteractive2FA().then(result => {
-            console.log('📊 Activation result:', result);
-            process.exit(result.success ? 0 : 1);
-          }).catch(error => {
-            console.error('💥 Activation failed:', error);
-            process.exit(1);
-          });
-          EOF
-          
-          # Set activation method output
-          ACTIVATION_SUCCESS=false
-          LICENSE_METHOD="none"
-          
-          # Run the interactive 2FA handler
-          if node interactive_2fa_handler.js; then
-            echo "✅ License activation completed successfully"
-            ACTIVATION_SUCCESS=true
-            
-            # Determine which method was used and export license
-            ULF_FILE=$(find . -name "Unity_*.ulf" -type f | head -n 1)
-            if [ -n "$ULF_FILE" ]; then
-              echo "📝 Setting UNITY_LICENSE environment variable..."
-              {
-                echo "UNITY_LICENSE<<EOF_UNITY_LICENSE"
-                cat "$ULF_FILE"
-                echo "EOF_UNITY_LICENSE"
-              } >> $GITHUB_ENV
-              
-              LICENSE_METHOD="automated"
+            if [ "$WEBGL_FILES_FOUND" = true ]; then
+              echo "✅ Unity WebGL build files detected"
             else
-              echo "❌ No ULF file found despite success"
-              ACTIVATION_SUCCESS=false
+              echo "❌ No Unity WebGL build files found in Build directory"
+              exit 1
             fi
           else
-            echo "❌ License activation failed"
-            ACTIVATION_SUCCESS=false
-          fi
-          
-          # Set outputs
-          echo "LICENSE_METHOD=$LICENSE_METHOD" >> $GITHUB_OUTPUT
-          
-          if [ "$ACTIVATION_SUCCESS" = false ]; then
-            echo ""
-            echo "🔧 TROUBLESHOOTING GUIDE:"
-            echo "=================================="
-            echo "If you're seeing this error, try these solutions:"
-            echo ""
-            echo "1. 🔑 Add TOTP Key (Recommended):"
-            echo "   • Go to: https://id.unity.com/en/settings/tfa/new"
-            echo "   • Choose 'Authenticator App'"
-            echo "   • Click 'Can't scan the barcode?'"
-            echo "   • Copy the key and add as UNITY_TOTP_KEY secret"
-            echo ""
-            echo "2. 🎯 Manual 2FA Mode:"
-            echo "   • Go to Actions tab in GitHub"
-            echo "   • Click 'Run workflow'"
-            echo "   • Enter your current 2FA code"
-            echo "   • Check 'Enable interactive 2FA mode'"
-            echo ""
-            echo "3. 📱 Workflow Dispatch with Code:"
-            echo "   • Get 2FA code from your authenticator"
-            echo "   • Use workflow_dispatch with two_fa_code parameter"
-            echo ""
-            echo "=================================="
+            echo "❌ Build directory not found"
+            echo "💡 This workflow expects a local Unity build to be committed to this repository"
             exit 1
           fi
 
-      - name: Build Unity Project with Automated License
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ env.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ env.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ env.UNITY_PASSWORD }}
-        with:
-          targetPlatform: WebGL
-          allowDirtyBuild: true
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
 
-      # Continue with your existing deployment steps...
-      - name: Upload License Activation Logs
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: license-activation-logs
-          path: |
-            error.png
-            error.html
-            interactive_2fa_handler.js
-          retention-days: 7
-          if-no-files-found: ignore
+          path: '.'
 
-      - name: Output License Activation Summary
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Register with Unreality3D Load Balancer
         run: |
-          echo "## 🎉 Unity License Activation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "**Method Used:** ${{ steps.license_activation.outputs.LICENSE_METHOD }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Success ✅" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 Registering professional URL with Unreality3D..."
+          
+          # Extract repository info
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          GITHUB_PAGES_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/"
+          
+          # Call your Firebase function to register the professional URL
+          curl -X POST "https://us-central1-unreality3d.cloudfunctions.net/registerProfessionalURL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"repoOwner\": \"${REPO_OWNER}\",
+              \"repoName\": \"${REPO_NAME}\",
+              \"githubPagesUrl\": \"${GITHUB_PAGES_URL}\"
+            }"
+          
+          echo "✅ Professional URL registration requested"
+
+      - name: Output Success Information
+        run: |
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          
+          echo "## 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Unity license automatically activated" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ WebGL build will proceed with valid license" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ No manual .ulf file management required" >> $GITHUB_STEP_SUMMARY
+          echo "**GitHub Pages URL:** https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_STEP_SUMMARY
+          echo "**Professional URL:** https://${REPO_OWNER}.unreality3d.com/${REPO_NAME}/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### What happened:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Your pre-built Unity WebGL project was deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Professional URL was registered with Unreality3D Load Balancer" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Your content is now live and accessible worldwide" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🎮 **Your game is ready to share!**"
