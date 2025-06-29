@@ -18,6 +18,7 @@ namespace U3D.Editor
 
         private PublishStep currentStep = PublishStep.Ready;
         private string publishUrl = "";
+        private string cachedProductName;
         private bool githubConnected = false;
         private bool projectBuilt = false;
         private bool deploymentComplete = false;
@@ -36,6 +37,9 @@ namespace U3D.Editor
 
         public void Initialize()
         {
+            // Cache product name on main thread to avoid threading issues
+            cachedProductName = Application.productName;
+
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
 
             if (!string.IsNullOrEmpty(publishUrl))
@@ -291,7 +295,7 @@ namespace U3D.Editor
                 IsComplete = true;
 
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
-                var projectName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+                var projectName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
                 publishUrl = $"https://{creatorUsername}.unreality3d.com/{projectName}/";
                 EditorPrefs.SetString("U3D_PublishedURL", publishUrl);
 
@@ -357,11 +361,11 @@ namespace U3D.Editor
             try
             {
                 // Generate unique repository name
-                var baseName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+                var baseName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
                 var uniqueName = await GitHubAPI.GenerateUniqueRepositoryName(baseName);
 
                 // Create fresh repository via GitHub API (not from template)
-                var repoResult = await GitHubAPI.CreateFreshRepository(uniqueName, $"Unity WebGL project: {Application.productName}");
+                var repoResult = await GitHubAPI.CreateFreshRepository(uniqueName, $"Unity WebGL project: {cachedProductName}");
 
                 if (!repoResult.Success)
                 {
@@ -729,9 +733,9 @@ jobs:
         {
             var manifest = new
             {
-                name = Application.productName,
-                short_name = Application.productName,
-                description = $"{Application.productName} - Interactive Unity experience",
+                name = cachedProductName,
+                short_name = cachedProductName,
+                description = $"{cachedProductName} - Interactive Unity experience",
                 start_url = "./",
                 display = "fullscreen",
                 orientation = "landscape-primary",
@@ -783,9 +787,9 @@ self.addEventListener('fetch', (event) => {{
         private string CreateReadmeContent(string repositoryName)
         {
             var creatorUsername = U3DAuthenticator.CreatorUsername;
-            var projectName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+            var projectName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
 
-            return $@"# {Application.productName}
+            return $@"# {cachedProductName}
 
 **Unity WebGL Experience by {creatorUsername}**
 
@@ -846,7 +850,7 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
                 // This would call your Firebase function to register the professional URL
                 // Implementation depends on your existing Firebase integration
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
-                var projectName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+                var projectName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
 
                 Debug.Log($"Would register professional URL: https://{creatorUsername}.unreality3d.com/{projectName}/");
 
@@ -1075,8 +1079,8 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
         private string ProcessTemplateVariables(string template, UnityBuildFiles buildFiles)
         {
             // Replace all template variables (matching original processor exactly)
-            template = template.Replace("{{{ PRODUCT_NAME }}}", Application.productName);
-            template = template.Replace("{{{ CONTENT_ID }}}", GitHubAPI.SanitizeRepositoryName(Application.productName));
+            template = template.Replace("{{{ PRODUCT_NAME }}}", cachedProductName);
+            template = template.Replace("{{{ CONTENT_ID }}}", GitHubAPI.SanitizeRepositoryName(cachedProductName));
             template = template.Replace("{{{ LOADER_FILENAME }}}", buildFiles.loader);
             template = template.Replace("{{{ DATA_FILENAME }}}", buildFiles.data);
             template = template.Replace("{{{ FRAMEWORK_FILENAME }}}", buildFiles.framework);
@@ -1121,9 +1125,9 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
             // Enhanced PWA manifest (matching original processor complexity)
             var manifest = new
             {
-                name = Application.productName,
-                short_name = Application.productName,
-                description = $"{Application.productName} - Interactive Unity experience powered by Unreality3D",
+                name = cachedProductName,
+                short_name = cachedProductName,
+                description = $"{cachedProductName} - Interactive Unity experience powered by Unreality3D",
                 start_url = "./",
                 display = "fullscreen",
                 display_override = new[] { "fullscreen", "standalone", "minimal-ui" },
@@ -1150,7 +1154,7 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
         private void CreateOptimizedServiceWorker(string repositoryPath, UnityBuildFiles buildFiles)
         {
             // Critical service worker for Unity WebGL caching (from original processor)
-            var contentId = GitHubAPI.SanitizeRepositoryName(Application.productName);
+            var contentId = GitHubAPI.SanitizeRepositoryName(cachedProductName);
             var serviceWorker = $@"
 const CACHE_NAME = 'unity-webgl-v1';
 const urlsToCache = [
@@ -1187,11 +1191,11 @@ self.addEventListener('fetch', (event) => {{
         {
             // Enhanced README with git extraction (matching original processor)
             var creatorUsername = ExtractCreatorUsername(repositoryPath);
-            var projectName = GitHubAPI.SanitizeRepositoryName(Application.productName);
+            var projectName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
             var githubOwner = ExtractGitHubOwner(repositoryPath);
             var repositoryName = ExtractRepositoryName(repositoryPath);
 
-            var readmeTemplate = $@"# {Application.productName}
+            var readmeTemplate = $@"# {cachedProductName}
 
 **Unity WebGL Experience by {creatorUsername}**
 
@@ -1257,9 +1261,9 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
                 templatePath = Path.Combine(repositoryPath, "template.html"),
                 buildOutputPath = Path.Combine(repositoryPath, "Build"),
                 outputPath = Path.Combine(repositoryPath, "index.html"),
-                contentId = GitHubAPI.SanitizeRepositoryName(Application.productName),
+                contentId = GitHubAPI.SanitizeRepositoryName(cachedProductName),
                 companyName = U3DAuthenticator.CreatorUsername ?? "Unity Creator",
-                productName = Application.productName,
+                productName = cachedProductName,
                 productVersion = Application.version
             };
 
@@ -1344,7 +1348,7 @@ This is an interactive Unity WebGL experience created using the [Unreality3D Pla
                 // Fall back to content ID
             }
 
-            return GitHubAPI.SanitizeRepositoryName(Application.productName);
+            return GitHubAPI.SanitizeRepositoryName(cachedProductName);
         }
 
         private class UnityBuildFiles
