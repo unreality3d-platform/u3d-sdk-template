@@ -70,6 +70,9 @@ namespace U3D.Editor
                 else if (!GitHubTokenManager.HasValidToken)
                 {
                     currentState = AuthState.GitHubSetup;
+                    githubToken = "";
+                    tokenValidated = false;
+                    validationMessage = "";
                 }
                 else
                 {
@@ -79,6 +82,9 @@ namespace U3D.Editor
             else
             {
                 currentState = AuthState.MethodSelection;
+                githubToken = "";
+                tokenValidated = false;
+                validationMessage = "";
             }
 
             UpdateCompletion();
@@ -130,6 +136,22 @@ namespace U3D.Editor
                 "with your professional URL.\n\n" +
                 "GitHub provides free unlimited hosting for your published content!",
                 MessageType.Info);
+
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                EditorGUILayout.HelpBox(
+                    "💡 Already have a token? You can retrieve it from GitHub:",
+                    MessageType.Info);
+
+                EditorGUILayout.Space(5);
+
+                if (GUILayout.Button("🔗 View My GitHub Tokens", GUILayout.Height(30)))
+                {
+                    Application.OpenURL("https://github.com/settings/tokens");
+                }
+
+                EditorGUILayout.Space(5);
+            }
 
             EditorGUILayout.Space(10);
 
@@ -365,6 +387,11 @@ namespace U3D.Editor
                 {
                     U3DAuthenticator.Logout();
                     GitHubTokenManager.ClearToken();
+
+                    githubToken = "";
+                    tokenValidated = false;
+                    validationMessage = "";
+
                     currentState = AuthState.MethodSelection;
                     UpdateCompletion();
                 }
