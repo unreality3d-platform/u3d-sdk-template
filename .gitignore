@@ -101,3 +101,5 @@ firebase-debug.log*
 firebase-debug.*.log*
 node_modules/
 .env
+ProjectSettings/ProjectSettings.asset
+ProjectSettings/ProjectSettings.asset
