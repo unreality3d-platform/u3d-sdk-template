@@ -62,7 +62,6 @@ namespace U3D.Editor
             return true; // Assume OK if check fails
         }
 
-        // ENHANCE your CopyFromTemplate method with rate limiting:
         public static async Task<GitHubRepositoryResult> CopyFromTemplate(string newRepositoryName, string description = "")
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -313,6 +312,209 @@ namespace U3D.Editor
             return finalName;
         }
 
+        // NEW METHOD: Create fresh repository via GitHub API (not from template)
+        public static async Task<GitHubRepositoryResult> CreateFreshRepository(string repositoryName, string description)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = "No valid GitHub token available"
+                };
+            }
+
+            // Check rate limit before making API call
+            if (!await CheckRateLimit())
+            {
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = "GitHub API rate limit exceeded. Please wait and try again."
+                };
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var repoData = new
+                    {
+                        name = repositoryName,
+                        description = string.IsNullOrEmpty(description) ? $"Unity WebGL project created with Unreality3D SDK" : description,
+                        @private = false, // Public repository for GitHub Pages
+                        auto_init = false, // We'll upload files ourselves
+                        has_issues = true,
+                        has_projects = false,
+                        has_wiki = false
+                    };
+
+                    var json = JsonConvert.SerializeObject(repoData);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var response = await client.PostAsync($"{GITHUB_API_BASE}/user/repos", content);
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                        return new GitHubRepositoryResult
+                        {
+                            Success = true,
+                            RepositoryName = repositoryName,
+                            FullName = result.ContainsKey("full_name") ? result["full_name"].ToString() : $"{GitHubTokenManager.GitHubUsername}/{repositoryName}",
+                            CloneUrl = result.ContainsKey("clone_url") ? result["clone_url"].ToString() : "",
+                            SshUrl = result.ContainsKey("ssh_url") ? result["ssh_url"].ToString() : "",
+                            HtmlUrl = result.ContainsKey("html_url") ? result["html_url"].ToString() : "",
+                            Message = "Repository created successfully"
+                        };
+                    }
+                    else
+                    {
+                        var errorMessage = await ParseGitHubError(responseText);
+                        return new GitHubRepositoryResult
+                        {
+                            Success = false,
+                            ErrorMessage = errorMessage
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"GitHub repository creation error: {ex.Message}");
+                return new GitHubRepositoryResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Repository creation failed: {ex.Message}"
+                };
+            }
+        }
+
+        // NEW METHOD: Upload file content via GitHub API
+        public static async Task<GitOperationResult> UploadFileContent(string repositoryName, string filePath, string base64Content, string commitMessage)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = "No valid GitHub token available"
+                };
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var uploadRequest = new
+                    {
+                        message = commitMessage,
+                        content = base64Content,
+                        branch = "main"
+                    };
+
+                    var json = JsonConvert.SerializeObject(uploadRequest);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/{filePath}";
+                    var response = await client.PutAsync(url, content);
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return new GitOperationResult
+                        {
+                            Success = true,
+                            Message = $"File uploaded successfully: {filePath}"
+                        };
+                    }
+                    else
+                    {
+                        var errorMessage = await ParseGitHubError(responseText);
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = $"Failed to upload {filePath}: {errorMessage}"
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"GitHub file upload error: {ex.Message}");
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = $"File upload failed: {ex.Message}"
+                };
+            }
+        }
+
+        // NEW METHOD: Enable GitHub Pages
+        public static async Task<GitOperationResult> EnableGitHubPages(string repositoryName)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = "No valid GitHub token available"
+                };
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var pagesRequest = new
+                    {
+                        source = new
+                        {
+                            branch = "main",
+                            path = "/"
+                        }
+                    };
+
+                    var json = JsonConvert.SerializeObject(pagesRequest);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/pages";
+                    var response = await client.PostAsync(url, content);
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                    {
+                        // Success or already exists (409 Conflict is normal if Pages already enabled)
+                        return new GitOperationResult
+                        {
+                            Success = true,
+                            Message = "GitHub Pages enabled successfully"
+                        };
+                    }
+                    else
+                    {
+                        var errorMessage = await ParseGitHubError(responseText);
+                        return new GitOperationResult
+                        {
+                            Success = false,
+                            ErrorMessage = $"Failed to enable GitHub Pages: {errorMessage}"
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"GitHub Pages setup error: {ex.Message}");
+                return new GitOperationResult
+                {
+                    Success = false,
+                    ErrorMessage = $"GitHub Pages setup failed: {ex.Message}"
+                };
+            }
+        }
+
         private static HttpClient CreateAuthenticatedClient()
         {
             var client = new HttpClient();
@@ -383,5 +585,14 @@ namespace U3D.Editor
         public string HtmlUrl { get; set; }
         public string Message { get; set; }
         public string ErrorMessage { get; set; }
+    }
+
+    [System.Serializable]
+    public class GitHubRepositoryResponse
+    {
+        public string name;
+        public string full_name;
+        public string clone_url;
+        public string html_url;
     }
 }

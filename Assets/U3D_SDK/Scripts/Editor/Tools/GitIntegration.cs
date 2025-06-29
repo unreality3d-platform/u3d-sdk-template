@@ -290,7 +290,7 @@ namespace U3D.Editor
                             {
                                 Success = true,
                                 Message = output,
-                                Output = output
+                                CloneUrl = output
                             };
                         }
                         else
@@ -311,7 +311,7 @@ namespace U3D.Editor
                             {
                                 Success = false,
                                 ErrorMessage = errorMessage,
-                                Output = output
+                                CloneUrl = output
                             };
                         }
                     }
@@ -420,6 +420,6 @@ crashlytics-build.properties
         public bool Success { get; set; }
         public string Message { get; set; }
         public string ErrorMessage { get; set; }
-        public string Output { get; set; }
+        public string CloneUrl { get; set; }
     }
 }
