@@ -7,8 +7,9 @@ using UnityEditor.Build.Reporting;
 using UnityEngine;
 using System.Collections.Generic;
 using Newtonsoft.Json;
-using Firebase.Functions;
-using ICSharpCode.SharpZipLib.Zip;
+using System.Text;
+using System.Reflection;
+
 
 namespace U3D.Editor
 {
@@ -352,33 +353,22 @@ namespace U3D.Editor
             {
                 try
                 {
-                    currentStatus = "Creating ZIP package for Firebase deployment...";
+                    currentStatus = "Creating build package for Firebase deployment...";
 
-                    // Create temporary ZIP file
-                    var tempZipPath = Path.Combine(Path.GetTempPath(), $"unity_build_{Guid.NewGuid()}.zip");
+                    // Use Unity-compatible file collection instead of SharpZipLib
+                    var packageData = new List<FileEntry>();
+                    CollectFiles(buildPath, "", packageData);
 
-                    using (var fileStream = new FileStream(tempZipPath, FileMode.Create))
-                    using (var zipStream = new ZipOutputStream(fileStream))
-                    {
-                        zipStream.SetLevel(6); // Compression level (0-9)
+                    // Serialize to JSON for easy handling
+                    var packageJson = JsonConvert.SerializeObject(packageData, Formatting.None);
+                    var base64Package = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(packageJson));
 
-                        // Add all files from build directory recursively
-                        AddDirectoryToZip(zipStream, buildPath, "");
-                    }
-
-                    // Read ZIP file as base64
-                    var zipBytes = File.ReadAllBytes(tempZipPath);
-                    var base64Zip = Convert.ToBase64String(zipBytes);
-
-                    // Cleanup temp file
-                    File.Delete(tempZipPath);
-
-                    Debug.Log($"Created ZIP package: {zipBytes.Length} bytes");
+                    Debug.Log($"Created build package: {packageData.Count} files, {base64Package.Length} characters");
 
                     return new ZipPackageResult
                     {
                         Success = true,
-                        ZipData = base64Zip
+                        ZipData = base64Package  // Keep your existing property name
                     };
                 }
                 catch (System.Exception ex)
@@ -386,43 +376,52 @@ namespace U3D.Editor
                     return new ZipPackageResult
                     {
                         Success = false,
-                        ErrorMessage = $"ZIP package creation failed: {ex.Message}"
+                        ErrorMessage = $"Build package creation failed: {ex.Message}"
                     };
                 }
             });
         }
 
-        private void AddDirectoryToZip(ZipOutputStream zipStream, string directoryPath, string relativeBasePath)
+        private void CollectFiles(string basePath, string relativePath, List<FileEntry> files)
         {
-            var dirInfo = new DirectoryInfo(directoryPath);
+            var fullPath = string.IsNullOrEmpty(relativePath) ? basePath : Path.Combine(basePath, relativePath);
+
+            if (!Directory.Exists(fullPath))
+                return;
 
             // Add all files in current directory
-            foreach (var file in dirInfo.GetFiles())
+            var directoryInfo = new DirectoryInfo(fullPath);
+            foreach (var file in directoryInfo.GetFiles())
             {
-                var entryPath = string.IsNullOrEmpty(relativeBasePath) ? file.Name : $"{relativeBasePath}/{file.Name}";
-                var entry = new ZipEntry(entryPath)
+                var fileRelativePath = string.IsNullOrEmpty(relativePath) ? file.Name : $"{relativePath}/{file.Name}";
+                var fileBytes = File.ReadAllBytes(file.FullName);
+
+                files.Add(new FileEntry
                 {
-                    DateTime = file.LastWriteTime,
-                    Size = file.Length
-                };
-
-                zipStream.PutNextEntry(entry);
-
-                using (var fileStream = file.OpenRead())
-                {
-                    fileStream.CopyTo(zipStream);
-                }
-
-                zipStream.CloseEntry();
+                    Path = fileRelativePath,
+                    Content = Convert.ToBase64String(fileBytes),
+                    Size = fileBytes.Length,
+                    LastModified = file.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                });
             }
 
-            // Add all subdirectories recursively
-            foreach (var subDir in dirInfo.GetDirectories())
+            // Recursively add subdirectories
+            foreach (var subDir in directoryInfo.GetDirectories())
             {
-                var subRelativePath = string.IsNullOrEmpty(relativeBasePath) ? subDir.Name : $"{relativeBasePath}/{subDir.Name}";
-                AddDirectoryToZip(zipStream, subDir.FullName, subRelativePath);
+                var subRelativePath = string.IsNullOrEmpty(relativePath) ? subDir.Name : $"{relativePath}/{subDir.Name}";
+                CollectFiles(basePath, subRelativePath, files);
             }
         }
+
+        [System.Serializable]
+        public class FileEntry
+        {
+            public string Path;
+            public string Content;  // Base64 encoded
+            public long Size;
+            public string LastModified;
+        }
+
 
         private async Task<FirebaseDeployResult> DeployViaFirebaseCloudFunctions(string buildZipBase64)
         {
@@ -433,53 +432,28 @@ namespace U3D.Editor
                 // Prepare deployment data
                 var repositoryName = await GitHubAPI.GenerateUniqueRepositoryName(GitHubAPI.SanitizeRepositoryName(cachedProductName));
                 var deploymentData = new Dictionary<string, object>
-                {
-                    { "buildZip", buildZipBase64 },
-                    { "repositoryName", repositoryName },
-                    { "githubToken", GitHubTokenManager.Token },
-                    { "creatorUsername", U3DAuthenticator.CreatorUsername }
-                };
+        {
+            { "buildZip", buildZipBase64 },
+            { "repositoryName", repositoryName },
+            { "githubToken", GitHubTokenManager.Token },
+            { "creatorUsername", U3DAuthenticator.CreatorUsername }
+        };
 
                 Debug.Log($"Calling deployUnityBuild Firebase Function for repository: {repositoryName}");
 
-                // Call Firebase Cloud Function
-                var function = FirebaseFunctions.DefaultInstance.GetHttpsCallable("deployUnityBuild");
-                var task = function.CallAsync(deploymentData);
+                // Use your existing U3DAuthenticator method instead of Firebase.Functions
+                var result = await CallFirebaseFunction("deployUnityBuild", deploymentData);
 
-                // Wait for completion with timeout
-                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5)); // 5 minute timeout
-                var completedTask = await Task.WhenAny(task, timeoutTask);
-
-                if (completedTask == timeoutTask)
-                {
-                    throw new Exception("Firebase deployment timed out after 5 minutes");
-                }
-
-                if (task.IsFaulted)
-                {
-                    var innerException = task.Exception?.InnerException;
-                    throw new Exception($"Firebase function error: {innerException?.Message ?? task.Exception?.Message}");
-                }
-
-                if (task.IsCanceled)
-                {
-                    throw new Exception("Firebase deployment was canceled");
-                }
-
-                // Parse result
-                var result = task.Result;
-                var resultData = result.Data as Dictionary<string, object>;
-
-                if (resultData == null)
+                if (result == null)
                 {
                     throw new Exception("Invalid response from Firebase function");
                 }
 
-                var success = resultData.ContainsKey("success") && (bool)resultData["success"];
+                var success = result.ContainsKey("success") && (bool)result["success"];
 
                 if (!success)
                 {
-                    var errorMessage = resultData.ContainsKey("message") ? resultData["message"].ToString() : "Unknown error";
+                    var errorMessage = result.ContainsKey("message") ? result["message"].ToString() : "Unknown error";
                     throw new Exception($"Firebase deployment failed: {errorMessage}");
                 }
 
@@ -489,9 +463,9 @@ namespace U3D.Editor
                 {
                     Success = true,
                     RepositoryName = repositoryName,
-                    ProjectName = resultData.ContainsKey("projectName") ? resultData["projectName"].ToString() : repositoryName,
-                    ProfessionalUrl = resultData.ContainsKey("professionalUrl") ? resultData["professionalUrl"].ToString() : null,
-                    Message = resultData.ContainsKey("message") ? resultData["message"].ToString() : "Deployment successful"
+                    ProjectName = result.ContainsKey("projectName") ? result["projectName"].ToString() : repositoryName,
+                    ProfessionalUrl = result.ContainsKey("professionalUrl") ? result["professionalUrl"].ToString() : null,
+                    Message = result.ContainsKey("message") ? result["message"].ToString() : "Deployment successful"
                 };
             }
             catch (Exception ex)
@@ -503,6 +477,21 @@ namespace U3D.Editor
                     ErrorMessage = ex.Message
                 };
             }
+        }
+
+        private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, Dictionary<string, object> data)
+        {
+            // Use reflection to access the private method
+            var method = typeof(U3DAuthenticator).GetMethod("CallFirebaseFunction",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            if (method == null)
+            {
+                throw new Exception("CallFirebaseFunction method not found in U3DAuthenticator");
+            }
+
+            var task = method.Invoke(null, new object[] { functionName, data }) as Task<Dictionary<string, object>>;
+            return await task;
         }
 
         [System.Serializable]
