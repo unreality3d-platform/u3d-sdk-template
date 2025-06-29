@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using U3D.Editor;
@@ -508,6 +509,13 @@ public static class U3DAuthenticator
 
         using (var client = new HttpClient())
         {
+            // CRITICAL FIX: Set proper timeout for deployment functions
+            client.Timeout = TimeSpan.FromMinutes(10); // Extended timeout for deployments
+
+            // Add retry configuration for network resilience
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+            ServicePointManager.DefaultConnectionLimit = 100;
+
             var requestData = new { data = data };
             var json = JsonConvert.SerializeObject(requestData);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -518,32 +526,45 @@ public static class U3DAuthenticator
             }
 
             var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
-            var response = await client.PostAsync(functionEndpoint, content);
 
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                return result.ContainsKey("result") ?
-                    JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
-                    result;
-            }
-            else
-            {
-                var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                var errorMessage = "Function call failed";
+                var response = await client.PostAsync(functionEndpoint, content);
+                var responseText = await response.Content.ReadAsStringAsync();
 
-                if (error.ContainsKey("error"))
+                if (response.IsSuccessStatusCode)
                 {
-                    var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                    if (errorData.ContainsKey("message"))
-                    {
-                        errorMessage = errorData["message"].ToString();
-                    }
+                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    return result.ContainsKey("result") ?
+                        JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
+                        result;
                 }
+                else
+                {
+                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    var errorMessage = "Function call failed";
 
-                throw new Exception(errorMessage);
+                    if (error.ContainsKey("error"))
+                    {
+                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                        if (errorData.ContainsKey("message"))
+                        {
+                            errorMessage = errorData["message"].ToString();
+                        }
+                    }
+
+                    throw new Exception(errorMessage);
+                }
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("sending the request"))
+            {
+                // Handle the specific network timeout error with better messaging
+                throw new Exception($"Network timeout during {functionName} - your deployment may still be processing. Please wait a moment and check your GitHub repository.");
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+            {
+                // Handle timeout with helpful message
+                throw new Exception($"Firebase function timeout during {functionName} - large deployments can take several minutes. Please check your GitHub repository.");
             }
         }
     }
