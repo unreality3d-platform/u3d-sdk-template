@@ -20,6 +20,7 @@ Your **interactive 3D experience** goes live at: `https://yourname.unreality3d.c
 
 ### For Publishing
 - **Git** and **GitHub account** - Automated deployment included
+- **New to GitHub? No problem!** - Just create a free account during setup
 - **PayPal account** (optional) - For instant monetization setup
 
 ## 🎯 What's Included - Everything You Need

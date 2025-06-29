@@ -131,10 +131,9 @@ namespace U3D.Editor
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "Connect your GitHub account for automated publishing.\n\n" +
-                "Your Unity project builds locally, then gets automatically deployed to GitHub Pages " +
-                "with your professional URL.\n\n" +
-                "GitHub provides free unlimited hosting for your published content!",
+                "Connect a (free) GitHub account to publish online.\n\n" + 
+                "New to GitHub? No problem! Just create a free account, then follow the steps below.\n\n" +
+                "We'll handle the rest - you just click 'Make It Live!'",
                 MessageType.Info);
 
             if (!GitHubTokenManager.HasValidToken)
