@@ -1,11 +1,12 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using U3D.Editor;
 using UnityEngine;
-using Newtonsoft.Json;
 
 public class FirebaseStorageUploader
 {
@@ -139,7 +140,8 @@ public class FirebaseStorageUploader
             {
                 { "project", projectName },
                 { "creatorUsername", creatorUsername },
-                { "fileList", fileList }
+                { "fileList", fileList },
+                { "githubToken", GitHubTokenManager.Token }
             };
 
             // Use reflection to access the private CallFirebaseFunction method (same pattern as PublishTab)
