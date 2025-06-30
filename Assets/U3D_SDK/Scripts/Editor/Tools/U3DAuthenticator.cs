@@ -19,6 +19,7 @@ public static class U3DAuthenticator
     private static string _pendingPayPalState;
     private static bool _stayLoggedIn = true; // Default to true for convenience
     private static HttpClient _sharedHttpClient;
+    private static bool _networkConfigured = false;
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
@@ -49,6 +50,54 @@ public static class U3DAuthenticator
             {
                 ClearCredentials();
             }
+        }
+    }
+
+    // Static constructor to configure networking ONCE when class is first used
+    static U3DAuthenticator()
+    {
+        ConfigureNetworking();
+    }
+
+    private static void ConfigureNetworking()
+    {
+        if (_networkConfigured) return;
+
+        try
+        {
+            Debug.Log("🔧 Configuring network settings for Unity Editor...");
+
+            // Configure ServicePointManager ONCE (global .NET settings)
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+            ServicePointManager.DefaultConnectionLimit = 100;
+            ServicePointManager.Expect100Continue = false;
+            ServicePointManager.UseNagleAlgorithm = false;
+            ServicePointManager.MaxServicePointIdleTime = 90000;
+
+            // Create HttpClientHandler with Unity Editor optimized settings  
+            var handler = new HttpClientHandler()
+            {
+                UseProxy = false, // Critical: Bypass Unity Editor proxy detection
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+
+            // Create shared HttpClient (recommended pattern for app lifetime)
+            _sharedHttpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromMinutes(10)
+            };
+
+            // Set headers once
+            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
+            _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
+
+            _networkConfigured = true;
+            Debug.Log("✅ Network configuration completed successfully");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Network configuration failed: {ex.Message}");
         }
     }
 
@@ -93,7 +142,6 @@ public static class U3DAuthenticator
         }
     }
 
-
     public static async Task<bool> LoginWithEmailPassword(string email, string password)
     {
         try
@@ -107,68 +155,64 @@ public static class U3DAuthenticator
                 returnSecureToken = true
             };
 
-            using (var client = new HttpClient())
+            var json = JsonConvert.SerializeObject(loginData);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _sharedHttpClient.PostAsync(
+                $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FirebaseConfigManager.CurrentConfig.apiKey}",
+                content);
+
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
             {
-                // FIXED: Use direct Firebase Auth endpoint
-                var json = JsonConvert.SerializeObject(loginData);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
 
-                var response = await client.PostAsync(
-                    $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FirebaseConfigManager.CurrentConfig.apiKey}",
-                    content);
-
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
+                if (result.ContainsKey("idToken"))
                 {
-                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    _idToken = result["idToken"].ToString();
+                    _refreshToken = result.ContainsKey("refreshToken") ? result["refreshToken"].ToString() : "";
+                    _userEmail = email;
 
-                    if (result.ContainsKey("idToken"))
-                    {
-                        _idToken = result["idToken"].ToString();
-                        _refreshToken = result.ContainsKey("refreshToken") ? result["refreshToken"].ToString() : "";
-                        _userEmail = email;
+                    SaveCredentials();
+                    await LoadUserProfile();
 
-                        SaveCredentials();
-                        await LoadUserProfile();
-
-                        Debug.Log("Login successful");
-                        return true;
-                    }
+                    Debug.Log("Login successful");
+                    return true;
                 }
-                else
+            }
+            else
+            {
+                try
                 {
-                    try
-                    {
-                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                        var errorMessage = "Login failed";
+                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    var errorMessage = "Login failed";
 
-                        if (error.ContainsKey("error"))
+                    if (error.ContainsKey("error"))
+                    {
+                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                        if (errorData.ContainsKey("message"))
                         {
-                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                            if (errorData.ContainsKey("message"))
+                            var message = errorData["message"].ToString();
+                            errorMessage = message switch
                             {
-                                var message = errorData["message"].ToString();
-                                errorMessage = message switch
-                                {
-                                    "INVALID_LOGIN_CREDENTIALS" => "Invalid email or password",
-                                    "USER_DISABLED" => "Account has been disabled",
-                                    "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
-                                    _ => $"Login failed: {message}"
-                                };
-                            }
+                                "INVALID_LOGIN_CREDENTIALS" => "Invalid email or password",
+                                "USER_DISABLED" => "Account has been disabled",
+                                "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
+                                _ => $"Login failed: {message}"
+                            };
                         }
-                        else
-                        {
-                            errorMessage = $"Login failed: {responseText}";
-                        }
-
-                        throw new Exception(errorMessage);
                     }
-                    catch (JsonException)
+                    else
                     {
-                        throw new Exception($"Login failed: {responseText}");
+                        errorMessage = $"Login failed: {responseText}";
                     }
+
+                    throw new Exception(errorMessage);
+                }
+                catch (JsonException)
+                {
+                    throw new Exception($"Login failed: {responseText}");
                 }
             }
 
@@ -197,54 +241,51 @@ public static class U3DAuthenticator
             var registerJson = JsonConvert.SerializeObject(registerData);
             var registerContent = new StringContent(registerJson, Encoding.UTF8, "application/json");
 
-            using (var client = new HttpClient())
+            var response = await _sharedHttpClient.PostAsync(
+                $"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FirebaseConfigManager.CurrentConfig.apiKey}",
+                registerContent);
+
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
             {
-                var response = await client.PostAsync(
-                    $"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FirebaseConfigManager.CurrentConfig.apiKey}",
-                    registerContent);
+                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
 
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
+                if (result.ContainsKey("idToken"))
                 {
-                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    _idToken = result["idToken"].ToString();
+                    _refreshToken = result.ContainsKey("refreshToken") ? result["refreshToken"].ToString() : "";
+                    _userEmail = email;
 
-                    if (result.ContainsKey("idToken"))
-                    {
-                        _idToken = result["idToken"].ToString();
-                        _refreshToken = result.ContainsKey("refreshToken") ? result["refreshToken"].ToString() : "";
-                        _userEmail = email;
+                    SaveCredentials();
+                    await LoadUserProfile();
 
-                        SaveCredentials();
-                        await LoadUserProfile();
-
-                        Debug.Log("Registration successful");
-                        return true;
-                    }
+                    Debug.Log("Registration successful");
+                    return true;
                 }
-                else
-                {
-                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                    var errorMessage = "Registration failed";
+            }
+            else
+            {
+                var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                var errorMessage = "Registration failed";
 
-                    if (error.ContainsKey("error"))
+                if (error.ContainsKey("error"))
+                {
+                    var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                    if (errorData.ContainsKey("message"))
                     {
-                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                        if (errorData.ContainsKey("message"))
+                        var message = errorData["message"].ToString();
+                        errorMessage = message switch
                         {
-                            var message = errorData["message"].ToString();
-                            errorMessage = message switch
-                            {
-                                "EMAIL_EXISTS" => "Account already exists",
-                                "WEAK_PASSWORD" => "Password should be at least 6 characters",
-                                "INVALID_EMAIL" => "Invalid email address",
-                                _ => "Registration failed"
-                            };
-                        }
+                            "EMAIL_EXISTS" => "Account already exists",
+                            "WEAK_PASSWORD" => "Password should be at least 6 characters",
+                            "INVALID_EMAIL" => "Invalid email address",
+                            _ => "Registration failed"
+                        };
                     }
-
-                    throw new Exception(errorMessage);
                 }
+
+                throw new Exception(errorMessage);
             }
         }
         catch (Exception ex)
@@ -507,7 +548,6 @@ public static class U3DAuthenticator
     private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
     {
         await EnsureFirebaseConfiguration();
-        EnsureHttpClientInitialized();
 
         const int maxRetries = 3;
         const int baseDelayMs = 1000;
@@ -520,10 +560,10 @@ public static class U3DAuthenticator
                 var json = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                // Add auth header if available
+                // Handle auth header properly
                 if (!string.IsNullOrEmpty(_idToken))
                 {
-                    // Remove any existing auth header and add new one
+                    // Remove any existing Authorization header and add new one
                     _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
                     _sharedHttpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                 }
@@ -534,8 +574,6 @@ public static class U3DAuthenticator
                 Debug.Log($"📦 Request size: {json.Length} characters ({json.Length / (1024.0 * 1024.0):F2} MB)");
 
                 var startTime = DateTime.Now;
-
-                // Use the shared HttpClient - no more "using" statements
                 var response = await _sharedHttpClient.PostAsync(functionEndpoint, content);
                 var responseText = await response.Content.ReadAsStringAsync();
 
@@ -570,9 +608,15 @@ public static class U3DAuthenticator
             catch (HttpRequestException ex) when (attempt < maxRetries)
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"⚠️ Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
-                Debug.LogWarning($"🔄 Retrying in {delay}ms... (Unity Editor network stack issue, shared HttpClient should resolve this)");
+                Debug.LogWarning($"⚠️ HttpRequestException on attempt {attempt}/{maxRetries}: {ex.Message}");
 
+                // Log inner exception details for debugging
+                if (ex.InnerException != null)
+                {
+                    Debug.LogWarning($"Inner exception: {ex.InnerException.GetType().Name} - {ex.InnerException.Message}");
+                }
+
+                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
             }
@@ -581,32 +625,33 @@ public static class U3DAuthenticator
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
                 Debug.LogWarning($"⏰ Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
                 Debug.LogWarning($"🔄 Retrying in {delay}ms...");
-
                 await Task.Delay(delay);
                 continue;
             }
             catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"🌐 Retriable network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"🌐 Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
                 Debug.LogWarning($"🔄 Retrying in {delay}ms...");
-
                 await Task.Delay(delay);
                 continue;
             }
             catch (HttpRequestException ex)
             {
                 Debug.LogError($"💥 Network request failed after {maxRetries} attempts: {ex.Message}");
-                throw new Exception($"Network connection failed after {maxRetries} attempts. This appears to be a Unity Editor network stack issue. Try restarting Unity Editor or switching to a different network.");
-            }
-            catch (TaskCanceledException ex)
-            {
-                Debug.LogError($"⏰ Request cancelled after {maxRetries} attempts: {ex.Message}");
-                throw new Exception($"Firebase function timeout during {functionName} after {maxRetries} attempts - large deployments can take several minutes. Please check your GitHub repository.");
+
+                // Provide specific guidance for Unity Editor network issues
+                string guidance = "This appears to be a Unity Editor network configuration issue. Try:\n" +
+                                "1. Restart Unity Editor\n" +
+                                "2. Check Windows Firewall settings\n" +
+                                "3. Disable proxy/VPN temporarily\n" +
+                                "4. Try from a different network";
+
+                throw new Exception($"Network connection failed: {ex.Message}\n\n{guidance}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"🚨 Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                Debug.LogError($"🚨 Unexpected error on final attempt: {ex.GetType().Name} - {ex.Message}");
                 throw;
             }
         }
@@ -614,11 +659,11 @@ public static class U3DAuthenticator
         throw new Exception($"Failed to call {functionName} after {maxRetries} attempts");
     }
 
-    // Add cleanup method - call this when Unity Editor is closing
     public static void Cleanup()
     {
         _sharedHttpClient?.Dispose();
         _sharedHttpClient = null;
+        _networkConfigured = false;
     }
 
     private static bool IsRetriableNetworkError(Exception ex)
@@ -631,41 +676,6 @@ public static class U3DAuthenticator
                message.Contains("socket") ||
                message.Contains("established connection was aborted") ||
                message.Contains("unable to read data from the transport connection");
-    }
-
-    private static void EnsureHttpClientInitialized()
-    {
-        if (_sharedHttpClient == null)
-        {
-            Debug.Log("🔧 Initializing HttpClient for Unity Editor compatibility...");
-
-            // Configure ServicePointManager ONCE (these are global settings)
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-            ServicePointManager.DefaultConnectionLimit = 100;
-            ServicePointManager.Expect100Continue = false;
-            ServicePointManager.UseNagleAlgorithm = false;
-            ServicePointManager.MaxServicePointIdleTime = 90000; // 90 seconds instead of 30
-
-            // Create HttpClientHandler with Unity-optimized settings
-            var handler = new HttpClientHandler()
-            {
-                UseProxy = false, // Bypass Unity Editor proxy issues
-                UseCookies = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-            };
-
-            // Create the shared HttpClient (recommended pattern)
-            _sharedHttpClient = new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromMinutes(10)
-            };
-
-            // Set persistent headers
-            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
-            _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive"); // Keep connections alive
-
-            Debug.Log("✅ HttpClient initialized successfully");
-        }
     }
 
     private static async Task EnsureFirebaseConfiguration()
@@ -689,9 +699,6 @@ public static class U3DAuthenticator
     {
         try
         {
-            // Use the shared HttpClient instead of creating a new one
-            EnsureHttpClientInitialized();
-
             var configUrl = "https://unreality3d.web.app/api/config";
             var response = await _sharedHttpClient.GetAsync(configUrl);
 
@@ -868,7 +875,6 @@ public static class U3DAuthenticator
         UnityEngine.PlayerPrefs.SetInt("u3d_stayLoggedIn", _stayLoggedIn ? 1 : 0);
         UnityEngine.PlayerPrefs.Save();
     }
-
 
     private static void LoadCredentials()
     {
