@@ -18,6 +18,7 @@ public static class U3DAuthenticator
     private static bool _paypalConnected;
     private static string _pendingPayPalState;
     private static bool _stayLoggedIn = true; // Default to true for convenience
+    private static HttpClient _sharedHttpClient;
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
@@ -506,125 +507,118 @@ public static class U3DAuthenticator
     private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
     {
         await EnsureFirebaseConfiguration();
+        EnsureHttpClientInitialized();
 
         const int maxRetries = 3;
-        const int baseDelayMs = 1000; // Start with 1 second delay
+        const int baseDelayMs = 1000;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            using (var client = new HttpClient())
+            try
             {
-                try
+                var requestData = new { data = data };
+                var json = JsonConvert.SerializeObject(requestData);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                // Add auth header if available
+                if (!string.IsNullOrEmpty(_idToken))
                 {
-                    // Enhanced network configuration for resilience
-                    client.Timeout = TimeSpan.FromMinutes(10);
+                    // Remove any existing auth header and add new one
+                    _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
+                    _sharedHttpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
+                }
 
-                    // CRITICAL: Connection resilience settings
-                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-                    ServicePointManager.DefaultConnectionLimit = 100;
-                    ServicePointManager.Expect100Continue = false; // Reduces handshake overhead
-                    ServicePointManager.UseNagleAlgorithm = false; // Improves small packet performance
-                    ServicePointManager.MaxServicePointIdleTime = 30000; // 30 seconds idle timeout
+                var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
 
-                    var requestData = new { data = data };
-                    var json = JsonConvert.SerializeObject(requestData);
-                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+                Debug.Log($"🔗 Attempt {attempt}/{maxRetries}: Calling {functionName}");
+                Debug.Log($"📦 Request size: {json.Length} characters ({json.Length / (1024.0 * 1024.0):F2} MB)");
 
-                    if (!string.IsNullOrEmpty(_idToken))
+                var startTime = DateTime.Now;
+
+                // Use the shared HttpClient - no more "using" statements
+                var response = await _sharedHttpClient.PostAsync(functionEndpoint, content);
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                var duration = DateTime.Now - startTime;
+                Debug.Log($"✅ Request completed in {duration.TotalSeconds:F1} seconds");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    return result.ContainsKey("result") ?
+                        JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
+                        result;
+                }
+                else
+                {
+                    Debug.LogError($"❌ HTTP Error: {response.StatusCode} - {responseText}");
+                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                    var errorMessage = "Function call failed";
+
+                    if (error.ContainsKey("error"))
                     {
-                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
-                    }
-
-                    // Add connection headers for better reliability
-                    client.DefaultRequestHeaders.Add("Connection", "close"); // Force new connection each time
-                    client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
-
-                    var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
-
-                    Debug.Log($"🔗 Attempt {attempt}/{maxRetries}: Calling {functionName}");
-                    Debug.Log($"📦 Request size: {json.Length} characters ({json.Length / (1024.0 * 1024.0):F2} MB)");
-
-                    var startTime = DateTime.Now;
-
-                    var response = await client.PostAsync(functionEndpoint, content);
-                    var responseText = await response.Content.ReadAsStringAsync();
-
-                    var duration = DateTime.Now - startTime;
-                    Debug.Log($"✅ Request completed in {duration.TotalSeconds:F1} seconds");
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                        return result.ContainsKey("result") ?
-                            JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
-                            result;
-                    }
-                    else
-                    {
-                        Debug.LogError($"❌ HTTP Error: {response.StatusCode} - {responseText}");
-                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                        var errorMessage = "Function call failed";
-
-                        if (error.ContainsKey("error"))
+                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                        if (errorData.ContainsKey("message"))
                         {
-                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                            if (errorData.ContainsKey("message"))
-                            {
-                                errorMessage = errorData["message"].ToString();
-                            }
+                            errorMessage = errorData["message"].ToString();
                         }
-
-                        throw new Exception(errorMessage);
                     }
-                }
-                catch (HttpRequestException ex) when (attempt < maxRetries)
-                {
-                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1)); // Exponential backoff
-                    Debug.LogWarning($"⚠️ Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
-                    Debug.LogWarning($"🔄 Retrying in {delay}ms... (Network issues are common and usually resolve with retry)");
 
-                    await Task.Delay(delay);
-                    continue; // Try again
+                    throw new Exception(errorMessage);
                 }
-                catch (TaskCanceledException ex) when (attempt < maxRetries && !ex.CancellationToken.IsCancellationRequested)
-                {
-                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                    Debug.LogWarning($"⏰ Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
-                    Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+            }
+            catch (HttpRequestException ex) when (attempt < maxRetries)
+            {
+                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                Debug.LogWarning($"⚠️ Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"🔄 Retrying in {delay}ms... (Unity Editor network stack issue, shared HttpClient should resolve this)");
 
-                    await Task.Delay(delay);
-                    continue; // Try again
-                }
-                catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
-                {
-                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                    Debug.LogWarning($"🌐 Retriable network error on attempt {attempt}/{maxRetries}: {ex.Message}");
-                    Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+                await Task.Delay(delay);
+                continue;
+            }
+            catch (TaskCanceledException ex) when (attempt < maxRetries && !ex.CancellationToken.IsCancellationRequested)
+            {
+                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                Debug.LogWarning($"⏰ Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
 
-                    await Task.Delay(delay);
-                    continue; // Try again
-                }
-                catch (HttpRequestException ex)
-                {
-                    // Final attempt failed
-                    Debug.LogError($"💥 Network request failed after {maxRetries} attempts: {ex.Message}");
-                    throw new Exception($"Network timeout during {functionName} after {maxRetries} attempts - your deployment may still be processing. Please wait a moment and check your GitHub repository. Try again in a few minutes if your internet connection is unstable.");
-                }
-                catch (TaskCanceledException ex)
-                {
-                    Debug.LogError($"⏰ Request cancelled after {maxRetries} attempts: {ex.Message}");
-                    throw new Exception($"Firebase function timeout during {functionName} after {maxRetries} attempts - large deployments can take several minutes. Please check your GitHub repository.");
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"🚨 Unexpected error: {ex.GetType().Name} - {ex.Message}");
-                    throw;
-                }
+                await Task.Delay(delay);
+                continue;
+            }
+            catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
+            {
+                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                Debug.LogWarning($"🌐 Retriable network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+
+                await Task.Delay(delay);
+                continue;
+            }
+            catch (HttpRequestException ex)
+            {
+                Debug.LogError($"💥 Network request failed after {maxRetries} attempts: {ex.Message}");
+                throw new Exception($"Network connection failed after {maxRetries} attempts. This appears to be a Unity Editor network stack issue. Try restarting Unity Editor or switching to a different network.");
+            }
+            catch (TaskCanceledException ex)
+            {
+                Debug.LogError($"⏰ Request cancelled after {maxRetries} attempts: {ex.Message}");
+                throw new Exception($"Firebase function timeout during {functionName} after {maxRetries} attempts - large deployments can take several minutes. Please check your GitHub repository.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"🚨 Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                throw;
             }
         }
 
-        // This shouldn't be reached, but just in case
         throw new Exception($"Failed to call {functionName} after {maxRetries} attempts");
+    }
+
+    // Add cleanup method - call this when Unity Editor is closing
+    public static void Cleanup()
+    {
+        _sharedHttpClient?.Dispose();
+        _sharedHttpClient = null;
     }
 
     private static bool IsRetriableNetworkError(Exception ex)
@@ -637,6 +631,41 @@ public static class U3DAuthenticator
                message.Contains("socket") ||
                message.Contains("established connection was aborted") ||
                message.Contains("unable to read data from the transport connection");
+    }
+
+    private static void EnsureHttpClientInitialized()
+    {
+        if (_sharedHttpClient == null)
+        {
+            Debug.Log("🔧 Initializing HttpClient for Unity Editor compatibility...");
+
+            // Configure ServicePointManager ONCE (these are global settings)
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+            ServicePointManager.DefaultConnectionLimit = 100;
+            ServicePointManager.Expect100Continue = false;
+            ServicePointManager.UseNagleAlgorithm = false;
+            ServicePointManager.MaxServicePointIdleTime = 90000; // 90 seconds instead of 30
+
+            // Create HttpClientHandler with Unity-optimized settings
+            var handler = new HttpClientHandler()
+            {
+                UseProxy = false, // Bypass Unity Editor proxy issues
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+
+            // Create the shared HttpClient (recommended pattern)
+            _sharedHttpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromMinutes(10)
+            };
+
+            // Set persistent headers
+            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
+            _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive"); // Keep connections alive
+
+            Debug.Log("✅ HttpClient initialized successfully");
+        }
     }
 
     private static async Task EnsureFirebaseConfiguration()
@@ -660,75 +689,57 @@ public static class U3DAuthenticator
     {
         try
         {
-            using (var client = new HttpClient())
+            // Use the shared HttpClient instead of creating a new one
+            EnsureHttpClientInitialized();
+
+            var configUrl = "https://unreality3d.web.app/api/config";
+            var response = await _sharedHttpClient.GetAsync(configUrl);
+
+            if (response.IsSuccessStatusCode)
             {
-                client.Timeout = TimeSpan.FromSeconds(10);
+                var configJson = await response.Content.ReadAsStringAsync();
+                var firebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(configJson);
 
-                var configUrl = "https://unreality3d.web.app/api/config";
-                var response = await client.GetAsync(configUrl);
-
-                if (response.IsSuccessStatusCode)
+                // Create production config from response
+                var productionConfig = new FirebaseEnvironmentConfig
                 {
-                    var configJson = await response.Content.ReadAsStringAsync();
-                    var firebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(configJson);
+                    apiKey = firebaseConfig.ContainsKey("apiKey") ? firebaseConfig["apiKey"].ToString() : "",
+                    authDomain = firebaseConfig.ContainsKey("authDomain") ? firebaseConfig["authDomain"].ToString() : "",
+                    projectId = firebaseConfig.ContainsKey("projectId") ? firebaseConfig["projectId"].ToString() : "",
+                    storageBucket = firebaseConfig.ContainsKey("storageBucket") ? firebaseConfig["storageBucket"].ToString() : "",
+                    messagingSenderId = firebaseConfig.ContainsKey("messagingSenderId") ? firebaseConfig["messagingSenderId"].ToString() : "",
+                    appId = firebaseConfig.ContainsKey("appId") ? firebaseConfig["appId"].ToString() : "",
+                    measurementId = firebaseConfig.ContainsKey("measurementId") ? firebaseConfig["measurementId"].ToString() : ""
+                };
 
-                    // Create production config from response
-                    var productionConfig = new FirebaseEnvironmentConfig
+                // Fetch development config from secure endpoint too
+                var developmentConfig = new FirebaseEnvironmentConfig();
+
+                try
+                {
+                    var devConfigUrl = "https://unreality3d2025.web.app/api/config";
+                    var devResponse = await _sharedHttpClient.GetAsync(devConfigUrl);
+
+                    if (devResponse.IsSuccessStatusCode)
                     {
-                        apiKey = firebaseConfig.ContainsKey("apiKey") ? firebaseConfig["apiKey"].ToString() : "",
-                        authDomain = firebaseConfig.ContainsKey("authDomain") ? firebaseConfig["authDomain"].ToString() : "",
-                        projectId = firebaseConfig.ContainsKey("projectId") ? firebaseConfig["projectId"].ToString() : "",
-                        storageBucket = firebaseConfig.ContainsKey("storageBucket") ? firebaseConfig["storageBucket"].ToString() : "",
-                        messagingSenderId = firebaseConfig.ContainsKey("messagingSenderId") ? firebaseConfig["messagingSenderId"].ToString() : "",
-                        appId = firebaseConfig.ContainsKey("appId") ? firebaseConfig["appId"].ToString() : "",
-                        measurementId = firebaseConfig.ContainsKey("measurementId") ? firebaseConfig["measurementId"].ToString() : ""
-                    };
+                        var devConfigJson = await devResponse.Content.ReadAsStringAsync();
+                        var devFirebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(devConfigJson);
 
-                    // Fetch development config from secure endpoint too
-                    var developmentConfig = new FirebaseEnvironmentConfig();
-
-                    try
-                    {
-                        var devConfigUrl = "https://unreality3d2025.web.app/api/config";
-                        var devResponse = await client.GetAsync(devConfigUrl);
-
-                        if (devResponse.IsSuccessStatusCode)
+                        developmentConfig = new FirebaseEnvironmentConfig
                         {
-                            var devConfigJson = await devResponse.Content.ReadAsStringAsync();
-                            var devFirebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(devConfigJson);
-
-                            developmentConfig = new FirebaseEnvironmentConfig
-                            {
-                                apiKey = devFirebaseConfig.ContainsKey("apiKey") ? devFirebaseConfig["apiKey"].ToString() : "setup-required",
-                                authDomain = "unreality3d2025.firebaseapp.com",
-                                projectId = "unreality3d2025",
-                                storageBucket = "unreality3d2025.firebasestorage.app",
-                                messagingSenderId = "244081840635",
-                                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                                measurementId = "G-YXC3XB3PFL"
-                            };
-                            Debug.Log("Development Firebase configuration loaded securely");
-                        }
-                        else
-                        {
-                            // Fallback if dev endpoint unavailable
-                            developmentConfig = new FirebaseEnvironmentConfig
-                            {
-                                apiKey = "setup-required", // No hardcoded keys
-                                authDomain = "unreality3d2025.firebaseapp.com",
-                                projectId = "unreality3d2025",
-                                storageBucket = "unreality3d2025.firebasestorage.app",
-                                messagingSenderId = "244081840635",
-                                appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                                measurementId = "G-YXC3XB3PFL"
-                            };
-                            Debug.LogWarning("Development config endpoint unavailable, using fallback");
-                        }
+                            apiKey = devFirebaseConfig.ContainsKey("apiKey") ? devFirebaseConfig["apiKey"].ToString() : "setup-required",
+                            authDomain = "unreality3d2025.firebaseapp.com",
+                            projectId = "unreality3d2025",
+                            storageBucket = "unreality3d2025.firebasestorage.app",
+                            messagingSenderId = "244081840635",
+                            appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                            measurementId = "G-YXC3XB3PFL"
+                        };
+                        Debug.Log("Development Firebase configuration loaded securely");
                     }
-                    catch (Exception devEx)
+                    else
                     {
-                        Debug.LogWarning($"Could not fetch development config: {devEx.Message}");
-                        // Safe fallback
+                        // Fallback if dev endpoint unavailable
                         developmentConfig = new FirebaseEnvironmentConfig
                         {
                             apiKey = "setup-required", // No hardcoded keys
@@ -739,18 +750,34 @@ public static class U3DAuthenticator
                             appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
                             measurementId = "G-YXC3XB3PFL"
                         };
+                        Debug.LogWarning("Development config endpoint unavailable, using fallback");
                     }
-
-                    FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
-                    FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
-
-                    Debug.Log("Firebase configuration established securely - no hardcoded API keys");
                 }
-                else
+                catch (Exception devEx)
                 {
-                    Debug.LogError($"Failed to fetch secure configuration: {response.StatusCode}");
-                    throw new Exception("Unable to establish Firebase configuration securely");
+                    Debug.LogWarning($"Could not fetch development config: {devEx.Message}");
+                    // Safe fallback
+                    developmentConfig = new FirebaseEnvironmentConfig
+                    {
+                        apiKey = "setup-required", // No hardcoded keys
+                        authDomain = "unreality3d2025.firebaseapp.com",
+                        projectId = "unreality3d2025",
+                        storageBucket = "unreality3d2025.firebasestorage.app",
+                        messagingSenderId = "244081840635",
+                        appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                        measurementId = "G-YXC3XB3PFL"
+                    };
                 }
+
+                FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
+                FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
+
+                Debug.Log("Firebase configuration established securely - no hardcoded API keys");
+            }
+            else
+            {
+                Debug.LogError($"Failed to fetch secure configuration: {response.StatusCode}");
+                throw new Exception("Unable to establish Firebase configuration securely");
             }
         }
         catch (Exception ex)
