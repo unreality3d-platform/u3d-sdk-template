@@ -147,6 +147,8 @@ public class FirebaseStorageUploader
             // Use reflection to access the private CallFirebaseFunction method (same pattern as PublishTab)
             var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
 
+            Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
+
             if (result.ContainsKey("url"))
             {
                 var liveUrl = result["url"].ToString();
