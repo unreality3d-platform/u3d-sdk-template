@@ -257,18 +257,18 @@ namespace U3D.Editor
                 projectBuilt = true;
                 currentStatus = "Unity build completed successfully";
 
-                // Step 2: Create ZIP package and prepare for Firebase deployment
-                currentStep = PublishStep.CreatingRepository;
-                currentStatus = "Preparing build for Firebase Cloud Functions...";
+                //// Step 2: Create ZIP package and prepare for Firebase deployment
+                //currentStep = PublishStep.CreatingRepository;
+                //currentStatus = "Preparing build for Firebase Cloud Functions...";
 
-                var zipResult = await CreateBuildZipPackage(buildResult.BuildPath);
-                if (!zipResult.Success)
-                {
-                    throw new System.Exception(zipResult.ErrorMessage);
-                }
+                //var zipResult = await CreateBuildZipPackage(buildResult.BuildPath);
+                //if (!zipResult.Success)
+                //{
+                //    throw new System.Exception(zipResult.ErrorMessage);
+                //}
 
-                githubConnected = true;
-                currentStatus = "Build package prepared successfully";
+                //githubConnected = true;
+                //currentStatus = "Build package prepared successfully";
 
                 // Step 3: Deploy via Firebase Cloud Functions
                 currentStep = PublishStep.DeployingToGitHub;
@@ -347,80 +347,80 @@ namespace U3D.Editor
             }
         }
 
-        private async Task<ZipPackageResult> CreateBuildZipPackage(string buildPath)
-        {
-            return await Task.Run(() =>
-            {
-                try
-                {
-                    currentStatus = "Creating build package for Firebase deployment...";
+        //private async Task<ZipPackageResult> CreateBuildZipPackage(string buildPath)
+        //{
+        //    return await Task.Run(() =>
+        //    {
+        //        try
+        //        {
+        //            currentStatus = "Creating build package for Firebase deployment...";
 
-                    // Use Unity-compatible file collection instead of SharpZipLib
-                    var packageData = new List<FileEntry>();
-                    CollectFiles(buildPath, "", packageData);
+        //            // Use Unity-compatible file collection instead of SharpZipLib
+        //            var packageData = new List<FileEntry>();
+        //            CollectFiles(buildPath, "", packageData);
 
-                    // Serialize to JSON for easy handling
-                    var packageJson = JsonConvert.SerializeObject(packageData, Formatting.None);
-                    var base64Package = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(packageJson));
+        //            // Serialize to JSON for easy handling
+        //            var packageJson = JsonConvert.SerializeObject(packageData, Formatting.None);
+        //            var base64Package = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(packageJson));
 
-                    Debug.Log($"Created build package: {packageData.Count} files, {base64Package.Length} characters");
+        //            Debug.Log($"Created build package: {packageData.Count} files, {base64Package.Length} characters");
 
-                    return new ZipPackageResult
-                    {
-                        Success = true,
-                        ZipData = base64Package  // Keep your existing property name
-                    };
-                }
-                catch (System.Exception ex)
-                {
-                    return new ZipPackageResult
-                    {
-                        Success = false,
-                        ErrorMessage = $"Build package creation failed: {ex.Message}"
-                    };
-                }
-            });
-        }
+        //            return new ZipPackageResult
+        //            {
+        //                Success = true,
+        //                ZipData = base64Package  // Keep your existing property name
+        //            };
+        //        }
+        //        catch (System.Exception ex)
+        //        {
+        //            return new ZipPackageResult
+        //            {
+        //                Success = false,
+        //                ErrorMessage = $"Build package creation failed: {ex.Message}"
+        //            };
+        //        }
+        //    });
+        //}
 
-        private void CollectFiles(string basePath, string relativePath, List<FileEntry> files)
-        {
-            var fullPath = string.IsNullOrEmpty(relativePath) ? basePath : Path.Combine(basePath, relativePath);
+        //private void CollectFiles(string basePath, string relativePath, List<FileEntry> files)
+        //{
+        //    var fullPath = string.IsNullOrEmpty(relativePath) ? basePath : Path.Combine(basePath, relativePath);
 
-            if (!Directory.Exists(fullPath))
-                return;
+        //    if (!Directory.Exists(fullPath))
+        //        return;
 
-            // Add all files in current directory
-            var directoryInfo = new DirectoryInfo(fullPath);
-            foreach (var file in directoryInfo.GetFiles())
-            {
-                var fileRelativePath = string.IsNullOrEmpty(relativePath) ? file.Name : $"{relativePath}/{file.Name}";
-                var fileBytes = File.ReadAllBytes(file.FullName);
+        //    // Add all files in current directory
+        //    var directoryInfo = new DirectoryInfo(fullPath);
+        //    foreach (var file in directoryInfo.GetFiles())
+        //    {
+        //        var fileRelativePath = string.IsNullOrEmpty(relativePath) ? file.Name : $"{relativePath}/{file.Name}";
+        //        var fileBytes = File.ReadAllBytes(file.FullName);
 
-                files.Add(new FileEntry
-                {
-                    Path = fileRelativePath,
-                    Content = Convert.ToBase64String(fileBytes),
-                    Size = fileBytes.Length,
-                    LastModified = file.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
-                });
-            }
+        //        files.Add(new FileEntry
+        //        {
+        //            Path = fileRelativePath,
+        //            Content = Convert.ToBase64String(fileBytes),
+        //            Size = fileBytes.Length,
+        //            LastModified = file.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        //        });
+        //    }
 
-            // Recursively add subdirectories
-            foreach (var subDir in directoryInfo.GetDirectories())
-            {
-                var subRelativePath = string.IsNullOrEmpty(relativePath) ? subDir.Name : $"{relativePath}/{subDir.Name}";
-                CollectFiles(basePath, subRelativePath, files);
-            }
-        }
+        //    // Recursively add subdirectories
+        //    foreach (var subDir in directoryInfo.GetDirectories())
+        //    {
+        //        var subRelativePath = string.IsNullOrEmpty(relativePath) ? subDir.Name : $"{relativePath}/{subDir.Name}";
+        //        CollectFiles(basePath, subRelativePath, files);
+        //    }
+        //}
 
-        [System.Serializable]
-        public class FileEntry
-        {
-            public string Path;
-            public string Content;  // Base64 encoded
-            public long Size;
-            public string LastModified;
-        }
+        //[System.Serializable]
+        //public class FileEntry
+        //{
+        //    public string Path;
+        //    public string Content;  // Base64 encoded
+        //    public long Size;
+        //    public string LastModified;
+        //}
 
 
         private async Task<FirebaseDeployResult> DeployViaFirebaseStorage(string buildPath)
@@ -429,8 +429,15 @@ namespace U3D.Editor
             {
                 currentStatus = "Uploading build to Firebase Storage...";
 
+                var storageBucket = FirebaseConfigManager.CurrentConfig?.storageBucket ?? "unreality3d.firebasestorage.app";
+
+                if (string.IsNullOrEmpty(storageBucket) || storageBucket == "setup-required")
+                {
+                    storageBucket = "unreality3d.firebasestorage.app";
+                }
+
                 var uploader = new FirebaseStorageUploader(
-                    "unreality3d.firebasestorage.app", // Your confirmed bucket name
+                    storageBucket,
                     U3DAuthenticator.GetIdToken()
                 );
 
@@ -488,13 +495,13 @@ namespace U3D.Editor
             return await task;
         }
 
-        [System.Serializable]
-        public class ZipPackageResult
-        {
-            public bool Success { get; set; }
-            public string ZipData { get; set; }
-            public string ErrorMessage { get; set; }
-        }
+        //[System.Serializable]
+        //public class ZipPackageResult
+        //{
+        //    public bool Success { get; set; }
+        //    public string ZipData { get; set; }
+        //    public string ErrorMessage { get; set; }
+        //}
 
         [System.Serializable]
         public class FirebaseDeployResult
