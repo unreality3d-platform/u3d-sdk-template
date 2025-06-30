@@ -36,6 +36,8 @@ public static class U3DAuthenticator
         public static bool PayPalConnected => U3DAuthenticator.PayPalConnected;
     }
 
+    public static string GetIdToken() => _idToken ?? "";
+
     public static bool StayLoggedIn
     {
         get => _stayLoggedIn;
@@ -74,6 +76,34 @@ public static class U3DAuthenticator
             ServicePointManager.UseNagleAlgorithm = false;
             ServicePointManager.MaxServicePointIdleTime = 90000;
 
+            // CRITICAL FIX: Set ConnectionLeaseTimeout to solve DNS cache issues with Cloudflare
+            // This forces DNS refresh every 60 seconds to prevent stale IP addresses
+            ServicePointManager.DnsRefreshTimeout = 60000; // 60 seconds
+
+            // Alternative approach: Force connection lease timeout for all endpoints
+            var allEndpoints = new[]
+            {
+                "https://unreality3d.web.app",
+                "https://unreality3d2025.web.app",
+                "https://identitytoolkit.googleapis.com",
+                "https://us-central1-unreality3d.cloudfunctions.net",
+                "https://us-central1-unreality3d2025.cloudfunctions.net"
+            };
+
+            foreach (var endpoint in allEndpoints)
+            {
+                try
+                {
+                    var servicePoint = ServicePointManager.FindServicePoint(new Uri(endpoint));
+                    servicePoint.ConnectionLeaseTimeout = 60000; // 60 seconds
+                    Debug.Log($"Set ConnectionLeaseTimeout for {endpoint}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Could not set ConnectionLeaseTimeout for {endpoint}: {ex.Message}");
+                }
+            }
+
             // Create HttpClientHandler with Unity Editor optimized settings  
             var handler = new HttpClientHandler()
             {
@@ -93,7 +123,7 @@ public static class U3DAuthenticator
             _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
 
             _networkConfigured = true;
-            Debug.Log("✅ Network configuration completed successfully");
+            Debug.Log("✅ Network configuration completed successfully with DNS cache fix");
         }
         catch (Exception ex)
         {
@@ -605,6 +635,18 @@ public static class U3DAuthenticator
                     throw new Exception(errorMessage);
                 }
             }
+            catch (HttpRequestException ex) when (ex.Message.Contains("An error occurred while sending the request") && attempt < maxRetries)
+            {
+                Debug.LogWarning($"⚠️ HttpClient corrupted, recreating on attempt {attempt}/{maxRetries}: {ex.Message}");
+
+                // Dispose corrupted HttpClient and recreate
+                RecreateHttpClient();
+
+                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                Debug.LogWarning($"🔄 Retrying in {delay}ms with fresh HttpClient...");
+                await Task.Delay(delay);
+                continue;
+            }
             catch (HttpRequestException ex) when (attempt < maxRetries)
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
@@ -657,6 +699,41 @@ public static class U3DAuthenticator
         }
 
         throw new Exception($"Failed to call {functionName} after {maxRetries} attempts");
+    }
+
+    private static void RecreateHttpClient()
+    {
+        try
+        {
+            Debug.Log("🔧 Recreating HttpClient due to corruption...");
+
+            // Dispose old client
+            _sharedHttpClient?.Dispose();
+
+            // Create fresh HttpClientHandler
+            var handler = new HttpClientHandler()
+            {
+                UseProxy = false,
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+
+            // Create new HttpClient
+            _sharedHttpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromMinutes(10)
+            };
+
+            // Set headers
+            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
+            _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
+
+            Debug.Log("✅ HttpClient recreated successfully");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to recreate HttpClient: {ex.Message}");
+        }
     }
 
     public static void Cleanup()

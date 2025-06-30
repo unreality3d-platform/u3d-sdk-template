@@ -274,7 +274,7 @@ namespace U3D.Editor
                 currentStep = PublishStep.DeployingToGitHub;
                 currentStatus = "Deploying via Firebase Cloud Functions...";
 
-                var deployResult = await DeployViaFirebaseCloudFunctions(zipResult.ZipData);
+                var deployResult = await DeployViaFirebaseStorage(buildResult.BuildPath);
                 if (!deployResult.Success)
                 {
                     throw new System.Exception(deployResult.ErrorMessage);
@@ -423,55 +423,48 @@ namespace U3D.Editor
         }
 
 
-        private async Task<FirebaseDeployResult> DeployViaFirebaseCloudFunctions(string buildZipBase64)
+        private async Task<FirebaseDeployResult> DeployViaFirebaseStorage(string buildPath)
         {
             try
             {
-                currentStatus = "Calling Firebase Cloud Functions for deployment...";
+                currentStatus = "Uploading build to Firebase Storage...";
 
-                // Prepare deployment data
-                var repositoryName = await GitHubAPI.GenerateUniqueRepositoryName(GitHubAPI.SanitizeRepositoryName(cachedProductName));
-                var deploymentData = new Dictionary<string, object>
-        {
-            { "buildZip", buildZipBase64 },
-            { "repositoryName", repositoryName },
-            { "githubToken", GitHubTokenManager.Token },
-            { "creatorUsername", U3DAuthenticator.CreatorUsername }
-        };
+                var uploader = new FirebaseStorageUploader(
+                    "unreality3d.firebasestorage.app", // Your confirmed bucket name
+                    U3DAuthenticator.GetIdToken()
+                );
 
-                Debug.Log($"Calling deployUnityBuild Firebase Function for repository: {repositoryName}");
+                var success = await uploader.UploadBuildToStorage(
+                    buildPath,
+                    U3DAuthenticator.CreatorUsername,
+                    cachedProductName
+                );
 
-                Debug.Log($"Build package size: {buildZipBase64.Length / (1024 * 1024)} MB");
+                uploader.Dispose();
 
-                var result = await CallFirebaseFunction("deployUnityBuild", deploymentData);
-
-                if (result == null)
+                if (success)
                 {
-                    throw new Exception("Invalid response from Firebase function");
+                    return new FirebaseDeployResult
+                    {
+                        Success = true,
+                        RepositoryName = cachedProductName,
+                        ProjectName = cachedProductName,
+                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{cachedProductName}/",
+                        Message = "Deployment successful via Firebase Storage"
+                    };
                 }
-
-                var success = result.ContainsKey("success") && (bool)result["success"];
-
-                if (!success)
+                else
                 {
-                    var errorMessage = result.ContainsKey("message") ? result["message"].ToString() : "Unknown error";
-                    throw new Exception($"Firebase deployment failed: {errorMessage}");
+                    return new FirebaseDeployResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Firebase Storage upload failed"
+                    };
                 }
-
-                Debug.Log("Firebase deployment completed successfully!");
-
-                return new FirebaseDeployResult
-                {
-                    Success = true,
-                    RepositoryName = repositoryName,
-                    ProjectName = result.ContainsKey("projectName") ? result["projectName"].ToString() : repositoryName,
-                    ProfessionalUrl = result.ContainsKey("professionalUrl") ? result["professionalUrl"].ToString() : null,
-                    Message = result.ContainsKey("message") ? result["message"].ToString() : "Deployment successful"
-                };
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Firebase deployment error: {ex.Message}");
+                Debug.LogError($"Firebase Storage deployment error: {ex.Message}");
                 return new FirebaseDeployResult
                 {
                     Success = false,
