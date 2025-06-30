@@ -507,66 +507,136 @@ public static class U3DAuthenticator
     {
         await EnsureFirebaseConfiguration();
 
-        using (var client = new HttpClient())
+        const int maxRetries = 3;
+        const int baseDelayMs = 1000; // Start with 1 second delay
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            // CRITICAL FIX: Set proper timeout for deployment functions
-            client.Timeout = TimeSpan.FromMinutes(10); // Extended timeout for deployments
-
-            // Add retry configuration for network resilience
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-            ServicePointManager.DefaultConnectionLimit = 100;
-
-            var requestData = new { data = data };
-            var json = JsonConvert.SerializeObject(requestData);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            if (!string.IsNullOrEmpty(_idToken))
+            using (var client = new HttpClient())
             {
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
-            }
-
-            var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
-
-            try
-            {
-                var response = await client.PostAsync(functionEndpoint, content);
-                var responseText = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
+                try
                 {
-                    var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                    return result.ContainsKey("result") ?
-                        JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
-                        result;
-                }
-                else
-                {
-                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                    var errorMessage = "Function call failed";
+                    // Enhanced network configuration for resilience
+                    client.Timeout = TimeSpan.FromMinutes(10);
 
-                    if (error.ContainsKey("error"))
+                    // CRITICAL: Connection resilience settings
+                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+                    ServicePointManager.DefaultConnectionLimit = 100;
+                    ServicePointManager.Expect100Continue = false; // Reduces handshake overhead
+                    ServicePointManager.UseNagleAlgorithm = false; // Improves small packet performance
+                    ServicePointManager.MaxServicePointIdleTime = 30000; // 30 seconds idle timeout
+
+                    var requestData = new { data = data };
+                    var json = JsonConvert.SerializeObject(requestData);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    if (!string.IsNullOrEmpty(_idToken))
                     {
-                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                        if (errorData.ContainsKey("message"))
-                        {
-                            errorMessage = errorData["message"].ToString();
-                        }
+                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                     }
 
-                    throw new Exception(errorMessage);
+                    // Add connection headers for better reliability
+                    client.DefaultRequestHeaders.Add("Connection", "close"); // Force new connection each time
+                    client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
+
+                    var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
+
+                    Debug.Log($"🔗 Attempt {attempt}/{maxRetries}: Calling {functionName}");
+                    Debug.Log($"📦 Request size: {json.Length} characters ({json.Length / (1024.0 * 1024.0):F2} MB)");
+
+                    var startTime = DateTime.Now;
+
+                    var response = await client.PostAsync(functionEndpoint, content);
+                    var responseText = await response.Content.ReadAsStringAsync();
+
+                    var duration = DateTime.Now - startTime;
+                    Debug.Log($"✅ Request completed in {duration.TotalSeconds:F1} seconds");
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        return result.ContainsKey("result") ?
+                            JsonConvert.DeserializeObject<Dictionary<string, object>>(result["result"].ToString()) :
+                            result;
+                    }
+                    else
+                    {
+                        Debug.LogError($"❌ HTTP Error: {response.StatusCode} - {responseText}");
+                        var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                        var errorMessage = "Function call failed";
+
+                        if (error.ContainsKey("error"))
+                        {
+                            var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                            if (errorData.ContainsKey("message"))
+                            {
+                                errorMessage = errorData["message"].ToString();
+                            }
+                        }
+
+                        throw new Exception(errorMessage);
+                    }
+                }
+                catch (HttpRequestException ex) when (attempt < maxRetries)
+                {
+                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1)); // Exponential backoff
+                    Debug.LogWarning($"⚠️ Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                    Debug.LogWarning($"🔄 Retrying in {delay}ms... (Network issues are common and usually resolve with retry)");
+
+                    await Task.Delay(delay);
+                    continue; // Try again
+                }
+                catch (TaskCanceledException ex) when (attempt < maxRetries && !ex.CancellationToken.IsCancellationRequested)
+                {
+                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                    Debug.LogWarning($"⏰ Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
+                    Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+
+                    await Task.Delay(delay);
+                    continue; // Try again
+                }
+                catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
+                {
+                    var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
+                    Debug.LogWarning($"🌐 Retriable network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                    Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+
+                    await Task.Delay(delay);
+                    continue; // Try again
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Final attempt failed
+                    Debug.LogError($"💥 Network request failed after {maxRetries} attempts: {ex.Message}");
+                    throw new Exception($"Network timeout during {functionName} after {maxRetries} attempts - your deployment may still be processing. Please wait a moment and check your GitHub repository. Try again in a few minutes if your internet connection is unstable.");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    Debug.LogError($"⏰ Request cancelled after {maxRetries} attempts: {ex.Message}");
+                    throw new Exception($"Firebase function timeout during {functionName} after {maxRetries} attempts - large deployments can take several minutes. Please check your GitHub repository.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"🚨 Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                    throw;
                 }
             }
-            catch (HttpRequestException ex) when (ex.Message.Contains("sending the request"))
-            {
-                // Handle the specific network timeout error with better messaging
-                throw new Exception($"Network timeout during {functionName} - your deployment may still be processing. Please wait a moment and check your GitHub repository.");
-            }
-            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
-            {
-                // Handle timeout with helpful message
-                throw new Exception($"Firebase function timeout during {functionName} - large deployments can take several minutes. Please check your GitHub repository.");
-            }
         }
+
+        // This shouldn't be reached, but just in case
+        throw new Exception($"Failed to call {functionName} after {maxRetries} attempts");
+    }
+
+    private static bool IsRetriableNetworkError(Exception ex)
+    {
+        var message = ex.Message?.ToLower() ?? "";
+        return message.Contains("connection") ||
+               message.Contains("timeout") ||
+               message.Contains("network") ||
+               message.Contains("dns") ||
+               message.Contains("socket") ||
+               message.Contains("established connection was aborted") ||
+               message.Contains("unable to read data from the transport connection");
     }
 
     private static async Task EnsureFirebaseConfiguration()

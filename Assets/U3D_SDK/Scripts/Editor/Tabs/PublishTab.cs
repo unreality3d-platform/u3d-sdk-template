@@ -441,7 +441,8 @@ namespace U3D.Editor
 
                 Debug.Log($"Calling deployUnityBuild Firebase Function for repository: {repositoryName}");
 
-                // FIXED: Use your custom CallFirebaseFunction method with 10-minute timeout
+                Debug.Log($"Build package size: {buildZipBase64.Length / (1024 * 1024)} MB");
+
                 var result = await CallFirebaseFunction("deployUnityBuild", deploymentData);
 
                 if (result == null)
