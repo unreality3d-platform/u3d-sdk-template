@@ -2,8 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using U3D.Editor;
 using UnityEngine;
@@ -19,6 +21,15 @@ public class FirebaseStorageUploader
         _storageBucket = storageBucket;
         _idToken = idToken;
         _httpClient = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
+
+        // ADD THESE DEBUG LINES:
+        Debug.Log($"🔑 Storage Bucket: {_storageBucket}");
+        Debug.Log($"🔑 ID Token Status: {(string.IsNullOrEmpty(_idToken) ? "NULL/EMPTY" : "Present")}");
+        Debug.Log($"🔑 ID Token Length: {_idToken?.Length ?? 0}");
+        if (!string.IsNullOrEmpty(_idToken))
+        {
+            Debug.Log($"🔑 ID Token (first 50 chars): {_idToken.Substring(0, Math.Min(50, _idToken.Length))}...");
+        }
     }
 
     public async Task<bool> UploadBuildToStorage(string buildPath, string creatorUsername, string projectName)
@@ -31,11 +42,14 @@ public class FirebaseStorageUploader
             var buildFiles = CollectBuildFiles(buildPath);
             Debug.Log($"📦 Found {buildFiles.Count} files to upload");
 
-            // 2. Upload each file to Firebase Storage
+            // 2. Upload files with throttling (max 3 concurrent uploads)
+            const int maxConcurrentUploads = 3;
+            var semaphore = new SemaphoreSlim(maxConcurrentUploads, maxConcurrentUploads);
             var uploadTasks = new List<Task<bool>>();
+
             foreach (var file in buildFiles)
             {
-                var uploadTask = UploadFileToStorage(file, creatorUsername, projectName);
+                var uploadTask = UploadFileWithThrottling(file, creatorUsername, projectName, semaphore);
                 uploadTasks.Add(uploadTask);
             }
 
@@ -43,13 +57,11 @@ public class FirebaseStorageUploader
             var results = await Task.WhenAll(uploadTasks);
 
             // Check if all uploads succeeded
-            foreach (var result in results)
+            var failedCount = results.Count(r => !r);
+            if (failedCount > 0)
             {
-                if (!result)
-                {
-                    Debug.LogError("❌ One or more file uploads failed");
-                    return false;
-                }
+                Debug.LogError($"❌ {failedCount} out of {buildFiles.Count} file uploads failed");
+                return false;
             }
 
             Debug.Log("✅ All files uploaded successfully to Firebase Storage");
@@ -61,6 +73,19 @@ public class FirebaseStorageUploader
         {
             Debug.LogError($"🚨 Firebase Storage upload failed: {ex.Message}");
             return false;
+        }
+    }
+
+    private async Task<bool> UploadFileWithThrottling(BuildFileInfo file, string creatorUsername, string projectName, SemaphoreSlim semaphore)
+    {
+        await semaphore.WaitAsync(); // Wait for available slot
+        try
+        {
+            return await UploadFileToStorage(file, creatorUsername, projectName);
+        }
+        finally
+        {
+            semaphore.Release(); // Release the slot
         }
     }
 
@@ -90,6 +115,8 @@ public class FirebaseStorageUploader
         try
         {
             Debug.Log($"⬆️ Uploading {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)...");
+
+            Debug.Log($"🔍 Auth Header: Bearer {(_idToken?.Length > 20 ? _idToken.Substring(0, 20) + "..." : _idToken ?? "NULL")}");
 
             // Read file content
             var fileBytes = await File.ReadAllBytesAsync(file.LocalPath);
