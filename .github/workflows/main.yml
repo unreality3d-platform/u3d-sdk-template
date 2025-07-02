@@ -2,9 +2,8 @@
 name: Deploy Pre-Built Unity WebGL to GitHub Pages
 
 on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
+  workflow_dispatch:  # Only manual triggering - RACE CONDITION FIX
+  # REMOVED: push: branches: [main, master] - This was causing premature execution
 
 jobs:
   deploy:
