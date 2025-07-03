@@ -166,7 +166,8 @@ public class FirebaseStorageUploader
             var deploymentRequest = new Dictionary<string, object>
             {
                 { "project", projectName },
-                { "creatorUsername", creatorUsername },
+                { "creatorUsername", creatorUsername },  // For professional URL
+                { "githubOwner", GitHubTokenManager.GitHubUsername },  // For GitHub operations
                 { "fileList", fileList },
                 { "githubToken", GitHubTokenManager.Token }
             };
