@@ -108,3 +108,4 @@ Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
 Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
 Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
 *.asset
+/Assets/Settings
