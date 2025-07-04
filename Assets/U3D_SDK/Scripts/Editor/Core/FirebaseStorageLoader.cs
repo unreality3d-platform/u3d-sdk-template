@@ -56,6 +56,20 @@ public class FirebaseStorageUploader
             // Wait for all uploads to complete
             var results = await Task.WhenAll(uploadTasks);
 
+            // DEBUG: Analyze results by file type
+            Debug.Log($"🔍 UPLOAD RESULTS ANALYSIS:");
+            var wasmFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".wasm")).ToList();
+            var jsFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".js")).ToList();
+            var dataFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".data")).ToList();
+
+            var wasmResults = results.Take(wasmFiles.Count).ToArray();
+            var jsResults = results.Skip(wasmFiles.Count).Take(jsFiles.Count).ToArray();
+            var dataResults = results.Skip(wasmFiles.Count + jsFiles.Count).Take(dataFiles.Count).ToArray();
+
+            Debug.Log($"📊 .wasm upload success rate: {wasmResults.Count(r => r)}/{wasmResults.Length}");
+            Debug.Log($"📊 .js upload success rate: {jsResults.Count(r => r)}/{jsResults.Length}");
+            Debug.Log($"📊 .data upload success rate: {dataResults.Count(r => r)}/{dataResults.Length}");
+
             // Check if all uploads succeeded
             var failedCount = results.Count(r => !r);
             if (failedCount > 0)
@@ -106,6 +120,34 @@ public class FirebaseStorageUploader
                 ContentType = GetContentType(file.Extension)
             });
         }
+
+        // DEBUG: Log file collection details
+        Debug.Log($"📁 COLLECTED FILES BREAKDOWN:");
+        var wasmFiles = files.Where(f => f.StoragePath.EndsWith(".wasm")).ToList();
+        var jsFiles = files.Where(f => f.StoragePath.EndsWith(".js")).ToList();
+        var dataFiles = files.Where(f => f.StoragePath.EndsWith(".data")).ToList();
+        var htmlFiles = files.Where(f => f.StoragePath.EndsWith(".html")).ToList();
+        var otherFiles = files.Where(f => !f.StoragePath.EndsWith(".wasm") && !f.StoragePath.EndsWith(".js") && !f.StoragePath.EndsWith(".data") && !f.StoragePath.EndsWith(".html")).ToList();
+
+        Debug.Log($"📁 Found .wasm files: {wasmFiles.Count}");
+        foreach (var file in wasmFiles)
+            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)");
+
+        Debug.Log($"📁 Found .js files: {jsFiles.Count}");
+        foreach (var file in jsFiles)
+            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
+
+        Debug.Log($"📁 Found .data files: {dataFiles.Count}");
+        foreach (var file in dataFiles)
+            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)");
+
+        Debug.Log($"📁 Found .html files: {htmlFiles.Count}");
+        foreach (var file in htmlFiles)
+            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
+
+        Debug.Log($"📁 Found other files: {otherFiles.Count}");
+        foreach (var file in otherFiles)
+            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
 
         return files;
     }
