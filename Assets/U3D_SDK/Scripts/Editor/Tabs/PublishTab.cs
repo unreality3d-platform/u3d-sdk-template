@@ -316,9 +316,13 @@ namespace U3D.Editor
                     };
                 }
 
-                // Build WebGL to temporary directory
-                var tempBuildPath = Path.Combine(Path.GetTempPath(), "U3D_WebGL_Build", System.Guid.NewGuid().ToString());
-                var buildResult = await UnityBuildHelper.BuildWebGL(tempBuildPath, (status) =>
+                // Build WebGL to persistent directory (FIXED)
+                var projectPath = Path.GetDirectoryName(Application.dataPath);
+                var timestampedBuildName = $"WebGLBuild_{DateTime.Now:yyyyMMdd_HHmmss}";
+                var buildPath = Path.Combine(projectPath, "U3D_Builds", timestampedBuildName);
+
+                // FIXED: Use buildPath instead of tempBuildPath
+                var buildResult = await UnityBuildHelper.BuildWebGL(buildPath, (status) =>
                 {
                     currentStatus = status;
                 });
