@@ -489,15 +489,27 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Update Project", GUILayout.Height(35)))
+            {
+                // Republish to same repository (don't increment name)
+                shouldCreateNewRepository = false;
+                currentStep = PublishStep.Ready;
+                deploymentComplete = false;
+                // Keep publishUrl and other success state
+                _ = StartFirebasePublishProcessAsync();
+            }
+
             if (GUILayout.Button("Reset for New Publish", GUILayout.Height(30)))
             {
                 if (EditorUtility.DisplayDialog("Reset Publish State",
-                    "This will reset the publish tab so you can test publishing again. Continue?",
-                    "Yes, Reset", "Cancel"))
+                    "This will create a new project with an incremented name. Continue?",
+                    "Yes, Create New", "Cancel"))
                 {
-                    ResetPublishState();
+                    ResetPublishState(); // This sets shouldCreateNewRepository = true
                 }
             }
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(10);
 
