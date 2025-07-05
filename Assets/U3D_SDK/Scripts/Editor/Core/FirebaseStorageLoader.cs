@@ -90,6 +90,106 @@ public class FirebaseStorageUploader
         }
     }
 
+    public async Task<DeploymentResult> UploadBuildToStorageWithIntent(string buildPath, string creatorUsername, string baseProjectName, string deploymentIntent)
+    {
+        try
+        {
+            Debug.Log($"🔄 Starting Firebase Storage upload for {baseProjectName} with intent: {deploymentIntent}...");
+
+            var buildFiles = CollectBuildFiles(buildPath);
+            Debug.Log($"📦 Found {buildFiles.Count} files to upload");
+
+            // Upload files to temporary path first
+            const int maxConcurrentUploads = 3;
+            var semaphore = new SemaphoreSlim(maxConcurrentUploads, maxConcurrentUploads);
+            var uploadTasks = new List<Task<bool>>();
+
+            foreach (var file in buildFiles)
+            {
+                var uploadTask = UploadFileWithThrottling(file, creatorUsername, baseProjectName, semaphore);
+                uploadTasks.Add(uploadTask);
+            }
+
+            var results = await Task.WhenAll(uploadTasks);
+            var failedCount = results.Count(r => !r);
+
+            if (failedCount > 0)
+            {
+                Debug.LogError($"❌ {failedCount} out of {buildFiles.Count} file uploads failed");
+                return new DeploymentResult { Success = false, ErrorMessage = "File upload failed" };
+            }
+
+            Debug.Log("✅ All files uploaded successfully to Firebase Storage");
+
+            // Trigger GitHub deployment with intent
+            return await TriggerGitHubDeploymentWithIntent(creatorUsername, baseProjectName, deploymentIntent, buildFiles);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"🚨 Firebase Storage upload failed: {ex.Message}");
+            return new DeploymentResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files)
+    {
+        try
+        {
+            Debug.Log("🚀 Triggering GitHub Pages deployment...");
+
+            var fileList = files.ConvertAll(f => f.StoragePath);
+
+            var deploymentRequest = new Dictionary<string, object>
+        {
+            { "project", baseProjectName },
+            { "creatorUsername", creatorUsername },
+            { "githubOwner", GitHubTokenManager.GitHubUsername },
+            { "fileList", fileList },
+            { "githubToken", GitHubTokenManager.Token },
+            { "deploymentIntent", deploymentIntent }
+        };
+
+            var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
+
+            Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
+
+            if (result.ContainsKey("success") && (bool)result["success"])
+            {
+                var actualProjectName = result.ContainsKey("actualProjectName") ? result["actualProjectName"].ToString() : baseProjectName;
+                var liveUrl = result.ContainsKey("url") ? result["url"].ToString() : "";
+
+                Debug.Log($"🎉 Deployment successful! Live at: {liveUrl}");
+                Debug.Log($"📝 Actual project name: {actualProjectName}");
+
+                return new DeploymentResult
+                {
+                    Success = true,
+                    ActualProjectName = actualProjectName,
+                    Url = liveUrl
+                };
+            }
+            else
+            {
+                var errorMessage = result.ContainsKey("error") ? result["error"].ToString() : "Unknown deployment error";
+                Debug.LogError($"❌ Deployment failed: {errorMessage}");
+                return new DeploymentResult { Success = false, ErrorMessage = errorMessage };
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ GitHub deployment trigger failed: {ex.Message}");
+            return new DeploymentResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public class DeploymentResult
+    {
+        public bool Success { get; set; }
+        public string ActualProjectName { get; set; }
+        public string Url { get; set; }
+        public string ErrorMessage { get; set; }
+    }
+
     private async Task<bool> UploadFileWithThrottling(BuildFileInfo file, string creatorUsername, string projectName, SemaphoreSlim semaphore)
     {
         await semaphore.WaitAsync(); // Wait for available slot

@@ -67,7 +67,7 @@ namespace U3D.Editor
             IsComplete = false;
             currentStatus = "";
             isPublishing = false;
-            shouldCreateNewRepository = true; 
+            shouldCreateNewRepository = true;
 
             Debug.Log("Publish state reset - ready to publish again");
         }
@@ -347,21 +347,12 @@ namespace U3D.Editor
             {
                 currentStatus = "Determining project name...";
 
-                string projectName;
-                if (shouldCreateNewRepository)
-                {
-                    // User clicked Reset - generate new incremented name
-                    var baseName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : cachedProductName;
-                    projectName = await GitHubAPI.GenerateUniqueRepositoryName(baseName);
-                    shouldCreateNewRepository = false; // Reset flag
-                    Debug.Log($"🆕 Creating new repository: {projectName}");
-                }
-                else
-                {
-                    // Normal publish - use current project name
-                    projectName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : GitHubAPI.SanitizeRepositoryName(cachedProductName);
-                    Debug.Log($"🔄 Using current project name: {projectName}");
-                }
+                // Send base name and intent to Firebase
+                var baseName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : cachedProductName;
+                var sanitizedBaseName = GitHubAPI.SanitizeRepositoryName(baseName);
+                var deploymentIntent = shouldCreateNewRepository ? "create_new" : "update_existing";
+
+                Debug.Log($"🎯 Deployment intent: {deploymentIntent}, Base name: {sanitizedBaseName}");
 
                 currentStatus = "Uploading build to Firebase Storage...";
                 var storageBucket = FirebaseConfigManager.CurrentConfig?.storageBucket ?? "unreality3d.firebasestorage.app";
@@ -370,27 +361,33 @@ namespace U3D.Editor
                     storageBucket = "unreality3d.firebasestorage.app";
                 }
 
-                var uploader = new FirebaseStorageUploader(
-                    storageBucket,
-                    U3DAuthenticator.GetIdToken()
-                );
+                // Create uploader with updated method
+                var uploader = new FirebaseStorageUploader(storageBucket, U3DAuthenticator.GetIdToken());
 
-                var success = await uploader.UploadBuildToStorage(
+                var result = await uploader.UploadBuildToStorageWithIntent(
                     buildPath,
                     U3DAuthenticator.CreatorUsername,
-                    projectName  
+                    sanitizedBaseName,
+                    deploymentIntent
                 );
 
                 uploader.Dispose();
 
-                if (success)
+                if (result.Success)
                 {
+                    // Use the actual project name returned from Firebase
+                    var actualProjectName = result.ActualProjectName ?? sanitizedBaseName;
+
+                    // Store for future updates
+                    EditorPrefs.SetString("U3D_LastProjectName", actualProjectName);
+                    shouldCreateNewRepository = false; // Reset flag
+
                     return new FirebaseDeployResult
                     {
                         Success = true,
-                        RepositoryName = projectName,
-                        ProjectName = projectName,
-                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{projectName}/",
+                        RepositoryName = actualProjectName,
+                        ProjectName = actualProjectName,
+                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{actualProjectName}/",
                         Message = "Deployment successful via Firebase Storage"
                     };
                 }
@@ -399,7 +396,7 @@ namespace U3D.Editor
                     return new FirebaseDeployResult
                     {
                         Success = false,
-                        ErrorMessage = "Firebase Storage upload failed"
+                        ErrorMessage = result.ErrorMessage ?? "Firebase Storage upload failed"
                     };
                 }
             }
