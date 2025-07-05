@@ -28,6 +28,7 @@ namespace U3D.Editor
         private Vector2 scrollPosition;
         private string currentStatus = "";
         private bool isPublishing = false;
+        private bool shouldCreateNewRepository = false;
 
         private enum PublishStep
         {
@@ -66,6 +67,7 @@ namespace U3D.Editor
             IsComplete = false;
             currentStatus = "";
             isPublishing = false;
+            shouldCreateNewRepository = true; 
 
             Debug.Log("Publish state reset - ready to publish again");
         }
@@ -343,13 +345,23 @@ namespace U3D.Editor
         {
             try
             {
-                currentStatus = "Generating unique project name...";
+                currentStatus = "Determining project name...";
 
-                // Generate unique project name using existing GitHubAPI utilities
-                var baseName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : cachedProductName;
-                var uniqueProjectName = await GitHubAPI.GenerateUniqueRepositoryName(baseName);
-
-                Debug.Log($"🎯 Generated unique project name: {uniqueProjectName}");
+                string projectName;
+                if (shouldCreateNewRepository)
+                {
+                    // User clicked Reset - generate new incremented name
+                    var baseName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : cachedProductName;
+                    projectName = await GitHubAPI.GenerateUniqueRepositoryName(baseName);
+                    shouldCreateNewRepository = false; // Reset flag
+                    Debug.Log($"🆕 Creating new repository: {projectName}");
+                }
+                else
+                {
+                    // Normal publish - use current project name
+                    projectName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                    Debug.Log($"🔄 Using current project name: {projectName}");
+                }
 
                 currentStatus = "Uploading build to Firebase Storage...";
                 var storageBucket = FirebaseConfigManager.CurrentConfig?.storageBucket ?? "unreality3d.firebasestorage.app";
@@ -366,7 +378,7 @@ namespace U3D.Editor
                 var success = await uploader.UploadBuildToStorage(
                     buildPath,
                     U3DAuthenticator.CreatorUsername,
-                    uniqueProjectName  // ← Use the unique name instead of cachedProductName
+                    projectName  
                 );
 
                 uploader.Dispose();
@@ -376,9 +388,9 @@ namespace U3D.Editor
                     return new FirebaseDeployResult
                     {
                         Success = true,
-                        RepositoryName = uniqueProjectName,
-                        ProjectName = uniqueProjectName,
-                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{uniqueProjectName}/",
+                        RepositoryName = projectName,
+                        ProjectName = projectName,
+                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{projectName}/",
                         Message = "Deployment successful via Firebase Storage"
                     };
                 }
