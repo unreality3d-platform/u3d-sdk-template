@@ -312,7 +312,6 @@ namespace U3D.Editor
             return finalName;
         }
 
-        // NEW METHOD: Create fresh repository via GitHub API (not from template)
         public static async Task<GitHubRepositoryResult> CreateFreshRepository(string repositoryName, string description)
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -392,7 +391,6 @@ namespace U3D.Editor
             }
         }
 
-        // NEW METHOD: Upload file content via GitHub API
         public static async Task<GitOperationResult> UploadFileContent(string repositoryName, string filePath, string base64Content, string commitMessage)
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -452,7 +450,6 @@ namespace U3D.Editor
             }
         }
 
-        // NEW METHOD: Enable GitHub Pages
         public static async Task<GitOperationResult> EnableGitHubPages(string repositoryName)
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -515,6 +512,180 @@ namespace U3D.Editor
             }
         }
 
+        /// <summary>
+        /// Gets all repositories for the authenticated user, with optional filtering
+        /// </summary>
+        public static async Task<GitHubRepositoryListResult> GetUserRepositories(string nameFilter = null, int maxResults = 100)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitHubRepositoryListResult
+                {
+                    Success = false,
+                    ErrorMessage = "No valid GitHub token available"
+                };
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var repositories = new List<GitHubRepository>();
+                    var page = 1;
+                    var perPage = Math.Min(maxResults, 100); // GitHub max is 100 per page
+
+                    while (repositories.Count < maxResults)
+                    {
+                        var url = $"{GITHUB_API_BASE}/user/repos?page={page}&per_page={perPage}&sort=updated&direction=desc";
+                        var response = await client.GetAsync(url);
+                        var responseText = await response.Content.ReadAsStringAsync();
+
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var errorMessage = await ParseGitHubError(responseText);
+                            return new GitHubRepositoryListResult
+                            {
+                                Success = false,
+                                ErrorMessage = errorMessage
+                            };
+                        }
+
+                        var repoArray = JsonConvert.DeserializeObject<object[]>(responseText);
+
+                        if (repoArray.Length == 0)
+                        {
+                            // No more repositories
+                            break;
+                        }
+
+                        foreach (var repoObj in repoArray)
+                        {
+                            var repoData = JsonConvert.DeserializeObject<Dictionary<string, object>>(repoObj.ToString());
+                            var repoName = repoData["name"].ToString();
+
+                            // Apply name filter if specified
+                            if (!string.IsNullOrEmpty(nameFilter) && !repoName.ToLower().Contains(nameFilter.ToLower()))
+                            {
+                                continue;
+                            }
+
+                            var repo = new GitHubRepository
+                            {
+                                Name = repoName,
+                                FullName = repoData["full_name"].ToString(),
+                                Description = repoData["description"]?.ToString() ?? "",
+                                HtmlUrl = repoData["html_url"].ToString(),
+                                CloneUrl = repoData["clone_url"].ToString(),
+                                IsPrivate = bool.Parse(repoData["private"].ToString()),
+                                UpdatedAt = DateTime.Parse(repoData["updated_at"].ToString()),
+                                CreatedAt = DateTime.Parse(repoData["created_at"].ToString()),
+                                HasPages = repoData.ContainsKey("has_pages") ? bool.Parse(repoData["has_pages"].ToString()) : false
+                            };
+
+                            repositories.Add(repo);
+
+                            if (repositories.Count >= maxResults)
+                            {
+                                break;
+                            }
+                        }
+
+                        page++;
+                    }
+
+                    return new GitHubRepositoryListResult
+                    {
+                        Success = true,
+                        Repositories = repositories,
+                        TotalFound = repositories.Count
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"GitHub repository list error: {ex.Message}");
+                return new GitHubRepositoryListResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Failed to retrieve repositories: {ex.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Checks if a repository contains Unity WebGL files (indicating it's a deployed Unity project)
+        /// </summary>
+        public static async Task<bool> HasUnityWebGLFiles(string repositoryName)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return false;
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    // Check for common Unity WebGL file patterns
+                    var unityIndicators = new[] { "index.html", "Build/", "TemplateData/" };
+
+                    foreach (var indicator in unityIndicators)
+                    {
+                        var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/{indicator}";
+                        var response = await client.GetAsync(url);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            return true; // Found Unity WebGL indicator
+                        }
+                    }
+
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets GitHub Pages URL for a repository if Pages is enabled
+        /// </summary>
+        public static async Task<string> GetGitHubPagesUrl(string repositoryName)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return null;
+            }
+
+            try
+            {
+                using (var client = CreateAuthenticatedClient())
+                {
+                    var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/pages";
+                    var response = await client.GetAsync(url);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseText = await response.Content.ReadAsStringAsync();
+                        var pagesData = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                        if (pagesData.ContainsKey("html_url"))
+                        {
+                            return pagesData["html_url"].ToString();
+                        }
+                    }
+
+                    return null;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static HttpClient CreateAuthenticatedClient()
         {
             var client = new HttpClient();
@@ -572,6 +743,32 @@ namespace U3D.Editor
 
             return $"GitHub API error: {responseText}";
         }
+    }
+
+    // NEW CLASSES FOR REPOSITORY DISCOVERY
+    [System.Serializable]
+    public class GitHubRepositoryListResult
+    {
+        public bool Success { get; set; }
+        public List<GitHubRepository> Repositories { get; set; } = new List<GitHubRepository>();
+        public int TotalFound { get; set; }
+        public string ErrorMessage { get; set; }
+    }
+
+    [System.Serializable]
+    public class GitHubRepository
+    {
+        public string Name { get; set; }
+        public string FullName { get; set; }
+        public string Description { get; set; }
+        public string HtmlUrl { get; set; }
+        public string CloneUrl { get; set; }
+        public bool IsPrivate { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public bool HasPages { get; set; }
+        public bool IsUnityProject { get; set; } // Will be set by analysis
+        public string GitHubPagesUrl { get; set; } // Will be set by analysis
     }
 
     [System.Serializable]

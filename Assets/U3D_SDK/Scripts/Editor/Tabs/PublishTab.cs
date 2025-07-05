@@ -30,6 +30,11 @@ namespace U3D.Editor
         private bool isPublishing = false;
         private bool shouldCreateNewRepository = false;
 
+        private List<ProjectOption> availableOptions = new List<ProjectOption>();
+        private bool optionsLoaded = false;
+        private bool loadingOptions = false;
+        private int selectedOptionIndex = -1;
+
         private enum PublishStep
         {
             Ready,
@@ -154,20 +159,239 @@ namespace U3D.Editor
         private void DrawReadyToPublish()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Ready to go?", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("This will:", EditorStyles.label);
-            EditorGUILayout.LabelField("• Build your project for WebGL", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Deploy to the web automatically", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Give you a professional URL that's ready to share!", EditorStyles.miniLabel);
+
+            // Show current Unity project name
+            EditorGUILayout.LabelField("Current Project Settings:", EditorStyles.boldLabel);
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
+            EditorGUILayout.LabelField(cachedProductName, EditorStyles.boldLabel);
+            if (GUILayout.Button("Change", GUILayout.Width(60)))
+            {
+                // Open Project Settings > Player (Unity 6+ compatible)
+                EditorApplication.ExecuteMenuItem("Edit/Project Settings...");
+            }
+
+            EditorGUILayout.Space(5);
+
+            // Instructions for changing project name
+            EditorGUILayout.HelpBox(
+                "💡 To publish as a completely new project: Click 'Change' above, then update the Product Name in Project Settings > Player",
+                MessageType.Info
+            );
+
             EditorGUILayout.Space(10);
 
-            if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
+            // Load repository options if not loaded
+            if (!optionsLoaded && !loadingOptions)
             {
-                // Use fire-and-forget pattern for UI event handler
-                _ = StartFirebasePublishProcessAsync();
+                EditorGUILayout.LabelField("Analyzing your GitHub repositories...", EditorStyles.centeredGreyMiniLabel);
+                loadingOptions = true;
+                _ = LoadProjectOptionsAsync();
+            }
+            else if (loadingOptions)
+            {
+                EditorGUILayout.LabelField("🔍 Checking your GitHub repositories...", EditorStyles.centeredGreyMiniLabel);
+            }
+            else if (optionsLoaded)
+            {
+                DrawProjectOptions();
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        // ADD THESE NEW METHODS TO PublishTab.cs:
+
+        private async Task LoadProjectOptionsAsync()
+        {
+            try
+            {
+                availableOptions.Clear();
+
+                // Get repositories that match or are similar to current project name
+                var repoResult = await GitHubAPI.GetUserRepositories(cachedProductName, 50);
+
+                if (!repoResult.Success)
+                {
+                    Debug.LogError($"Failed to load repositories: {repoResult.ErrorMessage}");
+                    optionsLoaded = true;
+                    loadingOptions = false;
+                    return;
+                }
+
+                // Analyze each repository
+                foreach (var repo in repoResult.Repositories)
+                {
+                    // Check if it's a Unity project
+                    repo.IsUnityProject = await GitHubAPI.HasUnityWebGLFiles(repo.Name);
+
+                    // Get GitHub Pages URL if available
+                    if (repo.HasPages)
+                    {
+                        repo.GitHubPagesUrl = await GitHubAPI.GetGitHubPagesUrl(repo.Name);
+                    }
+
+                    // Create update option for existing repos
+                    if (IsRelatedRepository(repo.Name, cachedProductName))
+                    {
+                        availableOptions.Add(new ProjectOption
+                        {
+                            Type = ProjectOption.OptionType.UpdateExisting,
+                            RepositoryName = repo.Name,
+                            DisplayName = $"Update \"{repo.Name}\"",
+                            Description = repo.IsUnityProject ? "Unity WebGL project" : "Repository",
+                            ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{repo.Name}/",
+                            GitHubPagesUrl = repo.GitHubPagesUrl,
+                            LastUpdated = repo.UpdatedAt,
+                            IsUnityProject = repo.IsUnityProject
+                        });
+                    }
+                }
+
+                // Always add "Create New" option
+                var newRepoName = await GitHubAPI.GenerateUniqueRepositoryName(cachedProductName);
+                availableOptions.Add(new ProjectOption
+                {
+                    Type = ProjectOption.OptionType.CreateNew,
+                    RepositoryName = newRepoName,
+                    DisplayName = $"Create New \"{newRepoName}\"",
+                    Description = "New Unity WebGL project",
+                    ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{newRepoName}/",
+                    GitHubPagesUrl = null,
+                    LastUpdated = null,
+                    IsUnityProject = false
+                });
+
+                // Auto-select the first option
+                if (availableOptions.Count > 0)
+                {
+                    selectedOptionIndex = 0;
+                }
+
+                optionsLoaded = true;
+                loadingOptions = false;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error loading project options: {ex.Message}");
+                optionsLoaded = true;
+                loadingOptions = false;
+            }
+        }
+
+        private void DrawProjectOptions()
+        {
+            if (availableOptions.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No GitHub repositories found. A new repository will be created.", MessageType.Info);
+
+                if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
+                {
+                    shouldCreateNewRepository = true;
+                    _ = StartFirebasePublishProcessAsync();
+                }
+                return;
+            }
+
+            EditorGUILayout.LabelField("Choose your publishing option:", EditorStyles.boldLabel);
+            EditorGUILayout.Space(5);
+
+            // Draw radio button options
+            for (int i = 0; i < availableOptions.Count; i++)
+            {
+                var option = availableOptions[i];
+                var isSelected = selectedOptionIndex == i;
+
+                EditorGUILayout.BeginVertical(isSelected ? EditorStyles.helpBox : EditorStyles.textArea);
+
+                EditorGUILayout.BeginHorizontal();
+
+                // Radio button
+                var newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
+                if (newSelected && !isSelected)
+                {
+                    selectedOptionIndex = i;
+                }
+
+                // Option details
+                EditorGUILayout.BeginVertical();
+
+                var style = new GUIStyle(EditorStyles.boldLabel);
+                if (option.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    style.normal.textColor = Color.blue;
+                }
+                else
+                {
+                    style.normal.textColor = Color.green;
+                }
+
+                EditorGUILayout.LabelField(option.DisplayName, style);
+                EditorGUILayout.LabelField(option.Description, EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"URL: {option.ProfessionalUrl}", EditorStyles.miniLabel);
+
+                if (option.LastUpdated.HasValue)
+                {
+                    EditorGUILayout.LabelField($"Last updated: {option.LastUpdated.Value:MMM dd, yyyy}", EditorStyles.miniLabel);
+                }
+
+                if (!string.IsNullOrEmpty(option.GitHubPagesUrl))
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("Currently live at:", EditorStyles.miniLabel, GUILayout.Width(90));
+                    if (GUILayout.Button(option.GitHubPagesUrl, EditorStyles.linkLabel))
+                    {
+                        Application.OpenURL(option.GitHubPagesUrl);
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+
+                EditorGUILayout.EndVertical();
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.EndVertical();
+
+                EditorGUILayout.Space(3);
+            }
+
+            EditorGUILayout.Space(10);
+
+            // Publish button
+            GUI.enabled = selectedOptionIndex >= 0;
+            if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
+            {
+                var selectedOption = availableOptions[selectedOptionIndex];
+                shouldCreateNewRepository = selectedOption.Type == ProjectOption.OptionType.CreateNew;
+
+                // Override the cached product name if using existing repo with different name
+                if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    cachedProductName = selectedOption.RepositoryName;
+                }
+
+                _ = StartFirebasePublishProcessAsync();
+            }
+            GUI.enabled = true;
+        }
+
+        private bool IsRelatedRepository(string repoName, string projectName)
+        {
+            var sanitizedProject = GitHubAPI.SanitizeRepositoryName(projectName);
+            var lowerRepo = repoName.ToLower();
+            var lowerProject = sanitizedProject.ToLower();
+
+            // Exact match
+            if (lowerRepo == lowerProject)
+                return true;
+
+            // Starts with project name (handles increments like "myproject-1", "myproject-2")
+            if (lowerRepo.StartsWith(lowerProject + "-"))
+                return true;
+
+            // Project name is contained in repo name
+            if (lowerRepo.Contains(lowerProject))
+                return true;
+
+            return false;
         }
 
         private async System.Threading.Tasks.Task StartFirebasePublishProcessAsync()
@@ -497,7 +721,7 @@ namespace U3D.Editor
                 _ = StartFirebasePublishProcessAsync();
             }
 
-            if (GUILayout.Button("Reset for New Publish", GUILayout.Height(30)))
+            if (GUILayout.Button("Reset for New Publish", GUILayout.Height(35)))
             {
                 if (EditorUtility.DisplayDialog("Reset Publish State",
                     "This will create a new project with an incremented name. Continue?",
@@ -514,6 +738,25 @@ namespace U3D.Editor
 
             EditorGUILayout.EndVertical();
         }
+    }
+
+    [System.Serializable]
+    public class ProjectOption
+    {
+        public enum OptionType
+        {
+            UpdateExisting,
+            CreateNew
+        }
+
+        public OptionType Type { get; set; }
+        public string RepositoryName { get; set; }
+        public string DisplayName { get; set; }
+        public string Description { get; set; }
+        public string ProfessionalUrl { get; set; }
+        public string GitHubPagesUrl { get; set; }
+        public DateTime? LastUpdated { get; set; }
+        public bool IsUnityProject { get; set; }
     }
 
     [System.Serializable]
