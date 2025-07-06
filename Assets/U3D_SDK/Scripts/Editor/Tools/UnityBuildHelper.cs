@@ -308,9 +308,9 @@ namespace U3D.Editor
             PlayerSettings.WebGL.nameFilesAsHashes = true;
 
             // Your proven critical settings for deployment success
-            PlayerSettings.WebGL.decompressionFallback = true;
+            //PlayerSettings.WebGL.decompressionFallback = true;
             PlayerSettings.stripEngineCode = true;
-            PlayerSettings.WebGL.dataCaching = true;
+            //PlayerSettings.WebGL.dataCaching = true;
             PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off; // Updated for Unity 6+
             PlayerSettings.WebGL.threadsSupport = false;
 
