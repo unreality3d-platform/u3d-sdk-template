@@ -170,6 +170,7 @@ namespace U3D.Editor
                 // Open Project Settings > Player (Unity 6+ compatible)
                 EditorApplication.ExecuteMenuItem("Edit/Project Settings...");
             }
+            EditorGUILayout.EndHorizontal(); // ← FIXED: Added missing EndHorizontal()
 
             EditorGUILayout.Space(5);
 
@@ -208,8 +209,11 @@ namespace U3D.Editor
             {
                 availableOptions.Clear();
 
+                // FIXED: Use sanitized name for search since repo names are always sanitized
+                var sanitizedProjectName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+
                 // Get repositories that match or are similar to current project name
-                var repoResult = await GitHubAPI.GetUserRepositories(cachedProductName, 50);
+                var repoResult = await GitHubAPI.GetUserRepositories(sanitizedProjectName, 50);
 
                 if (!repoResult.Success)
                 {
@@ -319,7 +323,7 @@ namespace U3D.Editor
                 var style = new GUIStyle(EditorStyles.boldLabel);
                 if (option.Type == ProjectOption.OptionType.UpdateExisting)
                 {
-                    style.normal.textColor = Color.blue;
+                    style.normal.textColor = Color.yellow;
                 }
                 else
                 {
