@@ -194,7 +194,7 @@ namespace U3D.Editor
             // Simplified scope instructions for local build workflow
             EditorGUILayout.LabelField("• Scopes: Check these boxes:", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("  ✅ repo (Create and manage repositories)", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("  ✅ pages (Deploy to GitHub Pages)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("  ✅ workflow (Update GitHub Action workflows)", EditorStyles.miniLabel);
             EditorGUILayout.Space(3);
 
             EditorGUILayout.LabelField("Step 3: Create and copy", EditorStyles.boldLabel);
