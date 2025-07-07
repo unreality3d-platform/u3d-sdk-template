@@ -61,6 +61,14 @@ namespace U3D.Editor
         {
             EnsureFirebaseConfiguration();
 
+            // CRITICAL FIX: Force credential loading to ensure persistence works
+            // This addresses the timing issue where credentials weren't loaded during editor startup
+            if (!U3DAuthenticator.IsLoggedIn)
+            {
+                // Force a re-check of stored credentials
+                _ = U3DAuthenticator.TryAutoLogin();
+            }
+
             if (U3DAuthenticator.IsLoggedIn)
             {
                 if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))

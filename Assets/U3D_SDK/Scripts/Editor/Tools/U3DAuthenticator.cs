@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using U3D.Editor;
 using UnityEngine;
+using UnityEditor;
 
 public static class U3DAuthenticator
 {
@@ -20,12 +21,17 @@ public static class U3DAuthenticator
     private static bool _stayLoggedIn = true; // Default to true for convenience
     private static HttpClient _sharedHttpClient;
     private static bool _networkConfigured = false;
+    private static bool _credentialsLoaded = false; // Track if we've loaded credentials
+
+    // Project-specific key prefix to avoid conflicts between projects
+    private static string ProjectPrefix => $"U3D_{UnityEditor.PlayerSettings.companyName}.{UnityEditor.PlayerSettings.productName}_";
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
     public static string DisplayName => _displayName;
     public static string CreatorUsername => _creatorUsername;
     public static bool PayPalConnected => _paypalConnected;
+
     public static class CurrentUser
     {
         public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
@@ -44,8 +50,7 @@ public static class U3DAuthenticator
         set
         {
             _stayLoggedIn = value;
-            UnityEngine.PlayerPrefs.SetInt("u3d_stayLoggedIn", value ? 1 : 0);
-            UnityEngine.PlayerPrefs.Save();
+            EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", value);
 
             // If user unchecks "stay logged in", clear stored credentials
             if (!value)
@@ -59,6 +64,8 @@ public static class U3DAuthenticator
     static U3DAuthenticator()
     {
         ConfigureNetworking();
+        // Load credentials immediately when class is first accessed
+        LoadCredentials();
     }
 
     private static void ConfigureNetworking()
@@ -133,7 +140,11 @@ public static class U3DAuthenticator
 
     public static async Task<bool> TryAutoLogin()
     {
-        LoadCredentials();
+        // Ensure credentials are loaded
+        if (!_credentialsLoaded)
+        {
+            LoadCredentials();
+        }
 
         // Check if user wants to stay logged in
         if (!_stayLoggedIn)
@@ -927,53 +938,54 @@ public static class U3DAuthenticator
         {
             if (!string.IsNullOrEmpty(_idToken))
             {
-                UnityEngine.PlayerPrefs.SetString("u3d_idToken", _idToken);
+                EditorPrefs.SetString(ProjectPrefix + "idToken", _idToken);
             }
             if (!string.IsNullOrEmpty(_refreshToken))
             {
-                UnityEngine.PlayerPrefs.SetString("u3d_refreshToken", _refreshToken);
+                EditorPrefs.SetString(ProjectPrefix + "refreshToken", _refreshToken);
             }
             if (!string.IsNullOrEmpty(_userEmail))
             {
-                UnityEngine.PlayerPrefs.SetString("u3d_userEmail", _userEmail);
+                EditorPrefs.SetString(ProjectPrefix + "userEmail", _userEmail);
             }
             if (!string.IsNullOrEmpty(_displayName))
             {
-                UnityEngine.PlayerPrefs.SetString("u3d_displayName", _displayName);
+                EditorPrefs.SetString(ProjectPrefix + "displayName", _displayName);
             }
             if (!string.IsNullOrEmpty(_creatorUsername))
             {
-                UnityEngine.PlayerPrefs.SetString("u3d_creatorUsername", _creatorUsername);
+                EditorPrefs.SetString(ProjectPrefix + "creatorUsername", _creatorUsername);
             }
-            UnityEngine.PlayerPrefs.SetInt("u3d_paypalConnected", _paypalConnected ? 1 : 0);
+            EditorPrefs.SetBool(ProjectPrefix + "paypalConnected", _paypalConnected);
         }
 
         // Always save the preference itself
-        UnityEngine.PlayerPrefs.SetInt("u3d_stayLoggedIn", _stayLoggedIn ? 1 : 0);
-        UnityEngine.PlayerPrefs.Save();
+        EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", _stayLoggedIn);
     }
 
     private static void LoadCredentials()
     {
-        _idToken = UnityEngine.PlayerPrefs.GetString("u3d_idToken", "");
-        _refreshToken = UnityEngine.PlayerPrefs.GetString("u3d_refreshToken", "");
-        _userEmail = UnityEngine.PlayerPrefs.GetString("u3d_userEmail", "");
-        _displayName = UnityEngine.PlayerPrefs.GetString("u3d_displayName", "");
-        _creatorUsername = UnityEngine.PlayerPrefs.GetString("u3d_creatorUsername", "");
-        _paypalConnected = UnityEngine.PlayerPrefs.GetInt("u3d_paypalConnected", 0) == 1;
-        _stayLoggedIn = UnityEngine.PlayerPrefs.GetInt("u3d_stayLoggedIn", 1) == 1; // Default to true
+        _idToken = EditorPrefs.GetString(ProjectPrefix + "idToken", "");
+        _refreshToken = EditorPrefs.GetString(ProjectPrefix + "refreshToken", "");
+        _userEmail = EditorPrefs.GetString(ProjectPrefix + "userEmail", "");
+        _displayName = EditorPrefs.GetString(ProjectPrefix + "displayName", "");
+        _creatorUsername = EditorPrefs.GetString(ProjectPrefix + "creatorUsername", "");
+        _paypalConnected = EditorPrefs.GetBool(ProjectPrefix + "paypalConnected", false);
+        _stayLoggedIn = EditorPrefs.GetBool(ProjectPrefix + "stayLoggedIn", true); // Default to true
+        _credentialsLoaded = true;
+
+        Debug.Log($"🔑 Credentials loaded: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, StayLoggedIn={_stayLoggedIn}");
     }
 
     private static void ClearCredentials()
     {
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_idToken");
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_refreshToken");
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_userEmail");
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_displayName");
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_creatorUsername");
-        UnityEngine.PlayerPrefs.DeleteKey("u3d_paypalConnected");
-        // Note: Don't clear u3d_stayLoggedIn - preserve user's preference
-        UnityEngine.PlayerPrefs.Save();
+        EditorPrefs.DeleteKey(ProjectPrefix + "idToken");
+        EditorPrefs.DeleteKey(ProjectPrefix + "refreshToken");
+        EditorPrefs.DeleteKey(ProjectPrefix + "userEmail");
+        EditorPrefs.DeleteKey(ProjectPrefix + "displayName");
+        EditorPrefs.DeleteKey(ProjectPrefix + "creatorUsername");
+        EditorPrefs.DeleteKey(ProjectPrefix + "paypalConnected");
+        // Note: Don't clear stayLoggedIn - preserve user's preference
 
         _idToken = "";
         _refreshToken = "";
@@ -981,6 +993,8 @@ public static class U3DAuthenticator
         _displayName = "";
         _creatorUsername = "";
         _paypalConnected = false;
+
+        Debug.Log("🗑️ Credentials cleared from EditorPrefs");
     }
 }
 
