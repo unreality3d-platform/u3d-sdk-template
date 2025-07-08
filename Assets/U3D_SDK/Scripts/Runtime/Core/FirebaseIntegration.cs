@@ -2,40 +2,43 @@ using Fusion;
 using System.Runtime.InteropServices;
 using U3D.Networking;
 using UnityEngine;
-using UnityEngine.UI;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+/// <summary>
+/// U3D Platform Integration - Handles PayPal, professional URLs, and multiplayer auto-initialization
+/// This component works automatically - no configuration needed by Creators
+/// </summary>
 public class FirebaseIntegration : MonoBehaviour
 {
-    [Header("UI References")]
-    public Button testButton;
-    public Button paymentButton;
-    public Button joinMultiplayerButton;
-    public Button createRoomButton;
-    public TMPro.TextMeshProUGUI statusText;
-    public TMPro.TMP_InputField roomNameInput;
+    [Header("Platform Integration")]
+    [Tooltip("This component handles PayPal, professional URLs, and multiplayer automatically")]
+    [SerializeField] private bool enableMultiplayer = true;
 
-    [Header("Content Settings")]
-    public string contentId = "test-area-1";
-    public float contentPrice = 15.99f;
+    [Header("Debug Info (Read-Only)")]
+    [SerializeField] private string detectedEnvironment = "Detecting...";
+    [SerializeField] private string professionalURL = "";
+    [SerializeField] private bool multiplayerActive = false;
 
-    [Header("Multiplayer Settings")]
-    public int maxPlayers = 10;
+    // Internal settings (hidden from Creators)
+    private string contentId = "creator-content";
+    private float contentPrice = 0f;
+    private int maxPlayers = 10;
 
-    [Header("Network Manager Integration")]
-    public U3DFusionNetworkManager networkManager;
-    public U3DPlayerSpawner playerSpawner;
+    // Platform integration components (auto-found)
+    private U3DFusionNetworkManager networkManager;
+    private U3DPlayerSpawner playerSpawner;
 
-    // PayPal Integration (Existing)
-    [DllImport("__Internal")]
-    private static extern void UnityCallTestFunction();
-
+    // PayPal Integration
     [DllImport("__Internal")]
     private static extern void UnityCheckContentAccess(string contentId);
 
     [DllImport("__Internal")]
     private static extern void UnityRequestPayment(string contentId, string price);
 
-    // Professional URL Detection (NEW)
+    // Professional URL Detection
     [DllImport("__Internal")]
     private static extern System.IntPtr UnityGetCurrentURL();
 
@@ -49,13 +52,7 @@ public class FirebaseIntegration : MonoBehaviour
     [DllImport("__Internal")]
     private static extern void UnityGetPhotonToken(string roomName, string contentId);
 
-    [DllImport("__Internal")]
-    private static extern void UnityCreateMultiplayerSession(string contentId, string sessionName, string maxPlayers);
-
-    [DllImport("__Internal")]
-    private static extern void UnityJoinMultiplayerSession(string roomName);
-
-    // Network State
+    // Platform state
     private bool _isConnecting = false;
     private string _pendingRoomName = "";
     private string _photonAppId = "a3df46ef-b10a-4954-8526-7a9fdd553543";
@@ -63,7 +60,6 @@ public class FirebaseIntegration : MonoBehaviour
     private DeploymentInfo _deploymentInfo;
     private float _startTime;
 
-    // User data structure
     [System.Serializable]
     public class UserInfo
     {
@@ -74,7 +70,6 @@ public class FirebaseIntegration : MonoBehaviour
         public string creatorUsername;
     }
 
-    // Deployment info structure (NEW)
     [System.Serializable]
     public class DeploymentInfo
     {
@@ -92,30 +87,45 @@ public class FirebaseIntegration : MonoBehaviour
     {
         _startTime = Time.time;
 
-        // Existing PayPal button setup
-        if (testButton != null)
-            testButton.onClick.AddListener(TestFirebaseConnection);
-
-        if (paymentButton != null)
-            paymentButton.onClick.AddListener(RequestPayment);
-
-        // Multiplayer button setup
-        if (joinMultiplayerButton != null)
-            joinMultiplayerButton.onClick.AddListener(JoinMultiplayer);
-
-        if (createRoomButton != null)
-            createRoomButton.onClick.AddListener(CreateRoom);
-
-        // Initialize network components
-        InitializeNetworkComponents();
-
-        // Subscribe to network events
-        SubscribeToNetworkEvents();
-
-        // NEW: Detect deployment environment
+        // Auto-detect platform environment
         DetectDeploymentEnvironment();
 
+        // Auto-find platform components
+        InitializeComponents();
+
+        // Auto-check content access
         CheckContentAccess();
+
+        // Auto-initialize multiplayer if enabled
+        if (enableMultiplayer)
+        {
+            AutoInitializeMultiplayer();
+        }
+    }
+
+    void InitializeComponents()
+    {
+        // Auto-find network components
+        if (networkManager == null)
+            networkManager = FindAnyObjectByType<U3DFusionNetworkManager>();
+
+        if (playerSpawner == null)
+            playerSpawner = FindAnyObjectByType<U3DPlayerSpawner>();
+
+        // Auto-create if missing
+        if (networkManager == null && enableMultiplayer)
+        {
+            var networkManagerObject = new GameObject("U3D Network Manager");
+            networkManager = networkManagerObject.AddComponent<U3DFusionNetworkManager>();
+            Debug.Log("Auto-created U3D Network Manager");
+        }
+
+        if (playerSpawner == null && enableMultiplayer)
+        {
+            var spawnerObject = new GameObject("U3D Player Spawner");
+            playerSpawner = spawnerObject.AddComponent<U3DPlayerSpawner>();
+            Debug.Log("Auto-created U3D Player Spawner");
+        }
     }
 
     void DetectDeploymentEnvironment()
@@ -123,7 +133,6 @@ public class FirebaseIntegration : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
         try
         {
-            // Get deployment information from JavaScript
             var deploymentInfoPtr = UnityGetDeploymentInfo();
             var deploymentInfoJson = Marshal.PtrToStringAnsi(deploymentInfoPtr);
             
@@ -131,45 +140,31 @@ public class FirebaseIntegration : MonoBehaviour
             {
                 _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
                 
-                UpdateStatus($"Detected: {_deploymentInfo.deploymentType}");
+                // Update Inspector display
+                detectedEnvironment = _deploymentInfo.deploymentType;
                 
                 if (_deploymentInfo.isProfessionalURL)
                 {
-                    UpdateStatus($"Professional URL: {_deploymentInfo.creatorUsername}.unreality3d.com/{_deploymentInfo.projectName}");
-                    Debug.Log($"Creator: {_deploymentInfo.creatorUsername}, Project: {_deploymentInfo.projectName}");
+                    professionalURL = $"{_deploymentInfo.creatorUsername}.unreality3d.com/{_deploymentInfo.projectName}";
+                    contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
                 }
-                else if (_deploymentInfo.isProduction)
-                {
-                    UpdateStatus("Production Firebase hosting detected");
-                }
-                else
-                {
-                    UpdateStatus($"Development environment: {_deploymentInfo.deploymentType}");
-                }
-
-                // Report deployment metrics after 2 seconds
+                
+                // Report metrics after load
                 Invoke(nameof(ReportDeploymentMetrics), 2f);
-            }
-            else
-            {
-                UpdateStatus("Could not detect deployment environment");
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"Deployment detection failed: {e.Message}");
-            UpdateStatus("Deployment detection unavailable in this environment");
+            Debug.LogWarning($"Platform detection failed: {e.Message}");
+            detectedEnvironment = "Detection failed";
         }
 #else
-        UpdateStatus("Editor Mode - Deployment detection disabled");
+        detectedEnvironment = "Unity Editor";
         _deploymentInfo = new DeploymentInfo
         {
             deploymentType = "editor",
             isProduction = false,
-            isProfessionalURL = false,
-            url = "editor://localhost",
-            hostname = "localhost",
-            pathname = "/editor"
+            isProfessionalURL = false
         };
 #endif
     }
@@ -179,153 +174,36 @@ public class FirebaseIntegration : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
         if (_deploymentInfo != null)
         {
-            var loadTime = (Time.time - _startTime) * 1000f; // Convert to milliseconds
+            var loadTime = (Time.time - _startTime) * 1000f;
             try
             {
                 UnityReportDeploymentMetrics(_deploymentInfo.deploymentType, loadTime.ToString("F0"));
-                Debug.Log($"Deployment metrics reported: {_deploymentInfo.deploymentType}, {loadTime:F0}ms");
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"Failed to report deployment metrics: {e.Message}");
+                Debug.LogWarning($"Failed to report metrics: {e.Message}");
             }
         }
 #endif
     }
 
-    void InitializeNetworkComponents()
+    void AutoInitializeMultiplayer()
     {
-        // Find network manager if not assigned
-        if (networkManager == null)
-        {
-            networkManager = FindAnyObjectByType<U3DFusionNetworkManager>();
-        }
+        if (!enableMultiplayer) return;
 
-        // Find player spawner if not assigned
-        if (playerSpawner == null)
-        {
-            playerSpawner = FindAnyObjectByType<U3DPlayerSpawner>();
-        }
-
-        // Create network manager if none exists - AS ROOT OBJECT
-        if (networkManager == null)
-        {
-            var networkManagerObject = new GameObject("U3D Network Manager");
-            networkManager = networkManagerObject.AddComponent<U3DFusionNetworkManager>();
-            Debug.Log("Created U3D Network Manager automatically");
-        }
-
-        // Create player spawner if none exists - AS ROOT OBJECT  
-        if (playerSpawner == null)
-        {
-            var spawnerObject = new GameObject("U3D Player Spawner");
-            playerSpawner = spawnerObject.AddComponent<U3DPlayerSpawner>();
-            Debug.Log("Created U3D Player Spawner automatically");
-        }
-    }
-
-    void SubscribeToNetworkEvents()
-    {
-        // Subscribe to network manager events
-        U3DFusionNetworkManager.OnNetworkStatusChanged += HandleNetworkStatusChanged;
-        U3DFusionNetworkManager.OnPlayerJoinedEvent += HandlePlayerJoined;
-        U3DFusionNetworkManager.OnPlayerLeftEvent += HandlePlayerLeft;
-        U3DFusionNetworkManager.OnPlayerCountChanged += HandlePlayerCountChanged;
-    }
-
-    void OnDestroy()
-    {
-        // Unsubscribe from events
-        U3DFusionNetworkManager.OnNetworkStatusChanged -= HandleNetworkStatusChanged;
-        U3DFusionNetworkManager.OnPlayerJoinedEvent -= HandlePlayerJoined;
-        U3DFusionNetworkManager.OnPlayerLeftEvent -= HandlePlayerLeft;
-        U3DFusionNetworkManager.OnPlayerCountChanged -= HandlePlayerCountChanged;
-    }
-
-    // ========== EXISTING PAYPAL FUNCTIONS (UNCHANGED) ==========
-
-    public void TestFirebaseConnection()
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateStatus("Testing Firebase connection...");
-        try
-        {
-            UnityCallTestFunction();
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Firebase function not available: " + e.Message);
-        }
-#else
-        UpdateStatus("Firebase testing requires WebGL build");
-#endif
-    }
-
-    public void CheckContentAccess()
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateStatus("Checking content access...");
-        try
-        {
-            UnityCheckContentAccess(contentId);
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Access check failed: " + e.Message);
-        }
-#else
-        UpdateStatus("Ready for WebGL build - Firebase integration active");
-#endif
-    }
-
-    public void RequestPayment()
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateStatus("Processing payment request...");
-        try
-        {
-            UnityRequestPayment(contentId, contentPrice.ToString());
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Payment system not available: " + e.Message);
-        }
-#else
-        UpdateStatus("PayPal integration requires WebGL build");
-#endif
-    }
-
-    // ========== MULTIPLAYER FUNCTIONS (UNCHANGED) ==========
-
-    public void JoinMultiplayer()
-    {
-        if (_isConnecting)
-        {
-            UpdateStatus("Already connecting...");
-            return;
-        }
-
-        string roomName = roomNameInput != null ? roomNameInput.text : "DefaultRoom";
-        if (string.IsNullOrEmpty(roomName))
-        {
-            UpdateStatus("Please enter a room name");
-            return;
-        }
+        string roomName = GetAutoRoomName();
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateStatus("Requesting multiplayer access...");
-        _pendingRoomName = roomName;
         try
         {
             UnityGetPhotonToken(roomName, contentId);
         }
         catch (System.Exception e)
         {
-            UpdateStatus("Multiplayer system not available: " + e.Message);
+            Debug.LogWarning($"Multiplayer auto-init failed: {e.Message}");
         }
 #else
-        // Editor testing - simulate token reception
-        UpdateStatus("Editor Mode - Simulating Photon connection...");
+        // Editor simulation
         _pendingRoomName = roomName;
         var mockToken = new PhotonTokenInfo
         {
@@ -337,130 +215,61 @@ public class FirebaseIntegration : MonoBehaviour
 #endif
     }
 
-    public void CreateRoom()
+    string GetAutoRoomName()
     {
-        string sessionName = roomNameInput != null ? roomNameInput.text : "DefaultRoom";
-        if (string.IsNullOrEmpty(sessionName))
+        if (_deploymentInfo != null && _deploymentInfo.isProfessionalURL)
         {
-            UpdateStatus("Please enter a session name");
-            return;
+            return $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
         }
+        return $"room_{contentId}";
+    }
 
+    void CheckContentAccess()
+    {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        UpdateStatus("Creating multiplayer session...");
         try
         {
-            UnityCreateMultiplayerSession(contentId, sessionName, maxPlayers.ToString());
+            UnityCheckContentAccess(contentId);
         }
         catch (System.Exception e)
         {
-            UpdateStatus("Session creation failed: " + e.Message);
+            Debug.LogWarning($"Access check failed: {e.Message}");
         }
-#else
-        // Editor testing - simulate session creation
-        UpdateStatus("Editor Mode - Simulating session creation...");
-        var mockSession = new SessionInfo
-        {
-            sessionId = $"test_{sessionName}_{System.DateTime.Now.Ticks}",
-            roomName = sessionName,
-            maxPlayers = maxPlayers,
-            status = "created"
-        };
-        OnSessionCreated(JsonUtility.ToJson(mockSession));
 #endif
     }
 
-    // ========== FIREBASE CALLBACKS (UNCHANGED) ==========
-
-    public void UpdateStatus(string message)
-    {
-        if (statusText != null)
-        {
-            statusText.text = message;
-        }
-        Debug.Log($"Firebase Integration: {message}");
-    }
-
-    // Existing PayPal callbacks
-    public void OnTestComplete(string result)
-    {
-        UpdateStatus($"Test Result: {result}");
-    }
+    // ========== PLATFORM CALLBACKS ==========
 
     public void OnAccessCheckComplete(string hasAccess)
     {
-        if (hasAccess == "true")
-        {
-            UpdateStatus("Access granted - Welcome!");
-        }
-        else
-        {
-            UpdateStatus("Payment required for access");
-        }
+        Debug.Log($"Content access: {(hasAccess == "true" ? "Granted" : "Payment required")}");
     }
 
     public void OnPaymentComplete(string success)
     {
         if (success == "true")
         {
-            UpdateStatus("Payment successful - Access granted!");
+            Debug.Log("Payment successful - Access granted!");
             CheckContentAccess();
         }
         else
         {
-            UpdateStatus("Payment failed - Please try again");
+            Debug.Log("Payment failed");
         }
     }
 
-    // Photon callbacks
     public void OnPhotonTokenReceived(string tokenData)
     {
         try
         {
             var tokenInfo = JsonUtility.FromJson<PhotonTokenInfo>(tokenData);
             _photonAppId = tokenInfo.appId;
-
-            UpdateStatus("Token received, connecting to Photon...");
             StartNetworkingWithToken(tokenInfo);
         }
         catch (System.Exception e)
         {
-            UpdateStatus("Token parsing failed: " + e.Message);
+            Debug.LogWarning($"Token parsing failed: {e.Message}");
         }
-    }
-
-    public void OnSessionCreated(string sessionData)
-    {
-        try
-        {
-            var sessionInfo = JsonUtility.FromJson<SessionInfo>(sessionData);
-            UpdateStatus($"Session created: {sessionInfo.roomName}");
-
-            // Auto-join the created session
-            _pendingRoomName = sessionInfo.roomName;
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-            UnityGetPhotonToken(sessionInfo.roomName, contentId);
-#else
-            // Editor mode - directly start networking
-            var mockToken = new PhotonTokenInfo
-            {
-                appId = _photonAppId,
-                region = "auto",
-                maxPlayers = sessionInfo.maxPlayers
-            };
-            StartNetworkingWithToken(mockToken);
-#endif
-        }
-        catch (System.Exception e)
-        {
-            UpdateStatus("Session creation response error: " + e.Message);
-        }
-    }
-
-    public void OnSessionJoinResponse(string responseData)
-    {
-        UpdateStatus($"Session join response: {responseData}");
     }
 
     public void OnUserProfileReceived(string userDataJson)
@@ -468,45 +277,34 @@ public class FirebaseIntegration : MonoBehaviour
         try
         {
             _currentUserInfo = JsonUtility.FromJson<UserInfo>(userDataJson);
-            UpdateStatus($"Welcome, {_currentUserInfo.displayName}!");
-
-            // Update networked player with user info when spawned
-            UpdateNetworkedPlayerInfo();
+            Debug.Log($"User profile received: {_currentUserInfo.displayName}");
         }
         catch (System.Exception e)
         {
-            UpdateStatus("User profile parsing failed: " + e.Message);
+            Debug.LogWarning($"User profile parsing failed: {e.Message}");
         }
     }
 
-    // ========== NETWORKING INTEGRATION (UNCHANGED) ==========
-
     async void StartNetworkingWithToken(PhotonTokenInfo tokenInfo)
     {
-        if (networkManager == null)
-        {
-            UpdateStatus("Network manager not found!");
-            return;
-        }
+        if (networkManager == null) return;
 
         _isConnecting = true;
+        multiplayerActive = false;
 
         try
         {
             bool success = await networkManager.StartNetworking(_pendingRoomName, tokenInfo.appId);
+            multiplayerActive = success;
 
             if (success)
             {
-                UpdateStatus($"Connected to multiplayer: {_pendingRoomName}");
-            }
-            else
-            {
-                UpdateStatus("Failed to connect to multiplayer");
+                Debug.Log($"Multiplayer connected: {_pendingRoomName}");
             }
         }
         catch (System.Exception e)
         {
-            UpdateStatus($"Networking error: {e.Message}");
+            Debug.LogWarning($"Networking error: {e.Message}");
         }
         finally
         {
@@ -514,153 +312,63 @@ public class FirebaseIntegration : MonoBehaviour
         }
     }
 
-    void UpdateNetworkedPlayerInfo()
-    {
-        if (_currentUserInfo == null) return;
+    // ========== PUBLIC API FOR CREATORS ==========
 
-        // Find local player controller and update info
-        var playerControllers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
-
-        foreach (var player in playerControllers)
-        {
-            var networkObject = player.GetComponent<NetworkObject>();
-            if (networkObject != null && networkObject.HasInputAuthority)
-            {
-                string displayName = !string.IsNullOrEmpty(_currentUserInfo.displayName)
-                    ? _currentUserInfo.displayName
-                    : $"Player{UnityEngine.Random.Range(1000, 9999)}";
-
-                // SetPlayerInfo method needs to be added to U3DPlayerController
-                // For now, just log the info
-                Debug.Log($"Would set player info: {displayName}, {_currentUserInfo.userType}, PayPal: {_currentUserInfo.paypalConnected}");
-                break;
-            }
-        }
-    }
-
-    // ========== NETWORK EVENT HANDLERS (UNCHANGED) ==========
-
-    void HandleNetworkStatusChanged(bool isConnected)
-    {
-        if (isConnected)
-        {
-            UpdateStatus("Multiplayer connection established");
-
-            // Disable multiplayer buttons when connected
-            if (joinMultiplayerButton != null)
-                joinMultiplayerButton.interactable = false;
-            if (createRoomButton != null)
-                createRoomButton.interactable = false;
-        }
-        else
-        {
-            UpdateStatus("Multiplayer disconnected");
-
-            // Re-enable multiplayer buttons
-            if (joinMultiplayerButton != null)
-                joinMultiplayerButton.interactable = true;
-            if (createRoomButton != null)
-                createRoomButton.interactable = true;
-
-            _isConnecting = false;
-        }
-    }
-
-    void HandlePlayerJoined(PlayerRef player)
-    {
-        UpdateStatus($"Player joined the session");
-    }
-
-    void HandlePlayerLeft(PlayerRef player)
-    {
-        UpdateStatus($"Player left the session");
-    }
-
-    void HandlePlayerCountChanged(int playerCount)
-    {
-        UpdateStatus($"Players in session: {playerCount}");
-    }
-
-    // ========== PUBLIC API ==========
-
-    public bool IsMultiplayerActive()
-    {
-        return networkManager != null && networkManager.IsConnected;
-    }
-
-    public int GetPlayerCount()
-    {
-        return networkManager != null ? networkManager.PlayerCount : 0;
-    }
-
-    public async void DisconnectMultiplayer()
-    {
-        if (networkManager != null)
-        {
-            await networkManager.StopNetworking();
-            UpdateStatus("Disconnected from multiplayer");
-        }
-    }
-
-    public void UpdateUserInfo(string displayName, string userType, bool paypalConnected)
-    {
-        _currentUserInfo = new UserInfo
-        {
-            displayName = displayName,
-            userType = userType,
-            paypalConnected = paypalConnected
-        };
-
-        UpdateNetworkedPlayerInfo();
-    }
-
-    // ========== NEW: PROFESSIONAL URL API ==========
-
-    public string GetCurrentURL()
-    {
-#if UNITY_WEBGL && !UNITY_EDITOR
-        try
-        {
-            var urlPtr = UnityGetCurrentURL();
-            return Marshal.PtrToStringAnsi(urlPtr);
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"Failed to get current URL: {e.Message}");
-            return "unknown";
-        }
-#else
-        return "editor://localhost";
-#endif
-    }
-
-    public DeploymentInfo GetDeploymentInfo()
-    {
-        return _deploymentInfo ?? new DeploymentInfo { deploymentType = "unknown" };
-    }
-
+    /// <summary>
+    /// Check if running on a professional URL (username.unreality3d.com)
+    /// </summary>
     public bool IsProfessionalURL()
     {
         return _deploymentInfo != null && _deploymentInfo.isProfessionalURL;
     }
 
+    /// <summary>
+    /// Get the creator's username (only on professional URLs)
+    /// </summary>
     public string GetCreatorUsername()
     {
         return _deploymentInfo?.creatorUsername ?? "";
     }
 
+    /// <summary>
+    /// Get the project name
+    /// </summary>
     public string GetProjectName()
     {
         return _deploymentInfo?.projectName ?? "";
     }
 
-    public bool IsProductionEnvironment()
+    /// <summary>
+    /// Check if multiplayer is currently active
+    /// </summary>
+    public bool IsMultiplayerActive()
     {
-        return _deploymentInfo != null && _deploymentInfo.isProduction;
+        return networkManager != null && networkManager.IsConnected;
+    }
+
+    /// <summary>
+    /// Get current player count
+    /// </summary>
+    public int GetPlayerCount()
+    {
+        return networkManager != null ? networkManager.PlayerCount : 0;
+    }
+
+    /// <summary>
+    /// Enable or disable multiplayer functionality
+    /// </summary>
+    public void SetMultiplayerEnabled(bool enabled)
+    {
+        enableMultiplayer = enabled;
+        if (!enabled && networkManager != null && networkManager.IsConnected)
+        {
+            _ = networkManager.StopNetworking();
+            multiplayerActive = false;
+        }
     }
 }
 
-// Data classes for JSON parsing
+// Data structures for platform integration
 [System.Serializable]
 public class PhotonTokenInfo
 {
@@ -671,12 +379,19 @@ public class PhotonTokenInfo
     public string username;
 }
 
-[System.Serializable]
-public class SessionInfo
+#if UNITY_EDITOR
+// Custom property drawer for read-only fields
+[CustomPropertyDrawer(typeof(ReadOnlyAttribute))]
+public class ReadOnlyDrawer : PropertyDrawer
 {
-    public string sessionId;
-    public string roomName;
-    public int maxPlayers;
-    public string status;
-    public int currentPlayers;
+    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+    {
+        GUI.enabled = false;
+        EditorGUI.PropertyField(position, property, label, true);
+        GUI.enabled = true;
+    }
 }
+#endif
+
+// Custom attribute for read-only Inspector fields
+public class ReadOnlyAttribute : UnityEngine.PropertyAttribute { }

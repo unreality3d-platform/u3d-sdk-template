@@ -93,8 +93,6 @@ namespace U3D.Networking
                 Destroy(gameObject);
                 return;
             }
-
-            _firebaseIntegration = FindAnyObjectByType<FirebaseIntegration>();
         }
 
         void Start()
@@ -309,17 +307,9 @@ namespace U3D.Networking
             }
         }
 
-        /// <summary>
-        /// Update status text through FirebaseIntegration
-        /// </summary>
         void UpdateStatus(string message)
         {
             Debug.Log($"U3D Network Manager: {message}");
-
-            if (_firebaseIntegration != null)
-            {
-                _firebaseIntegration.UpdateStatus(message);
-            }
         }
 
         // ========== FUSION CALLBACKS ==========
