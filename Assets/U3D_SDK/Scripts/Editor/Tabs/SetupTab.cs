@@ -502,6 +502,8 @@ namespace U3D.Editor
             }
         }
 
+        // In DrawPayPalLogin() method, add logout button at the end:
+
         private void DrawPayPalLogin()
         {
             EditorGUILayout.LabelField("PayPal Authentication", EditorStyles.boldLabel);
@@ -537,6 +539,20 @@ namespace U3D.Editor
             {
                 currentState = AuthState.MethodSelection;
             }
+
+            // ADD THIS: Logout button for users who are logged in but want to switch accounts
+            EditorGUILayout.Space(15);
+            if (U3DAuthenticator.IsLoggedIn && GUILayout.Button("🚪 Logout", EditorStyles.miniButton))
+            {
+                if (EditorUtility.DisplayDialog("Logout Confirmation",
+                    "This will log you out completely. Continue?",
+                    "Yes, Logout", "Cancel"))
+                {
+                    U3DAuthenticator.Logout();
+                    currentState = AuthState.MethodSelection;
+                    UpdateCompletion();
+                }
+            }
         }
 
         private void DrawPayPalPolling()
@@ -564,11 +580,29 @@ namespace U3D.Editor
 
                 EditorGUILayout.Space(10);
 
+                // Two options: Cancel login or full logout
+                EditorGUILayout.BeginHorizontal();
+
                 if (GUILayout.Button("Cancel Login"))
                 {
                     StopPayPalPolling();
                     currentState = AuthState.PayPalLogin;
                 }
+
+                if (GUILayout.Button("🚪 Logout"))
+                {
+                    if (EditorUtility.DisplayDialog("Logout Confirmation",
+                        "This will stop PayPal authentication and log you out completely. Continue?",
+                        "Yes, Logout", "Cancel"))
+                    {
+                        StopPayPalPolling();
+                        U3DAuthenticator.Logout();
+                        currentState = AuthState.MethodSelection;
+                        UpdateCompletion();
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
             }
             else
             {
@@ -579,18 +613,36 @@ namespace U3D.Editor
 
                 EditorGUILayout.Space(10);
 
+                EditorGUILayout.BeginHorizontal();
+
                 if (GUILayout.Button("Try Again"))
                 {
                     StopPayPalPolling();
                     currentState = AuthState.PayPalLogin;
                 }
 
-                EditorGUILayout.Space(5);
-
                 if (GUILayout.Button("← Back to Method Selection"))
                 {
                     StopPayPalPolling();
                     currentState = AuthState.MethodSelection;
+                }
+
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.Space(5);
+
+                // Full logout option when timed out
+                if (GUILayout.Button("🚪 Logout", EditorStyles.miniButton))
+                {
+                    if (EditorUtility.DisplayDialog("Logout Confirmation",
+                        "This will log you out completely. Continue?",
+                        "Yes, Logout", "Cancel"))
+                    {
+                        StopPayPalPolling();
+                        U3DAuthenticator.Logout();
+                        currentState = AuthState.MethodSelection;
+                        UpdateCompletion();
+                    }
                 }
             }
 
@@ -880,6 +932,15 @@ namespace U3D.Editor
                     {
                         StopPayPalPolling();
 
+                        // CRITICAL FIX: Force profile reload after PayPal auth completes
+                        if (U3DAuthenticator.IsLoggedIn)
+                        {
+                            UnityDebug.Log("🔄 PayPal auth completed, ensuring profile data is loaded...");
+                            await U3DAuthenticator.ForceProfileReload();
+                            UnityDebug.Log($"🔍 After PayPal auth - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+                        }
+
+                        // Now make state decision with complete profile data
                         if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                         {
                             currentState = AuthState.UsernameReservation;
