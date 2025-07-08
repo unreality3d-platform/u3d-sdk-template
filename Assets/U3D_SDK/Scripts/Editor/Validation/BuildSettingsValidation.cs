@@ -43,24 +43,11 @@ namespace U3D.Editor
 
         private ValidationResult ValidateWebGLMemorySize()
         {
-            // INFORMATIONAL ONLY - UnityBuildHelper handles smart memory sizing
-            var currentMemory = PlayerSettings.WebGL.memorySize;
-            var isOptimal = currentMemory >= 512;
-
-            string message;
-            if (currentMemory >= 512)
-            {
-                message = $"✅ WebGL memory size appropriate: {currentMemory}MB";
-            }
-            else
-            {
-                message = $"ℹ️ UnityBuildHelper will optimize memory size (minimum 512MB, current: {currentMemory}MB)";
-            }
-
+            // Unity 6+ uses automatic WebAssembly memory management
             return new ValidationResult(
-                isOptimal,
-                message,
-                ValidationSeverity.Info // Always informational now
+                true, // Always optimal in Unity 6+
+                "✅ Unity 6+ automatic WebAssembly memory management (manual sizing deprecated)",
+                ValidationSeverity.Info
             );
         }
 

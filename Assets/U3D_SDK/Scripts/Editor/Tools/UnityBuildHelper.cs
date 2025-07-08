@@ -299,10 +299,17 @@ namespace U3D.Editor
             // Based on your u3d-sdk-template and CheckFixTab validation standards
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled; // CRITICAL: GitHub Pages compatibility
 
-            // SMART MEMORY SIZING: 512MB minimum, auto-increase for complex projects
-            int optimalMemorySize = CalculateOptimalMemorySize();
-            PlayerSettings.WebGL.memorySize = optimalMemorySize;
-            Debug.Log($"U3D SDK: Set WebGL memory to {optimalMemorySize}MB based on project complexity");
+            // 🚨 ADD THESE LINES TO PREVENT NODE.JS REQUIREMENTS
+            // ================================================================
+            // FORCE: Disable Unity 6+ features that trigger Node.js dependencies
+            EditorUserBuildSettings.development = false;                    // CRITICAL: Forces production builds (no dev tools)
+            PlayerSettings.WebGL.template = "Default";                     // CRITICAL: Use Unity's basic template (no custom Node.js processing)
+            PlayerSettings.WebGL.analyzeBuildSize = false;                 // CRITICAL: Disable size analysis (requires Node.js)
+            PlayerSettings.WebGL.showDiagnostics = false;                  // CRITICAL: Disable diagnostics (can trigger Node.js)
+                                                                           // ================================================================
+
+            // Unity 6+ automatic WebAssembly memory management (deprecated: PlayerSettings.WebGL.memorySize)
+            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management (no manual sizing needed)");
 
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
@@ -327,98 +334,6 @@ namespace U3D.Editor
             // Your CheckFixTab already handles comprehensive optimization validation
 
             Debug.Log("Unity 6+ WebGL build settings applied (preserving your proven configuration)");
-        }
-
-        private static int CalculateOptimalMemorySize()
-        {
-            int baseMemory = 512; // Your proven minimum
-            int maxMemory = 2048; // Unity 6+ recommendation for complex projects
-            int additionalMemory = 0;
-
-            try
-            {
-                // Check for large textures
-                var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
-                int largeTextureCount = 0;
-
-                foreach (var guid in textureGuids.Take(100)) // Sample to avoid long analysis
-                {
-                    var path = AssetDatabase.GUIDToAssetPath(guid);
-                    var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-                    if (importer != null)
-                    {
-                        var settings = importer.GetDefaultPlatformTextureSettings();
-                        if (settings.maxTextureSize > 1024)
-                        {
-                            largeTextureCount++;
-                        }
-                    }
-                }
-
-                if (largeTextureCount > 10)
-                {
-                    additionalMemory += 256; // Add 256MB for many large textures
-                    Debug.Log($"U3D SDK: Detected {largeTextureCount} large textures, adding 256MB memory");
-                }
-
-                // Check for high polygon models
-                var meshFilters = UnityEngine.Object.FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
-                int totalTriangles = 0;
-                int highPolyModels = 0;
-
-                foreach (var meshFilter in meshFilters)
-                {
-                    if (meshFilter.sharedMesh != null)
-                    {
-                        int triangles = meshFilter.sharedMesh.triangles.Length / 3;
-                        totalTriangles += triangles;
-
-                        if (triangles > 5000)
-                        {
-                            highPolyModels++;
-                        }
-                    }
-                }
-
-                if (totalTriangles > 100000)
-                {
-                    additionalMemory += 512; // Add 512MB for high triangle count
-                    Debug.Log($"U3D SDK: Detected {totalTriangles:N0} triangles, adding 512MB memory");
-                }
-                else if (totalTriangles > 50000)
-                {
-                    additionalMemory += 256; // Add 256MB for medium triangle count
-                    Debug.Log($"U3D SDK: Detected {totalTriangles:N0} triangles, adding 256MB memory");
-                }
-
-                // Check for complex scene objects
-                var gameObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-                if (gameObjects.Length > 1000)
-                {
-                    additionalMemory += 256; // Add 256MB for complex scenes
-                    Debug.Log($"U3D SDK: Detected {gameObjects.Length} GameObjects, adding 256MB memory");
-                }
-
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning($"U3D SDK: Could not analyze project complexity for memory sizing: {ex.Message}");
-                Debug.Log("U3D SDK: Using base 512MB memory setting");
-                return baseMemory;
-            }
-
-            int finalMemory = Mathf.Clamp(baseMemory + additionalMemory, baseMemory, maxMemory);
-
-            if (finalMemory > baseMemory)
-            {
-                Debug.Log($"U3D SDK: Increased memory from {baseMemory}MB to {finalMemory}MB based on project complexity");
-            }
-            else
-            {
-                Debug.Log($"U3D SDK: Using base {baseMemory}MB memory - project appears optimized for web");
-            }
-
-            return finalMemory;
         }
 
         private static async Task<string> ValidateGitHubPagesCompatibility(string buildPath)
