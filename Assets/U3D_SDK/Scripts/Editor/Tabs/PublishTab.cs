@@ -209,8 +209,6 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
         }
 
-        // ADD THESE NEW METHODS TO PublishTab.cs:
-
         private async Task LoadProjectOptionsAsync()
         {
             try
@@ -231,7 +229,7 @@ namespace U3D.Editor
                     return;
                 }
 
-                // Analyze each repository
+                // Analyze each repository and add UpdateExisting options
                 foreach (var repo in repoResult.Repositories)
                 {
                     // Check if it's a Unity project
@@ -260,15 +258,35 @@ namespace U3D.Editor
                     }
                 }
 
-                // Always add "Create New" option
-                var newRepoName = await GitHubAPI.GenerateUniqueRepositoryName(cachedProductName);
+                // FIXED: Add incremental version option (the missing middle option!)
+                // This creates a new version of the current project (e.g., "project-name-1", "project-name-2")
+                var incrementalRepoName = await GitHubAPI.GenerateUniqueRepositoryName(cachedProductName);
+
+                // Only add incremental option if it's actually different from the base name
+                // (i.e., if there's already a repository with the base name)
+                if (incrementalRepoName != sanitizedProjectName)
+                {
+                    availableOptions.Add(new ProjectOption
+                    {
+                        Type = ProjectOption.OptionType.CreateNew,
+                        RepositoryName = incrementalRepoName,
+                        DisplayName = $"Create \"{incrementalRepoName}\"",
+                        Description = "New version of current project",
+                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{incrementalRepoName}/",
+                        GitHubPagesUrl = null,
+                        LastUpdated = null,
+                        IsUnityProject = false
+                    });
+                }
+
+                // Always add "Create New Project" option (completely different project)
                 availableOptions.Add(new ProjectOption
                 {
                     Type = ProjectOption.OptionType.CreateNew,
-                    RepositoryName = newRepoName,
-                    DisplayName = $"Create New \"{newRepoName}\"",
+                    RepositoryName = "new-project", // Placeholder - will be updated based on Product Name
+                    DisplayName = "Create New Project",
                     Description = "New Unity WebGL project",
-                    ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{newRepoName}/",
+                    ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/[product-name]/",
                     GitHubPagesUrl = null,
                     LastUpdated = null,
                     IsUnityProject = false
@@ -334,19 +352,34 @@ namespace U3D.Editor
                 EditorGUILayout.BeginVertical();
 
                 var style = new GUIStyle(EditorStyles.boldLabel);
-                if (option.Type == ProjectOption.OptionType.UpdateExisting)
+
+                // FIXED: Color logic - Green for standard options, Yellow for "Create New Project" with editable name
+                if (option.Type == ProjectOption.OptionType.CreateNew && option.RepositoryName == "new-project")
                 {
+                    // "Create New Project" option with editable Product Name - make it yellow to show it's different
                     style.normal.textColor = Color.yellow;
                 }
                 else
                 {
+                    // Both "Update existing" and "Create incremental version" are green (standard workflows)
                     style.normal.textColor = Color.green;
                 }
 
-                // Clean up Create New display name to not show confusing auto-generated repo name
-                var displayText = option.Type == ProjectOption.OptionType.CreateNew
-                    ? "Create New Project"
-                    : option.DisplayName;
+                // FIXED: Better display logic for different option types
+                string displayText;
+                if (option.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    displayText = option.DisplayName; // "Update 'repo-name'"
+                }
+                else if (option.RepositoryName == "new-project")
+                {
+                    displayText = "Create New Project"; // The completely new project option
+                }
+                else
+                {
+                    displayText = option.DisplayName; // "Create 'project-name-1'" (incremental version)
+                }
+
                 EditorGUILayout.LabelField(displayText, style);
                 EditorGUILayout.LabelField(option.Description, EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"URL: {option.ProfessionalUrl}", EditorStyles.miniLabel);
@@ -367,8 +400,8 @@ namespace U3D.Editor
                     EditorGUILayout.EndHorizontal();
                 }
 
-                // Special handling for Create New option
-                if (option.Type == ProjectOption.OptionType.CreateNew)
+                // Special handling for "Create New Project" option (the one that allows custom Product Name)
+                if (option.Type == ProjectOption.OptionType.CreateNew && option.RepositoryName == "new-project")
                 {
                     EditorGUILayout.Space(5);
 
@@ -436,11 +469,13 @@ namespace U3D.Editor
             // Determine if Make It Live button should be enabled
             bool canPublish = selectedOptionIndex >= 0;
 
-            // Additional validation for Create New option
+            // Additional validation for Create New Project option with name conflict
             if (canPublish && selectedOptionIndex < availableOptions.Count)
             {
                 var selectedOption = availableOptions[selectedOptionIndex];
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew && hasNameConflict)
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew &&
+                    selectedOption.RepositoryName == "new-project" &&
+                    hasNameConflict)
                 {
                     canPublish = false;
                 }
@@ -455,12 +490,20 @@ namespace U3D.Editor
                 // CRITICAL FIX: Properly set shouldCreateNewRepository based on selection
                 shouldCreateNewRepository = selectedOption.Type == ProjectOption.OptionType.CreateNew;
 
-                // CRITICAL FIX: For Create New, always use the current cached product name
-                // For Update Existing, use the repository name from the option
+                // CRITICAL FIX: Handle different types of Create New options
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
-                    // Don't override cachedProductName - use whatever is currently in the UI
-                    Debug.Log($"🎯 CREATE NEW selected with Product Name: {cachedProductName}");
+                    if (selectedOption.RepositoryName == "new-project")
+                    {
+                        // This is the "Create New Project" option - use current Product Name
+                        Debug.Log($"🎯 CREATE NEW PROJECT selected with Product Name: {cachedProductName}");
+                    }
+                    else
+                    {
+                        // This is the incremental version option - use the generated incremental name
+                        cachedProductName = selectedOption.RepositoryName;
+                        Debug.Log($"🎯 CREATE INCREMENTAL VERSION selected: {cachedProductName}");
+                    }
                 }
                 else
                 {
@@ -477,7 +520,9 @@ namespace U3D.Editor
             if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
             {
                 var selectedOption = availableOptions[selectedOptionIndex];
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew && hasNameConflict && !canPublish)
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew &&
+                    selectedOption.RepositoryName == "new-project" &&
+                    hasNameConflict && !canPublish)
                 {
                     EditorGUILayout.Space(5);
                     EditorGUILayout.HelpBox(
