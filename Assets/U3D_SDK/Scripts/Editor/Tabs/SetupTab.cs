@@ -61,21 +61,29 @@ namespace U3D.Editor
         {
             EnsureFirebaseConfiguration();
 
-            // CRITICAL FIX: Await the auto-login to ensure profile data is loaded
             if (!U3DAuthenticator.IsLoggedIn)
             {
                 await U3DAuthenticator.TryAutoLogin();
             }
+
+            // DEBUG: Let's see what's actually happening
+            UnityDebug.Log($"🔍 Debug - IsLoggedIn: {U3DAuthenticator.IsLoggedIn}");
+            UnityDebug.Log($"🔍 Debug - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+            UnityDebug.Log($"🔍 Debug - GitHubToken exists: {!string.IsNullOrEmpty(GitHubTokenManager.Token)}");
+            UnityDebug.Log($"🔍 Debug - GitHubTokenValidated: {GitHubTokenManager.HasValidToken}");
+            UnityDebug.Log($"🔍 Debug - GitHubUsername: '{GitHubTokenManager.GitHubUsername}'");
 
             if (U3DAuthenticator.IsLoggedIn)
             {
                 if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                 {
                     currentState = AuthState.UsernameReservation;
+                    UnityDebug.Log("🔍 State: UsernameReservation");
                 }
                 else if (!GitHubTokenManager.HasValidToken)
                 {
                     currentState = AuthState.GitHubSetup;
+                    UnityDebug.Log("🔍 State: GitHubSetup");
                     githubToken = "";
                     tokenValidated = false;
                     validationMessage = "";
@@ -83,11 +91,13 @@ namespace U3D.Editor
                 else
                 {
                     currentState = AuthState.LoggedIn;
+                    UnityDebug.Log("🔍 State: LoggedIn");
                 }
             }
             else
             {
                 currentState = AuthState.MethodSelection;
+                UnityDebug.Log("🔍 State: MethodSelection");
                 githubToken = "";
                 tokenValidated = false;
                 validationMessage = "";
@@ -248,6 +258,20 @@ namespace U3D.Editor
                     "Yes, Skip for Now", "Wait, Let Me Finish"))
                 {
                     currentState = AuthState.LoggedIn;
+                    UpdateCompletion();
+                }
+            }
+
+            EditorGUILayout.Space(15);
+            if (GUILayout.Button("🚪 Logout"))
+            {
+                if (EditorUtility.DisplayDialog("Logout Confirmation",
+                    "This will log you out and clear all stored credentials. Continue?",
+                    "Yes, Logout", "Cancel"))
+                {
+                    U3DAuthenticator.Logout();
+                    GitHubTokenManager.ClearToken();
+                    currentState = AuthState.MethodSelection;
                     UpdateCompletion();
                 }
             }
@@ -745,6 +769,20 @@ namespace U3D.Editor
                             }
                         }
                     }
+                }
+            }
+
+            EditorGUILayout.Space(15);
+            if (GUILayout.Button("🚪 Logout"))
+            {
+                if (EditorUtility.DisplayDialog("Logout Confirmation",
+                    "This will log you out and clear all stored credentials. Continue?",
+                    "Yes, Logout", "Cancel"))
+                {
+                    U3DAuthenticator.Logout();
+                    GitHubTokenManager.ClearToken();
+                    currentState = AuthState.MethodSelection;
+                    UpdateCompletion();
                 }
             }
         }

@@ -581,8 +581,27 @@ public static class U3DAuthenticator
 
     public static void Logout()
     {
+        // Preserve Firebase config before clearing credentials
+        var currentConfig = FirebaseConfigManager.CurrentConfig;
+
         ClearCredentials();
         _pendingPayPalState = null;
+
+        // CRITICAL FIX: Clear authorization headers from HttpClient
+        if (_sharedHttpClient != null)
+        {
+            _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
+        }
+
+        // Re-establish Firebase configuration to prevent login failures
+        if (currentConfig != null && !string.IsNullOrEmpty(currentConfig.apiKey))
+        {
+            FirebaseConfigManager.SetEnvironmentConfig("production", currentConfig);
+        }
+
+        // DON'T clear GitHub token - users want to keep their GitHub setup!
+        // GitHubTokenManager.ClearToken(); // ← REMOVE THIS LINE
+
         Debug.Log("Logged out successfully");
     }
 
@@ -601,11 +620,12 @@ public static class U3DAuthenticator
                 var json = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                // Handle auth header properly
+                 // Always clear existing Authorization header first
+                _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
+
+                // Only add auth header if we have a valid token
                 if (!string.IsNullOrEmpty(_idToken))
                 {
-                    // Remove any existing Authorization header and add new one
-                    _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
                     _sharedHttpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                 }
 
