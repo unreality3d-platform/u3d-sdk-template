@@ -57,16 +57,14 @@ namespace U3D.Editor
 
         private bool showOnStartup = true;
 
-        public void Initialize()
+        public async void Initialize()
         {
             EnsureFirebaseConfiguration();
 
-            // CRITICAL FIX: Force credential loading to ensure persistence works
-            // This addresses the timing issue where credentials weren't loaded during editor startup
+            // CRITICAL FIX: Await the auto-login to ensure profile data is loaded
             if (!U3DAuthenticator.IsLoggedIn)
             {
-                // Force a re-check of stored credentials
-                _ = U3DAuthenticator.TryAutoLogin();
+                await U3DAuthenticator.TryAutoLogin();
             }
 
             if (U3DAuthenticator.IsLoggedIn)

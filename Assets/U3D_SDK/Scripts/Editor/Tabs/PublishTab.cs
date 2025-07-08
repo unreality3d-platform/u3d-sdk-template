@@ -35,6 +35,8 @@ namespace U3D.Editor
         private bool loadingOptions = false;
         private int selectedOptionIndex = -1;
 
+        private string lastCheckedProductName; // Track when Product Name changes
+
         private enum PublishStep
         {
             Ready,
@@ -48,6 +50,7 @@ namespace U3D.Editor
         {
             // Cache product name on main thread to avoid threading issues
             cachedProductName = Application.productName;
+            lastCheckedProductName = cachedProductName; // Initialize tracking
 
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
 
@@ -59,6 +62,36 @@ namespace U3D.Editor
                 projectBuilt = true;
                 deploymentComplete = true;
             }
+
+            // Subscribe to editor updates for real-time Product Name monitoring
+            EditorApplication.update += CheckForProductNameChanges;
+        }
+
+        private void CheckForProductNameChanges()
+        {
+            // Only check if we're in the ready state and have loaded options
+            if (currentStep == PublishStep.Ready && optionsLoaded)
+            {
+                var currentProductName = Application.productName;
+                if (currentProductName != lastCheckedProductName)
+                {
+                    lastCheckedProductName = currentProductName;
+                    cachedProductName = currentProductName;
+
+                    // Force reload of options when Product Name changes
+                    optionsLoaded = false;
+                    loadingOptions = false;
+                    selectedOptionIndex = -1;
+                    availableOptions.Clear();
+
+                    Debug.Log($"Product Name changed to: {currentProductName}. Reloading options.");
+                }
+            }
+        }
+
+        private void OnDestroy()
+        {
+            EditorApplication.update -= CheckForProductNameChanges;
         }
 
         private void ResetPublishState()
@@ -159,28 +192,6 @@ namespace U3D.Editor
         private void DrawReadyToPublish()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
-            // Show current Unity project name
-            EditorGUILayout.LabelField("Current Project Settings:", EditorStyles.boldLabel);
-            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
-            EditorGUILayout.LabelField(cachedProductName, EditorStyles.boldLabel);
-            if (GUILayout.Button("Change", GUILayout.Width(60)))
-            {
-                // Open Project Settings > Player (Unity 6+ compatible)
-                EditorApplication.ExecuteMenuItem("Edit/Project Settings...");
-            }
-            EditorGUILayout.EndHorizontal(); // ← FIXED: Added missing EndHorizontal()
-
-            EditorGUILayout.Space(5);
-
-            // Instructions for changing project name
-            EditorGUILayout.HelpBox(
-                "💡 To publish as a completely new project: Click 'Change' above, then update the Product Name in Project Settings > Player",
-                MessageType.Info
-            );
-
-            EditorGUILayout.Space(10);
 
             // Load repository options if not loaded
             if (!optionsLoaded && !loadingOptions)
@@ -300,6 +311,11 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Choose your publishing option:", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
+            // Check if current Product Name conflicts with existing repositories
+            var hasNameConflict = availableOptions.Any(opt =>
+                opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+
             // Draw radio button options
             for (int i = 0; i < availableOptions.Count; i++)
             {
@@ -330,7 +346,11 @@ namespace U3D.Editor
                     style.normal.textColor = Color.green;
                 }
 
-                EditorGUILayout.LabelField(option.DisplayName, style);
+                // Clean up Create New display name to not show confusing auto-generated repo name
+                var displayText = option.Type == ProjectOption.OptionType.CreateNew
+                    ? "Create New Project"
+                    : option.DisplayName;
+                EditorGUILayout.LabelField(displayText, style);
                 EditorGUILayout.LabelField(option.Description, EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"URL: {option.ProfessionalUrl}", EditorStyles.miniLabel);
 
@@ -350,6 +370,45 @@ namespace U3D.Editor
                     EditorGUILayout.EndHorizontal();
                 }
 
+                // Special handling for Create New option
+                if (option.Type == ProjectOption.OptionType.CreateNew)
+                {
+                    EditorGUILayout.Space(5);
+
+                    // Show editable Product Name field
+                    EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+                    EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
+
+                    EditorGUI.BeginChangeCheck();
+                    var newProductName = EditorGUILayout.TextField(cachedProductName);
+                    if (EditorGUI.EndChangeCheck() && !string.IsNullOrEmpty(newProductName))
+                    {
+                        // Update Unity's PlayerSettings directly
+                        PlayerSettings.productName = newProductName;
+                        cachedProductName = newProductName;
+                        lastCheckedProductName = newProductName;
+
+                        // Force reload of options when Product Name changes
+                        optionsLoaded = false;
+                        loadingOptions = false;
+                        selectedOptionIndex = -1;
+                        availableOptions.Clear();
+
+                        Debug.Log($"Product Name updated to: {newProductName}");
+                    }
+                    EditorGUILayout.EndHorizontal();
+
+                    // Show validation message if name conflicts with existing repos
+                    if (hasNameConflict && isSelected)
+                    {
+                        EditorGUILayout.Space(3);
+                        EditorGUILayout.HelpBox(
+                            "⚠️ This Product Name matches an existing repository. Please change the Product Name above to create a truly new project.",
+                            MessageType.Warning
+                        );
+                    }
+                }
+
                 EditorGUILayout.EndVertical();
                 EditorGUILayout.EndHorizontal();
                 EditorGUILayout.EndVertical();
@@ -359,8 +418,21 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
+            // Determine if Make It Live button should be enabled
+            bool canPublish = selectedOptionIndex >= 0;
+
+            // Additional validation for Create New option
+            if (canPublish && selectedOptionIndex < availableOptions.Count)
+            {
+                var selectedOption = availableOptions[selectedOptionIndex];
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew && hasNameConflict)
+                {
+                    canPublish = false;
+                }
+            }
+
             // Publish button
-            GUI.enabled = selectedOptionIndex >= 0;
+            GUI.enabled = canPublish;
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
                 var selectedOption = availableOptions[selectedOptionIndex];
@@ -375,6 +447,20 @@ namespace U3D.Editor
                 _ = StartFirebasePublishProcessAsync();
             }
             GUI.enabled = true;
+
+            // Show helpful message when button is disabled due to name conflict
+            if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
+            {
+                var selectedOption = availableOptions[selectedOptionIndex];
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew && hasNameConflict && !canPublish)
+                {
+                    EditorGUILayout.Space(5);
+                    EditorGUILayout.HelpBox(
+                        "💡 Change the Product Name in Project Settings > Player to create a new project with a unique name.",
+                        MessageType.Info
+                    );
+                }
+            }
         }
 
         private bool IsRelatedRepository(string repoName, string projectName)
@@ -714,27 +800,27 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.BeginHorizontal();
+            // Modified Update Project button - now returns to options instead of rebuilding
             if (GUILayout.Button("Update Project", GUILayout.Height(35)))
             {
-                // Republish to same repository (don't increment name)
-                shouldCreateNewRepository = false;
+                // Reset to Ready state to show project options again
                 currentStep = PublishStep.Ready;
                 deploymentComplete = false;
-                // Keep publishUrl and other success state
-                _ = StartFirebasePublishProcessAsync();
-            }
+                projectBuilt = false;
+                githubConnected = false;
+                isPublishing = false;
 
-            if (GUILayout.Button("Reset for New Publish", GUILayout.Height(35)))
-            {
-                if (EditorUtility.DisplayDialog("Reset Publish State",
-                    "This will create a new project with an incremented name. Continue?",
-                    "Yes, Create New", "Cancel"))
-                {
-                    ResetPublishState(); // This sets shouldCreateNewRepository = true
-                }
+                // Clear the options to force reload
+                optionsLoaded = false;
+                loadingOptions = false;
+                selectedOptionIndex = -1;
+                availableOptions.Clear();
+
+                // Keep the publishUrl and IsComplete state so we can return to success if needed
+                // Don't reset IsComplete or publishUrl - user can still see their live project
+
+                Debug.Log("Returning to project options for updates");
             }
-            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(10);
 
