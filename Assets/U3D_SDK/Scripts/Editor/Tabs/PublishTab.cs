@@ -69,22 +69,19 @@ namespace U3D.Editor
 
         private void CheckForProductNameChanges()
         {
-            // Only check if we're in the ready state and have loaded options
+            // Only monitor for external changes (like from Project Settings window)
+            // Don't interfere with internal editing in our UI
             if (currentStep == PublishStep.Ready && optionsLoaded)
             {
                 var currentProductName = Application.productName;
-                if (currentProductName != lastCheckedProductName)
+                if (currentProductName != lastCheckedProductName && currentProductName != cachedProductName)
                 {
+                    // Only update if this was an external change (not from our UI)
                     lastCheckedProductName = currentProductName;
                     cachedProductName = currentProductName;
 
-                    // Force reload of options when Product Name changes
-                    optionsLoaded = false;
-                    loadingOptions = false;
-                    selectedOptionIndex = -1;
-                    availableOptions.Clear();
-
-                    Debug.Log($"Product Name changed to: {currentProductName}. Reloading options.");
+                    Debug.Log($"Product Name changed externally to: {currentProductName}");
+                    // Don't reload options - just update our cached value
                 }
             }
         }
@@ -311,7 +308,7 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Choose your publishing option:", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            // Check if current Product Name conflicts with existing repositories
+            // Check if current Product Name conflicts with existing repositories (recalculate each time)
             var hasNameConflict = availableOptions.Any(opt =>
                 opt.Type == ProjectOption.OptionType.UpdateExisting &&
                 string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
@@ -375,27 +372,45 @@ namespace U3D.Editor
                 {
                     EditorGUILayout.Space(5);
 
-                    // Show editable Product Name field
+                    // Show editable Product Name field with Update button
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
                     EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
 
+                    // FIXED: Properly manage text field state and changes
                     EditorGUI.BeginChangeCheck();
                     var newProductName = EditorGUILayout.TextField(cachedProductName);
-                    if (EditorGUI.EndChangeCheck() && !string.IsNullOrEmpty(newProductName))
+                    bool nameChangedInField = EditorGUI.EndChangeCheck();
+
+                    // FIXED: Update button logic - enabled when field differs from PlayerSettings
+                    bool namesDiffer = !string.IsNullOrEmpty(newProductName) && newProductName != PlayerSettings.productName;
+
+                    GUI.enabled = namesDiffer;
+                    if (GUILayout.Button("Update", GUILayout.Width(60)))
                     {
-                        // Update Unity's PlayerSettings directly
+                        // Update Unity's PlayerSettings
                         PlayerSettings.productName = newProductName;
                         cachedProductName = newProductName;
                         lastCheckedProductName = newProductName;
 
-                        // Force reload of options when Product Name changes
-                        optionsLoaded = false;
-                        loadingOptions = false;
-                        selectedOptionIndex = -1;
-                        availableOptions.Clear();
-
                         Debug.Log($"Product Name updated to: {newProductName}");
+
+                        // Recalculate validation for immediate feedback
+                        hasNameConflict = availableOptions.Any(opt =>
+                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
                     }
+                    GUI.enabled = true; // FIXED: Always reset GUI.enabled
+
+                    // FIXED: Update cached name for real-time validation feedback only if changed
+                    if (nameChangedInField)
+                    {
+                        cachedProductName = newProductName;
+                        // Recalculate conflict status for immediate visual feedback
+                        hasNameConflict = availableOptions.Any(opt =>
+                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+                    }
+
                     EditorGUILayout.EndHorizontal();
 
                     // Show validation message if name conflicts with existing repos
@@ -436,17 +451,27 @@ namespace U3D.Editor
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
                 var selectedOption = availableOptions[selectedOptionIndex];
+
+                // CRITICAL FIX: Properly set shouldCreateNewRepository based on selection
                 shouldCreateNewRepository = selectedOption.Type == ProjectOption.OptionType.CreateNew;
 
-                // Override the cached product name if using existing repo with different name
-                if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+                // CRITICAL FIX: For Create New, always use the current cached product name
+                // For Update Existing, use the repository name from the option
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
+                    // Don't override cachedProductName - use whatever is currently in the UI
+                    Debug.Log($"🎯 CREATE NEW selected with Product Name: {cachedProductName}");
+                }
+                else
+                {
+                    // Override the cached product name if using existing repo with different name
                     cachedProductName = selectedOption.RepositoryName;
+                    Debug.Log($"🎯 UPDATE EXISTING selected for repository: {cachedProductName}");
                 }
 
                 _ = StartFirebasePublishProcessAsync();
             }
-            GUI.enabled = true;
+            GUI.enabled = true; // FIXED: Always reset GUI.enabled
 
             // Show helpful message when button is disabled due to name conflict
             if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
@@ -456,7 +481,7 @@ namespace U3D.Editor
                 {
                     EditorGUILayout.Space(5);
                     EditorGUILayout.HelpBox(
-                        "💡 Change the Product Name in Project Settings > Player to create a new project with a unique name.",
+                        "💡 Change the Product Name above and click 'Update' to create a new project with a unique name.",
                         MessageType.Info
                     );
                 }
@@ -800,7 +825,7 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Modified Update Project button - now returns to options instead of rebuilding
+            // FIXED: Modified Update Project button to return to options instead of rebuilding
             if (GUILayout.Button("Update Project", GUILayout.Height(35)))
             {
                 // Reset to Ready state to show project options again
@@ -810,14 +835,10 @@ namespace U3D.Editor
                 githubConnected = false;
                 isPublishing = false;
 
-                // Clear the options to force reload
-                optionsLoaded = false;
-                loadingOptions = false;
-                selectedOptionIndex = -1;
-                availableOptions.Clear();
-
-                // Keep the publishUrl and IsComplete state so we can return to success if needed
-                // Don't reset IsComplete or publishUrl - user can still see their live project
+                // CRITICAL: Keep options loaded and visible - don't clear availableOptions
+                // optionsLoaded remains true so we show existing options immediately
+                // loadingOptions remains false so we don't show loading state
+                // selectedOptionIndex preserved so user's selection is maintained
 
                 Debug.Log("Returning to project options for updates");
             }
