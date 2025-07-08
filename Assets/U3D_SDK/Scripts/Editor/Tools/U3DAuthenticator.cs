@@ -579,6 +579,26 @@ public static class U3DAuthenticator
         }
     }
 
+    public static async Task ForceProfileReload()
+    {
+        if (string.IsNullOrEmpty(_idToken))
+        {
+            Debug.LogWarning("Cannot reload profile - no authentication token");
+            return;
+        }
+
+        try
+        {
+            Debug.Log("🔄 Force reloading user profile...");
+            await LoadUserProfile();
+            Debug.Log($"✅ Profile reloaded - Username: '{_creatorUsername}', PayPal: {_paypalConnected}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ Force profile reload failed: {ex.Message}");
+        }
+    }
+
     public static void Logout()
     {
         // Preserve Firebase config before clearing credentials

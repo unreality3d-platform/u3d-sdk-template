@@ -71,10 +71,21 @@ namespace U3D.Editor
             UnityDebug.Log($"🔍 Debug - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
             UnityDebug.Log($"🔍 Debug - GitHubToken exists: {!string.IsNullOrEmpty(GitHubTokenManager.Token)}");
             UnityDebug.Log($"🔍 Debug - GitHubTokenValidated: {GitHubTokenManager.HasValidToken}");
-            UnityDebug.Log($"🔍 Debug - GitHubUsername: '{GitHubTokenManager.GitHubUsername}'");
 
             if (U3DAuthenticator.IsLoggedIn)
             {
+                // CRITICAL FIX: If logged in but username missing, force profile reload
+                if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+                {
+                    UnityDebug.Log("🔄 Username missing, forcing profile reload...");
+
+                    // Force a profile reload by calling the internal method
+                    await U3DAuthenticator.ForceProfileReload();
+
+                    UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+                }
+
+                // Now make the state decision with (hopefully) complete data
                 if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                 {
                     currentState = AuthState.UsernameReservation;
