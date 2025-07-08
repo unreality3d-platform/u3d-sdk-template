@@ -930,6 +930,12 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.LoginWithEmailPassword(email, password);
                 if (success)
                 {
+                    // CRITICAL FIX: Force profile reload after manual login
+                    UnityDebug.Log("🔄 Manual login successful, ensuring profile data is loaded...");
+                    await U3DAuthenticator.ForceProfileReload();
+                    UnityDebug.Log($"🔍 After manual login - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+
+                    // Now make state decision with complete profile data
                     if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
                     {
                         currentState = AuthState.UsernameReservation;
@@ -962,7 +968,25 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.RegisterWithEmailPassword(email, password);
                 if (success)
                 {
-                    currentState = AuthState.UsernameReservation;
+                    // CRITICAL FIX: Force profile reload after registration
+                    UnityDebug.Log("🔄 Registration successful, ensuring profile data is loaded...");
+                    await U3DAuthenticator.ForceProfileReload();
+                    UnityDebug.Log($"🔍 After registration - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+
+                    // For new registrations, user typically won't have a username yet
+                    // But we check anyway in case they're re-registering an existing account
+                    if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+                    {
+                        currentState = AuthState.UsernameReservation;
+                    }
+                    else if (!GitHubTokenManager.HasValidToken)
+                    {
+                        currentState = AuthState.GitHubSetup;
+                    }
+                    else
+                    {
+                        currentState = AuthState.LoggedIn;
+                    }
                     UpdateCompletion();
                 }
                 else

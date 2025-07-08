@@ -436,92 +436,66 @@ public static class U3DAuthenticator
         }
     }
 
-    public static async Task<PayPalAuthResult> PollPayPalAuthStatus(string state)
+    private async void PollPayPalStatus()
     {
-        if (string.IsNullOrEmpty(state) || state != _pendingPayPalState)
+        if (currentPayPalAuth == null || string.IsNullOrEmpty(currentPayPalAuth.State))
         {
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Invalid or expired PayPal authentication state"
-            };
+            StopPayPalPolling();
+            return;
         }
 
         try
         {
-            var pollRequest = new
+            var result = await U3DAuthenticator.PollPayPalAuthStatus(currentPayPalAuth.State);
+
+            if (result.Success)
             {
-                state = state
-            };
-
-            var result = await CallFirebaseFunction("checkPayPalAuthStatus", pollRequest);
-
-            if (result.ContainsKey("status"))
-            {
-                string status = result["status"].ToString();
-
-                switch (status)
+                if (result.Completed)
                 {
-                    case "completed":
-                        if (result.ContainsKey("user"))
-                        {
-                            var userData = JsonConvert.DeserializeObject<Dictionary<string, object>>(result["user"].ToString());
+                    StopPayPalPolling();
 
-                            if (userData.ContainsKey("customToken"))
-                            {
-                                _idToken = userData["customToken"].ToString();
-                                _userEmail = userData.ContainsKey("email") ? userData["email"].ToString() : "";
-                                _displayName = userData.ContainsKey("displayName") ? userData["displayName"].ToString() : "";
+                    // CRITICAL FIX: Force profile reload after PayPal auth completes
+                    if (U3DAuthenticator.IsLoggedIn)
+                    {
+                        UnityDebug.Log("🔄 PayPal auth completed, ensuring profile data is loaded...");
+                        await U3DAuthenticator.ForceProfileReload();
+                        UnityDebug.Log($"🔍 After PayPal auth - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+                    }
 
-                                SaveCredentials();
-                                await LoadUserProfile();
+                    // Now make state decision with complete profile data
+                    if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+                    {
+                        currentState = AuthState.UsernameReservation;
+                    }
+                    else if (!GitHubTokenManager.HasValidToken)
+                    {
+                        currentState = AuthState.GitHubSetup;
+                    }
+                    else
+                    {
+                        currentState = AuthState.LoggedIn;
+                    }
 
-                                _pendingPayPalState = null;
+                    UpdateCompletion();
 
-                                return new PayPalAuthResult
-                                {
-                                    Success = true,
-                                    Completed = true,
-                                    Message = "PayPal authentication successful"
-                                };
-                            }
-                        }
-                        break;
-
-                    case "pending":
-                        return new PayPalAuthResult
-                        {
-                            Success = true,
-                            Completed = false,
-                            Message = "PayPal authentication in progress..."
-                        };
-
-                    case "error":
-                        string errorMessage = result.ContainsKey("error") ? result["error"].ToString() : "PayPal authentication failed";
-                        _pendingPayPalState = null;
-
-                        return new PayPalAuthResult
-                        {
-                            Success = false,
-                            ErrorMessage = errorMessage
-                        };
+                    EditorUtility.DisplayDialog("PayPal Authentication Successful!",
+                        result.Message ?? "PayPal authentication completed successfully.",
+                        "Awesome!");
                 }
             }
-
-            return new PayPalAuthResult
+            else
             {
-                Success = false,
-                ErrorMessage = "Unexpected response from PayPal authentication status"
-            };
+                StopPayPalPolling();
+                currentState = AuthState.PayPalLogin;
+
+                EditorUtility.DisplayDialog("PayPal Authentication Failed",
+                    result.ErrorMessage ?? "PayPal authentication failed",
+                    "OK");
+            }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"PayPal auth status polling error: {ex.Message}");
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = ex.Message
-            };
+            UnityEngine.Debug.LogError($"PayPal polling error: {ex.Message}");
         }
     }
 
