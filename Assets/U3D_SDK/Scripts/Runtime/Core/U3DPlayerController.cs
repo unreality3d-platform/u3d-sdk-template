@@ -105,6 +105,9 @@ public class U3DPlayerController : NetworkBehaviour
     private Quaternion _lastSentRotation;
     private bool _justTeleported = false;
 
+    // WebGL cursor management
+    private U3DWebGLCursorManager _cursorManager;
+
     // FUSION INPUT TRACKING
     private NetworkButtons _buttonsPrevious;
 
@@ -152,9 +155,21 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
 
-        // Lock cursor for FPS controls (local player only)
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // Get cursor manager for WebGL builds
+        _cursorManager = FindAnyObjectByType<U3DWebGLCursorManager>();
+
+        if (_cursorManager != null)
+        {
+            // WebGL mode - cursor manager handles locking
+            Debug.Log("✅ WebGL Cursor Manager found - delegating cursor control");
+        }
+        else
+        {
+            // Non-WebGL mode - lock cursor directly
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            Debug.Log("✅ Non-WebGL mode - cursor locked directly");
+        }
     }
 
     void ConfigurePlayerForNetworking()
@@ -552,7 +567,7 @@ public class U3DPlayerController : NetworkBehaviour
     }
 
     // FIXED: Network-aware teleport method WITHOUT NetworkTransform
-    void PerformTeleport()
+    public void PerformTeleport()
     {
         if (playerCamera == null)
         {

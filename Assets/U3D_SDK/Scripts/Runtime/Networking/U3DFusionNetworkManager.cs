@@ -52,6 +52,8 @@ namespace U3D.Networking
         private InputAction _zoomAction;
         private InputAction _teleportAction;
         private InputAction _perspectiveSwitchAction;
+        private InputAction _pauseAction;
+        private InputAction _escapeAction;
 
         // Input state caching
         private Vector2 _cachedMovementInput;
@@ -146,6 +148,8 @@ namespace U3D.Networking
             _zoomAction = actionMap.FindAction("Zoom");
             _teleportAction = actionMap.FindAction("Teleport");
             _perspectiveSwitchAction = actionMap.FindAction("PerspectiveSwitch");
+            _pauseAction = actionMap.FindAction("Pause");
+            _escapeAction = actionMap.FindAction("Escape");
 
             // CRITICAL: Enable the action map for input polling
             actionMap.Enable();
@@ -188,14 +192,14 @@ namespace U3D.Networking
             if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
-            // FIXED: Simple double-click detection that works in WebGL (no MultiTap needed)
+            // Direct double-click teleportation (bypasses network button system)
             if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
             {
                 float currentTime = Time.time;
                 if (currentTime - _lastTeleportClickTime < 0.5f) // Within 0.5 seconds
                 {
-                    _teleportPressed = true;
-                    Debug.Log("✅ Double-click teleport detected");
+                    Debug.Log("✅ Double-click teleport detected - triggering directly");
+                    TriggerDirectTeleport();
                 }
                 _lastTeleportClickTime = currentTime;
             }
@@ -209,6 +213,25 @@ namespace U3D.Networking
                 if (Mathf.Abs(scroll) > 0.1f)
                     _perspectiveScrollValue = scroll;
             }
+        }
+
+        /// <summary>
+        /// Trigger teleportation directly on double-click (bypasses network button delay)
+        /// </summary>
+        void TriggerDirectTeleport()
+        {
+            // Find the local player and call teleport immediately
+            foreach (var kvp in _spawnedPlayers)
+            {
+                var playerController = kvp.Value.GetComponent<U3DPlayerController>();
+                if (playerController != null && playerController.IsLocalPlayer)
+                {
+                    playerController.PerformTeleport();
+                    return;
+                }
+            }
+
+            Debug.LogWarning("❌ No local player found for direct teleport");
         }
 
         /// <summary>
@@ -461,8 +484,6 @@ namespace U3D.Networking
                 data.Buttons.Set(U3DInputButtons.Interact, true);
             if (_zoomPressed)
                 data.Buttons.Set(U3DInputButtons.Zoom, true);
-            if (_teleportPressed)
-                data.Buttons.Set(U3DInputButtons.Teleport, true);
 
             // Send input to Fusion
             input.Set(data);
@@ -473,7 +494,6 @@ namespace U3D.Networking
             _crouchPressed = false;
             _flyPressed = false;
             _interactPressed = false;
-            _teleportPressed = false;
             _perspectiveScrollValue = 0f;
         }
 
@@ -488,6 +508,8 @@ namespace U3D.Networking
         public InputAction GetZoomAction() => _zoomAction;
         public InputAction GetTeleportAction() => _teleportAction;
         public InputAction GetPerspectiveSwitchAction() => _perspectiveSwitchAction;
+        public InputAction GetPauseAction() => _pauseAction;
+        public InputAction GetEscapeAction() => _escapeAction;
 
         // Standard Fusion callbacks
         public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }

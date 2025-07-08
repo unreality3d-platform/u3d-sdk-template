@@ -4,21 +4,15 @@ using UnityEngine.InputSystem;
 namespace U3D
 {
     /// <summary>
-    /// WebGL-specific cursor management for handling locked/unlocked states
-    /// Enables Tab to unlock for UI, click to re-lock for FPS controls
-    /// Manages double-click teleportation across cursor states
+    /// WebGL-specific cursor management that integrates with existing NetworkManager
+    /// Enables Tab to unlock for UI, Esc to escape WebGL, click to re-lock for FPS controls
+    /// No duplicate Input Actions - uses NetworkManager's input system
     /// </summary>
     public class U3DWebGLCursorManager : MonoBehaviour
     {
         [Header("WebGL Cursor Configuration")]
         [SerializeField] private bool enableWebGLCursorManagement = true;
         [SerializeField] private bool startWithLockedCursor = true;
-
-        [Header("Input Actions")]
-        [SerializeField] private InputActionReference pauseAction; // Tab key
-        [SerializeField] private InputActionReference escapeAction; // Esc key  
-        [SerializeField] private InputActionReference clickAction;
-        [SerializeField] private InputActionReference teleportAction;
 
         [Header("UI References")]
         [SerializeField] private GameObject pauseMenu;
@@ -28,18 +22,12 @@ namespace U3D
         private bool _isCursorLocked = true;
         private bool _isUIMode = false; // Tab mode - cursor free but WebGL has focus
         private bool _isEscapedMode = false; // Esc mode - cursor free and WebGL lost focus
-        private Vector2 _savedMousePosition;
 
-        // Teleport tracking for unlocked cursor mode
-        private float _lastClickTime = 0f;
-        private Vector2 _lastClickPosition;
-        private bool _waitingForSecondClick = false;
-        private const float DOUBLE_CLICK_TIME = 0.5f;
-        private const float DOUBLE_CLICK_DISTANCE = 50f; // pixels
+        // Network manager reference (auto-found)
+        private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
         // Events
         public static event System.Action<bool> OnCursorLockStateChanged;
-        public static event System.Action OnTeleportRequested;
 
         // Public properties
         public bool IsCursorLocked => _isCursorLocked;
@@ -48,10 +36,25 @@ namespace U3D
 
         void Awake()
         {
-            // Only enable on WebGL builds
-            if (Application.platform != RuntimePlatform.WebGLPlayer)
+            // Enable on WebGL builds and in Editor for testing
+            bool isWebGLOrEditor = Application.platform == RuntimePlatform.WebGLPlayer ||
+                                   Application.platform == RuntimePlatform.WindowsEditor ||
+                                   Application.platform == RuntimePlatform.OSXEditor ||
+                                   Application.platform == RuntimePlatform.LinuxEditor;
+
+            if (!isWebGLOrEditor)
             {
                 enableWebGLCursorManagement = false;
+                enabled = false;
+                Debug.Log("U3DWebGLCursorManager: Disabled on non-WebGL/Editor platform");
+                return;
+            }
+
+            // Find network manager automatically
+            _networkManager = FindAnyObjectByType<U3D.Networking.U3DFusionNetworkManager>();
+            if (_networkManager == null)
+            {
+                Debug.LogWarning("U3DWebGLCursorManager: No NetworkManager found. Cursor management disabled.");
                 enabled = false;
                 return;
             }
@@ -61,101 +64,47 @@ namespace U3D
             {
                 SetCursorLocked(true);
             }
-        }
 
-        void OnEnable()
-        {
-            if (!enableWebGLCursorManagement) return;
-
-            // Subscribe to input actions
-            if (pauseAction != null)
-            {
-                pauseAction.action.performed += OnTabPressed;
-                pauseAction.action.Enable();
-            }
-
-            if (escapeAction != null)
-            {
-                escapeAction.action.performed += OnEscapePressed;
-                escapeAction.action.Enable();
-            }
-
-            if (clickAction != null)
-            {
-                clickAction.action.performed += OnClickPressed;
-                clickAction.action.Enable();
-            }
-
-            // Handle teleport action differently based on cursor state
-            if (teleportAction != null)
-            {
-                teleportAction.action.performed += OnTeleportActionPerformed;
-                teleportAction.action.Enable();
-            }
-        }
-
-        void OnDisable()
-        {
-            if (!enableWebGLCursorManagement) return;
-
-            // Unsubscribe from input actions
-            if (pauseAction != null)
-            {
-                pauseAction.action.performed -= OnTabPressed;
-                pauseAction.action.Disable();
-            }
-
-            if (escapeAction != null)
-            {
-                escapeAction.action.performed -= OnEscapePressed;
-                escapeAction.action.Disable();
-            }
-
-            if (clickAction != null)
-            {
-                clickAction.action.performed -= OnClickPressed;
-                clickAction.action.Disable();
-            }
-
-            if (teleportAction != null)
-            {
-                teleportAction.action.performed -= OnTeleportActionPerformed;
-                teleportAction.action.Disable();
-            }
+            string platform = Application.platform == RuntimePlatform.WebGLPlayer ? "WebGL" : "Editor";
+            Debug.Log($"✅ U3DWebGLCursorManager: Initialized for {platform} testing and integrated with NetworkManager");
         }
 
         void Update()
         {
-            if (!enableWebGLCursorManagement) return;
+            if (!enableWebGLCursorManagement || _networkManager == null) return;
 
-            // Handle manual double-click detection when cursor is unlocked
-            if (!_isCursorLocked && _waitingForSecondClick)
+            // Monitor Tab key via NetworkManager
+            if (_networkManager.GetPauseAction() != null && _networkManager.GetPauseAction().WasPressedThisFrame())
             {
-                if (Time.time - _lastClickTime > DOUBLE_CLICK_TIME)
-                {
-                    _waitingForSecondClick = false;
-                }
+                OnTabPressed();
             }
 
-            // Detect when player clicks back into WebGL window after Esc
-            if (_isEscapedMode && Input.GetMouseButtonDown(0))
+            // Monitor Escape key via NetworkManager  
+            if (_networkManager.GetEscapeAction() != null && _networkManager.GetEscapeAction().WasPressedThisFrame())
             {
-                OnWebGLWindowRegainedFocus();
+                OnEscapePressed();
+            }
+
+            // Monitor mouse clicks for returning to game mode
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                OnClickPressed();
             }
         }
 
-        void OnTabPressed(InputAction.CallbackContext context)
+        void OnTabPressed()
         {
+            if (_isEscapedMode) return; // Can't toggle while escaped
             ToggleUIMode();
         }
 
-        void OnEscapePressed(InputAction.CallbackContext context)
+        void OnEscapePressed()
         {
             // Esc key - release cursor and lose WebGL focus
             SetEscapedMode(true);
         }
 
-        void OnClickPressed(InputAction.CallbackContext context)
+        void OnClickPressed()
         {
             if (_isEscapedMode)
             {
@@ -172,66 +121,11 @@ namespace U3D
                     // Clicked on game area - return to game mode
                     SetUIMode(false);
                 }
-                else
-                {
-                    // Handle manual double-click detection for teleportation
-                    HandleManualDoubleClick();
-                }
-            }
-            else if (!_isCursorLocked)
-            {
-                // Cursor unlocked but not in UI mode - handle teleportation
-                HandleManualDoubleClick();
-            }
-        }
-
-        void OnTeleportActionPerformed(InputAction.CallbackContext context)
-        {
-            // This is called when MultiTap interaction succeeds (cursor locked mode)
-            if (_isCursorLocked)
-            {
-                OnTeleportRequested?.Invoke();
-            }
-        }
-
-        void HandleManualDoubleClick()
-        {
-            Vector2 currentMousePos = Mouse.current.position.ReadValue();
-            float currentTime = Time.time;
-
-            if (_waitingForSecondClick)
-            {
-                // Check if this is a valid second click
-                float timeDelta = currentTime - _lastClickTime;
-                float distanceDelta = Vector2.Distance(currentMousePos, _lastClickPosition);
-
-                if (timeDelta <= DOUBLE_CLICK_TIME && distanceDelta <= DOUBLE_CLICK_DISTANCE)
-                {
-                    // Valid double-click detected!
-                    OnTeleportRequested?.Invoke();
-                    _waitingForSecondClick = false;
-                    Debug.Log("✅ Manual double-click teleport detected");
-                }
-                else
-                {
-                    // Reset and start new click sequence
-                    _lastClickTime = currentTime;
-                    _lastClickPosition = currentMousePos;
-                    _waitingForSecondClick = true;
-                }
-            }
-            else
-            {
-                // First click
-                _lastClickTime = currentTime;
-                _lastClickPosition = currentMousePos;
-                _waitingForSecondClick = true;
             }
         }
 
         public void ToggleUIMode()
         {
-            if (_isEscapedMode) return; // Can't toggle while escaped
             SetUIMode(!_isUIMode);
         }
 
@@ -244,7 +138,6 @@ namespace U3D
             if (_isUIMode)
             {
                 // Entering UI mode - unlock cursor but keep WebGL focus
-                _savedMousePosition = Mouse.current.position.ReadValue();
                 SetCursorLocked(false);
 
                 // Show pause menu
@@ -330,31 +223,10 @@ namespace U3D
                    UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
         }
 
-        // Public methods for external control
-        public void RequestCursorLock()
-        {
-            if (!_isUIMode)
-            {
-                SetCursorLocked(true);
-            }
-        }
-
-        public void RequestCursorUnlock()
-        {
-            SetCursorLocked(false);
-        }
-
-        // Method for NetworkManager integration
-        public bool ShouldProcessTeleportInput()
-        {
-            // Only process teleport input when in active game modes
-            return enableWebGLCursorManagement && !_isEscapedMode;
-        }
-
         // Public method to check if game input should be processed
         public bool ShouldProcessGameInput()
         {
-            return !_isEscapedMode && (!_isUIMode || _isCursorLocked);
+            return !_isEscapedMode;
         }
     }
 }
