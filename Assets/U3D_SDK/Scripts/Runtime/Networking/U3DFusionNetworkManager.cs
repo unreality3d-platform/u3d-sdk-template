@@ -64,6 +64,7 @@ namespace U3D.Networking
         private bool _zoomPressed;
         private bool _teleportPressed;
         private float _perspectiveScrollValue;
+        private float _lastTeleportClickTime = 0f;
 
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
@@ -159,6 +160,12 @@ namespace U3D.Networking
             // CORRECTED: Poll input actions directly for Fusion
             if (_moveAction == null) return;
 
+            // Check if we should process input (not escaped from WebGL)
+            var cursorManager = FindAnyObjectByType<U3DWebGLCursorManager>();
+            bool shouldProcessInput = cursorManager == null || cursorManager.ShouldProcessGameInput();
+
+            if (!shouldProcessInput) return;
+
             // Cache input values for Fusion's OnInput callback
             _cachedMovementInput = _moveAction.ReadValue<Vector2>();
 
@@ -181,8 +188,17 @@ namespace U3D.Networking
             if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
-            if (_teleportAction != null && _teleportAction.WasPerformedThisFrame())
-                _teleportPressed = true;
+            // FIXED: Simple double-click detection that works in WebGL (no MultiTap needed)
+            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+            {
+                float currentTime = Time.time;
+                if (currentTime - _lastTeleportClickTime < 0.5f) // Within 0.5 seconds
+                {
+                    _teleportPressed = true;
+                    Debug.Log("✅ Double-click teleport detected");
+                }
+                _lastTeleportClickTime = currentTime;
+            }
 
             if (_zoomAction != null)
                 _zoomPressed = _zoomAction.IsPressed();
