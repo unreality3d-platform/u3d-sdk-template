@@ -13,11 +13,27 @@ namespace U3D.Editor
         private const string GLOBAL_PREFIX = "U3D_Global_";
 
         /// <summary>
+        /// CRITICAL: Check if we should skip operations during builds
+        /// </summary>
+        private static bool ShouldSkipDuringBuild()
+        {
+            return BuildPipeline.isBuildingPlayer ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
+        /// <summary>
         /// Get the current user's email for preference keys.
         /// Returns empty string if not logged in.
         /// </summary>
         private static string GetCurrentUserEmail()
         {
+            // SAFE: Don't access U3DAuthenticator during builds
+            if (ShouldSkipDuringBuild())
+            {
+                return "";
+            }
+
             return U3DAuthenticator.UserEmail ?? "";
         }
 
@@ -43,6 +59,12 @@ namespace U3D.Editor
 
         public static void SetString(string settingName, string value)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetString({settingName}) during build");
+                return;
+            }
+
             string key = GetKey(settingName);
             EditorPrefs.SetString(key, value);
             Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
@@ -50,6 +72,12 @@ namespace U3D.Editor
 
         public static string GetString(string settingName, string defaultValue = "")
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetString({settingName}) during build, returning default");
+                return defaultValue;
+            }
+
             string key = GetKey(settingName);
             string value = EditorPrefs.GetString(key, defaultValue);
             Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
@@ -62,6 +90,12 @@ namespace U3D.Editor
 
         public static void SetBool(string settingName, bool value)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetBool({settingName}) during build");
+                return;
+            }
+
             string key = GetKey(settingName);
             EditorPrefs.SetBool(key, value);
             Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
@@ -69,6 +103,12 @@ namespace U3D.Editor
 
         public static bool GetBool(string settingName, bool defaultValue = false)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetBool({settingName}) during build, returning default");
+                return defaultValue;
+            }
+
             string key = GetKey(settingName);
             bool value = EditorPrefs.GetBool(key, defaultValue);
             Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
@@ -81,6 +121,12 @@ namespace U3D.Editor
 
         public static void SetInt(string settingName, int value)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetInt({settingName}) during build");
+                return;
+            }
+
             string key = GetKey(settingName);
             EditorPrefs.SetInt(key, value);
             Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
@@ -88,6 +134,12 @@ namespace U3D.Editor
 
         public static int GetInt(string settingName, int defaultValue = 0)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetInt({settingName}) during build, returning default");
+                return defaultValue;
+            }
+
             string key = GetKey(settingName);
             int value = EditorPrefs.GetInt(key, defaultValue);
             Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
@@ -100,6 +152,12 @@ namespace U3D.Editor
 
         public static void SetFloat(string settingName, float value)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetFloat({settingName}) during build");
+                return;
+            }
+
             string key = GetKey(settingName);
             EditorPrefs.SetFloat(key, value);
             Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
@@ -107,6 +165,12 @@ namespace U3D.Editor
 
         public static float GetFloat(string settingName, float defaultValue = 0f)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetFloat({settingName}) during build, returning default");
+                return defaultValue;
+            }
+
             string key = GetKey(settingName);
             float value = EditorPrefs.GetFloat(key, defaultValue);
             Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
@@ -172,6 +236,12 @@ namespace U3D.Editor
         /// </summary>
         public static void MigrateOldPreferences()
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping MigrateOldPreferences during build");
+                return;
+            }
+
             if (string.IsNullOrEmpty(GetCurrentUserEmail()))
             {
                 Debug.LogWarning("Cannot migrate preferences - no user logged in");
@@ -262,6 +332,12 @@ namespace U3D.Editor
         /// </summary>
         public static void ClearUserPreferences()
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping ClearUserPreferences during build");
+                return;
+            }
+
             if (string.IsNullOrEmpty(GetCurrentUserEmail()))
             {
                 Debug.LogWarning("Cannot clear preferences - no user logged in");
@@ -295,6 +371,12 @@ namespace U3D.Editor
         /// </summary>
         public static bool HasKey(string settingName)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping HasKey({settingName}) during build, returning false");
+                return false;
+            }
+
             string key = GetKey(settingName);
             return EditorPrefs.HasKey(key);
         }
@@ -304,6 +386,12 @@ namespace U3D.Editor
         /// </summary>
         public static void DeleteKey(string settingName)
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping DeleteKey({settingName}) during build");
+                return;
+            }
+
             string key = GetKey(settingName);
             if (EditorPrefs.HasKey(key))
             {
@@ -317,6 +405,12 @@ namespace U3D.Editor
         /// </summary>
         public static void EnsureWebGLBuildTarget()
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping EnsureWebGLBuildTarget during build");
+                return;
+            }
+
             var currentTarget = EditorUserBuildSettings.activeBuildTarget;
 
             if (currentTarget != BuildTarget.WebGL)
@@ -347,6 +441,12 @@ namespace U3D.Editor
         [System.Diagnostics.Conditional("UNITY_EDITOR")]
         public static void LogAllPreferences()
         {
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping LogAllPreferences during build");
+                return;
+            }
+
             if (string.IsNullOrEmpty(GetCurrentUserEmail()))
             {
                 Debug.Log("🔍 No user logged in - cannot show preferences");

@@ -60,6 +60,15 @@ public static class U3DAuthenticator
     // Static constructor to configure networking ONCE when class is first used
     static U3DAuthenticator()
     {
+        // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+        if (BuildPipeline.isBuildingPlayer ||
+            EditorApplication.isCompiling ||
+            EditorApplication.isUpdating)
+        {
+            Debug.Log("🚫 U3DAuthenticator: Skipping initialization during build process");
+            return;
+        }
+
         ConfigureNetworking();
         // Load credentials immediately when class is first accessed
         LoadCredentials();

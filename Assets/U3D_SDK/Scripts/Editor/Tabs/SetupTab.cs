@@ -1041,17 +1041,35 @@ namespace U3D.Editor
 
         public void OnEnable()
         {
+            // CRITICAL: Skip during builds
+            if (BuildPipeline.isBuildingPlayer ||
+                EditorApplication.isCompiling ||
+                EditorApplication.isUpdating)
+            {
+                UnityDebug.Log("🚫 SetupTab: Skipping OnEnable during build process");
+                return;
+            }
+
             Initialize();
             EditorApplication.update += OnEditorUpdate;
         }
 
         public void OnDisable()
         {
+            // Safe to always remove the event handler
             EditorApplication.update -= OnEditorUpdate;
         }
 
         private void OnEditorUpdate()
         {
+            // CRITICAL: Skip during builds
+            if (BuildPipeline.isBuildingPlayer ||
+                EditorApplication.isCompiling ||
+                EditorApplication.isUpdating)
+            {
+                return;
+            }
+
             // Remove PayPal polling since we're not using OAuth anymore
         }
     }

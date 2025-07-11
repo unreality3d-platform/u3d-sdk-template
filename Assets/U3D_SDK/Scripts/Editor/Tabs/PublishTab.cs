@@ -48,6 +48,15 @@ namespace U3D.Editor
 
         public void Initialize()
         {
+            // CRITICAL: Skip initialization during builds
+            if (BuildPipeline.isBuildingPlayer ||
+                EditorApplication.isCompiling ||
+                EditorApplication.isUpdating)
+            {
+                Debug.Log("🚫 PublishTab: Skipping initialization during build process");
+                return;
+            }
+
             // Cache product name on main thread to avoid threading issues
             cachedProductName = Application.productName;
             lastCheckedProductName = cachedProductName; // Initialize tracking
@@ -69,6 +78,14 @@ namespace U3D.Editor
 
         private void CheckForProductNameChanges()
         {
+            // CRITICAL: Skip during builds
+            if (BuildPipeline.isBuildingPlayer ||
+                EditorApplication.isCompiling ||
+                EditorApplication.isUpdating)
+            {
+                return;
+            }
+
             // Only monitor for external changes (like from Project Settings window)
             // Don't interfere with internal editing in our UI
             if (currentStep == PublishStep.Ready && optionsLoaded)
