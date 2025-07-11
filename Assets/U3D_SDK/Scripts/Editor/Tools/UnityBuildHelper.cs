@@ -355,44 +355,33 @@ namespace U3D.Editor
         public static void SetOptimalWebGLSettingsUnity6()
         {
             // PRESERVE YOUR PROVEN WORKING CONFIGURATION
-            // Based on your u3d-sdk-template and CheckFixTab validation standards
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled; // CRITICAL: GitHub Pages compatibility
 
-            // 🚨 ADD THESE LINES TO PREVENT NODE.JS REQUIREMENTS
-            // ================================================================
-            // FORCE: Disable Unity 6+ features that trigger Node.js dependencies
-            EditorUserBuildSettings.development = false;                    // CRITICAL: Forces production builds (no dev tools)
-            PlayerSettings.WebGL.template = "Default";                     // CRITICAL: Use Unity's basic template (no custom Node.js processing)
-            PlayerSettings.WebGL.analyzeBuildSize = false;                 // CRITICAL: Disable size analysis (requires Node.js)
-            PlayerSettings.WebGL.showDiagnostics = false;                  // CRITICAL: Disable diagnostics (can trigger Node.js)
-                                                                           // ================================================================
+            // 🚨 CRITICAL: Disable Unity 6+ features that trigger Node.js dependencies
+            EditorUserBuildSettings.development = false;
+            PlayerSettings.WebGL.template = "Default";
+            PlayerSettings.WebGL.analyzeBuildSize = false;
+            PlayerSettings.WebGL.showDiagnostics = false;
 
-            // Unity 6+ automatic WebAssembly memory management (deprecated: PlayerSettings.WebGL.memorySize)
-            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management (no manual sizing needed)");
+            // Unity 6+ automatic WebAssembly memory management
+            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management");
 
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
 
             // Your proven critical settings for deployment success
-            //PlayerSettings.WebGL.decompressionFallback = true;
             PlayerSettings.stripEngineCode = true;
-            //PlayerSettings.WebGL.dataCaching = true;
-            PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off; // Updated for Unity 6+
+            PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
             PlayerSettings.WebGL.threadsSupport = false;
 
-            // Unity 6+ specific optimizations (non-conflicting)
-            PlayerSettings.WebGL.showDiagnostics = false;
-            PlayerSettings.WebGL.analyzeBuildSize = false;
+            // CRITICAL FIX: DO NOT MODIFY PlayerSettings.productName OR PlayerSettings.companyName
+            // These modifications during build can trigger Unity 6 WebGL IndexOutOfRangeException
+            // Let Unity use whatever values are already set in Project Settings
 
-            // Ensure proper build settings (preserve existing values when appropriate)
-            PlayerSettings.productName = Application.productName;
-            PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ?
-                PlayerSettings.companyName : "Unity Creator";
+            // REMOVED (CAUSING BUG): PlayerSettings.productName = Application.productName;
+            // REMOVED (UNNECESSARY): PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ? PlayerSettings.companyName : "Unity Creator";
 
-            // DO NOT modify quality settings - handled by CheckFixTab system
-            // Your CheckFixTab already handles comprehensive optimization validation
-
-            Debug.Log("Unity 6+ WebGL build settings applied (preserving your proven configuration)");
+            Debug.Log("Unity 6+ WebGL build settings applied (no PlayerSettings modifications)");
         }
 
         private static async Task<string> ValidateGitHubPagesCompatibility(string buildPath)
