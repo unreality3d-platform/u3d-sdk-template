@@ -40,8 +40,9 @@ public class ProjectStartupConfiguration
 
         try
         {
+            // CRITICAL FIX: Restore the missing hasSetBuildTarget check
             // Set build target to WebGL if not already set
-            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            if (!hasSetBuildTarget && EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
                 Debug.Log("🔄 U3D SDK: Switching build target to WebGL...");
 
