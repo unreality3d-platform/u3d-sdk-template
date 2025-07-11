@@ -444,6 +444,48 @@ mergeInto(LibraryManager.library, {
             console.warn('Failed to remove localStorage:', e);
             return 0; // Failure
         }
-    }
+    },
 
+// Add these functions to your existing FirebasePlugin.jslib
+// Insert after the existing PayPal functions section
+
+    // ========== NEW: DUAL TRANSACTION FUNCTIONS ==========
+
+    UnityStartDualTransaction: function (itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
+        var itemName = UTF8ToString(itemNamePtr);
+        var itemDescription = UTF8ToString(itemDescriptionPtr);
+        var price = UTF8ToString(pricePtr);
+        var transactionId = UTF8ToString(transactionIdPtr);
+        
+        console.log('Unity starting dual transaction:', {
+            itemName: itemName,
+            itemDescription: itemDescription,
+            price: price,
+            transactionId: transactionId
+        });
+        
+        if (typeof window.UnityStartDualTransaction === 'function') {
+            window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
+        } else {
+            console.warn('UnityStartDualTransaction not available in browser context');
+            // Send failure back to Unity
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
+                window.unityInstance.SendMessage('PayPalDualTransaction', 'OnPaymentComplete', 'false');
+            }
+        }
+    },
+
+    UnityCheckAuthenticationStatus: function () {
+        console.log('Unity checking authentication status for dual transaction');
+        
+        if (typeof window.UnityCheckAuthenticationStatus === 'function') {
+            window.UnityCheckAuthenticationStatus();
+        } else {
+            console.log('UnityCheckAuthenticationStatus not available - using no-auth mode');
+            // For dual transactions, no auth is required - always return true
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
+                window.unityInstance.SendMessage('PayPalDualTransaction', 'OnAuthenticationChecked', 'true');
+            }
+        }
+    }
 });
