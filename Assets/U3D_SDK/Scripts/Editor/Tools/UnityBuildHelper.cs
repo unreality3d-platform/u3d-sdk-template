@@ -47,6 +47,31 @@ namespace U3D.Editor
 
                 onProgress?.Invoke("🧹 Preparing build directory...");
 
+                // CRITICAL FIX: Validate output path before processing
+                if (string.IsNullOrEmpty(outputPath))
+                {
+                    return new UnityBuildResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Output path cannot be null or empty."
+                    };
+                }
+
+                try
+                {
+                    // Ensure the output path is valid and rooted
+                    var fullPath = Path.GetFullPath(outputPath);
+                    outputPath = fullPath; // Use the validated full path
+                }
+                catch (Exception pathEx)
+                {
+                    return new UnityBuildResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"Invalid output path: {pathEx.Message}"
+                    };
+                }
+
                 // Clean and prepare output directory
                 await PrepareOutputDirectory(outputPath);
 
@@ -164,12 +189,26 @@ namespace U3D.Editor
                         var directory = new DirectoryInfo(outputPath);
                         foreach (var file in directory.GetFiles())
                         {
-                            file.IsReadOnly = false;
-                            file.Delete();
+                            try
+                            {
+                                file.IsReadOnly = false;
+                                file.Delete();
+                            }
+                            catch (Exception fileEx)
+                            {
+                                Debug.LogWarning($"Could not delete file {file.Name}: {fileEx.Message}");
+                            }
                         }
                         foreach (var dir in directory.GetDirectories())
                         {
-                            dir.Delete(true);
+                            try
+                            {
+                                dir.Delete(true);
+                            }
+                            catch (Exception dirEx)
+                            {
+                                Debug.LogWarning($"Could not delete directory {dir.Name}: {dirEx.Message}");
+                            }
                         }
                     }
                     else
@@ -180,9 +219,29 @@ namespace U3D.Editor
                 catch (Exception ex)
                 {
                     Debug.LogWarning($"Could not fully clean output directory: {ex.Message}");
-                    // Create a new subdirectory if we can't clean the main one
-                    var fallbackPath = Path.Combine(outputPath, DateTime.Now.ToString("yyyyMMdd_HHmmss"));
-                    Directory.CreateDirectory(fallbackPath);
+
+                    // FIXED: Generate timestamp on main thread context, with better error handling
+                    try
+                    {
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                        var fallbackPath = Path.Combine(outputPath, timestamp);
+
+                        // Ensure parent directory exists before creating subdirectory
+                        var parentDir = Path.GetDirectoryName(fallbackPath);
+                        if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
+                        {
+                            Directory.CreateDirectory(parentDir);
+                        }
+
+                        Directory.CreateDirectory(fallbackPath);
+                        Debug.Log($"Created fallback directory: {fallbackPath}");
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        Debug.LogError($"Failed to create fallback directory: {fallbackEx.Message}");
+                        // Re-throw to fail the build rather than continue with undefined state
+                        throw new Exception($"Cannot prepare build directory: {ex.Message}", ex);
+                    }
                 }
             });
         }
