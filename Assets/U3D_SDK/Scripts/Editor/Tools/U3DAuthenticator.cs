@@ -147,7 +147,7 @@ public static class U3DAuthenticator
     public static async Task<bool> TryAutoLogin()
     {
         // Migrate old preferences to new system
-        U3DCreatorPrefs.MigrateOldPreferences();
+        U3DCreatorPrefs.MigrateFromEmailBasedKeys();
 
         // Ensure credentials are loaded
         if (!_credentialsLoaded)

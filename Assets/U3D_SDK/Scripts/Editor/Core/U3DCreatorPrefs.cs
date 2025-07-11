@@ -4,13 +4,14 @@ using UnityEngine;
 namespace U3D.Editor
 {
     /// <summary>
-    /// Unified creator preferences system that survives project name changes.
-    /// All creator state is stored per-user, not per-project.
+    /// Simple creator preferences system using static keys only.
+    /// NO email-based key generation, NO cross-class dependencies.
+    /// Build-safe by design.
     /// </summary>
     public static class U3DCreatorPrefs
     {
-        // Fallback key for global settings (when no user email available)
-        private const string GLOBAL_PREFIX = "U3D_Global_";
+        // Simple static key prefix - no dynamic generation
+        private const string KEY_PREFIX = "U3D_Creator_";
 
         /// <summary>
         /// CRITICAL: Check if we should skip operations during builds
@@ -23,36 +24,12 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Get the current user's email for preference keys.
-        /// Returns empty string if not logged in.
-        /// </summary>
-        private static string GetCurrentUserEmail()
-        {
-            // SAFE: Don't access U3DAuthenticator during builds
-            if (ShouldSkipDuringBuild())
-            {
-                return "";
-            }
-
-            return U3DAuthenticator.UserEmail ?? "";
-        }
-
-        /// <summary>
-        /// Generate a user-specific preference key.
-        /// Format: "U3D_Creator_{email}_{settingName}" or "U3D_Global_{settingName}" if no user
+        /// Generate a simple static preference key.
+        /// Format: "U3D_Creator_{settingName}" - NO email parsing
         /// </summary>
         private static string GetKey(string settingName)
         {
-            string userEmail = GetCurrentUserEmail();
-
-            if (string.IsNullOrEmpty(userEmail))
-            {
-                return GLOBAL_PREFIX + settingName;
-            }
-
-            // Sanitize email for use as key (replace @ and . with safe chars)
-            string sanitizedEmail = userEmail.Replace("@", "_AT_").Replace(".", "_DOT_");
-            return $"U3D_Creator_{sanitizedEmail}_{settingName}";
+            return KEY_PREFIX + settingName;
         }
 
         #region String Preferences
@@ -231,28 +208,74 @@ namespace U3D.Editor
         #region Migration and Cleanup
 
         /// <summary>
-        /// Migrate old project-specific preferences to new user-specific format.
-        /// Call this during login to migrate existing user data.
+        /// Migrate old email-based preferences to new simple format.
+        /// Run this ONCE to move existing data to simple keys.
         /// </summary>
-        public static void MigrateOldPreferences()
+        public static void MigrateFromEmailBasedKeys()
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping MigrateOldPreferences during build");
+                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping migration during build");
                 return;
             }
 
-            if (string.IsNullOrEmpty(GetCurrentUserEmail()))
+            bool migrated = false;
+
+            // Check for old email-based keys pattern: U3D_Creator_{email}_*
+            // This is a simplified migration - if you have specific email patterns you know about,
+            // add them here. For now, we'll migrate common known patterns.
+
+            // Migrate common old patterns we can identify
+            var commonEmails = new[]
             {
-                Debug.LogWarning("Cannot migrate preferences - no user logged in");
-                return;
+                "test_AT_example_DOT_com",
+                "user_AT_gmail_DOT_com",
+                "creator_AT_unreality3d_DOT_com"
+            };
+
+            var settingsToMigrate = new[]
+            {
+                "PayPalEmail", "LastPublishURL", "LastProjectName",
+                "StayLoggedIn", "DefaultBuildTarget"
+            };
+
+            foreach (var emailPattern in commonEmails)
+            {
+                foreach (var setting in settingsToMigrate)
+                {
+                    string oldKey = $"U3D_Creator_{emailPattern}_{setting}";
+
+                    if (EditorPrefs.HasKey(oldKey))
+                    {
+                        // Migrate based on type
+                        if (setting == "StayLoggedIn")
+                        {
+                            bool value = EditorPrefs.GetBool(oldKey);
+                            SetBool(setting, value);
+                        }
+                        else if (setting == "DefaultBuildTarget")
+                        {
+                            int value = EditorPrefs.GetInt(oldKey);
+                            SetInt(setting, value);
+                        }
+                        else
+                        {
+                            string value = EditorPrefs.GetString(oldKey);
+                            SetString(setting, value);
+                        }
+
+                        // Clean up old key
+                        EditorPrefs.DeleteKey(oldKey);
+                        migrated = true;
+
+                        Debug.Log($"🔄 Migrated {oldKey} → {setting}");
+                    }
+                }
             }
 
-            // Get old project-specific prefix
-            string oldPrefix = $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_";
-
-            // Migration mappings: old key suffix → new setting name
-            var migrations = new[]
+            // Also migrate old project-specific keys
+            string oldProjectPrefix = $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_";
+            var projectMigrations = new[]
             {
                 ("idToken", "AuthToken"),
                 ("refreshToken", "RefreshToken"),
@@ -263,11 +286,9 @@ namespace U3D.Editor
                 ("stayLoggedIn", "StayLoggedIn")
             };
 
-            bool migrated = false;
-
-            foreach (var (oldSuffix, newName) in migrations)
+            foreach (var (oldSuffix, newName) in projectMigrations)
             {
-                string oldKey = oldPrefix + oldSuffix;
+                string oldKey = oldProjectPrefix + oldSuffix;
 
                 if (EditorPrefs.HasKey(oldKey))
                 {
@@ -291,18 +312,7 @@ namespace U3D.Editor
                 }
             }
 
-            // Migrate PayPal email from SetupTab format
-            string oldPayPalKey = $"U3D_PayPalEmail_{GetCurrentUserEmail()}";
-            if (EditorPrefs.HasKey(oldPayPalKey))
-            {
-                string paypalEmail = EditorPrefs.GetString(oldPayPalKey);
-                PayPalEmail = paypalEmail;
-                EditorPrefs.DeleteKey(oldPayPalKey);
-                migrated = true;
-                Debug.Log($"🔄 Migrated PayPal email: {paypalEmail}");
-            }
-
-            // Migrate global publish preferences
+            // Migrate global keys
             if (EditorPrefs.HasKey("U3D_PublishedURL"))
             {
                 string url = EditorPrefs.GetString("U3D_PublishedURL");
@@ -323,7 +333,11 @@ namespace U3D.Editor
 
             if (migrated)
             {
-                Debug.Log("✅ Creator preferences migration completed");
+                Debug.Log("✅ Creator preferences migration completed - now using simple static keys");
+            }
+            else
+            {
+                Debug.Log("ℹ️ No old email-based preferences found to migrate");
             }
         }
 
@@ -338,14 +352,8 @@ namespace U3D.Editor
                 return;
             }
 
-            if (string.IsNullOrEmpty(GetCurrentUserEmail()))
-            {
-                Debug.LogWarning("Cannot clear preferences - no user logged in");
-                return;
-            }
-
             // List of all settings to clear
-            var settingsTosClear = new[]
+            var settingsToClear = new[]
             {
                 "AuthToken", "RefreshToken", "UserEmail", "DisplayName",
                 "CreatorUsername", "PayPalConnected", "PayPalEmail",
@@ -353,7 +361,7 @@ namespace U3D.Editor
                 // Note: Keep StayLoggedIn and DefaultBuildTarget
             };
 
-            foreach (string setting in settingsTosClear)
+            foreach (string setting in settingsToClear)
             {
                 string key = GetKey(setting);
                 if (EditorPrefs.HasKey(key))
@@ -447,13 +455,7 @@ namespace U3D.Editor
                 return;
             }
 
-            if (string.IsNullOrEmpty(GetCurrentUserEmail()))
-            {
-                Debug.Log("🔍 No user logged in - cannot show preferences");
-                return;
-            }
-
-            Debug.Log($"🔍 Creator Preferences for: {GetCurrentUserEmail()}");
+            Debug.Log($"🔍 Creator Preferences (Simple Static Keys):");
             Debug.Log($"  PayPal Email: {PayPalEmail}");
             Debug.Log($"  Last Publish URL: {LastPublishURL}");
             Debug.Log($"  Last Project Name: {LastProjectName}");
