@@ -702,12 +702,18 @@ namespace U3D.Editor
                     };
                 }
 
-                // Build WebGL to persistent directory (FIXED)
+                // CRITICAL FIX: Use simplified build path for Unity 6 WebGL compatibility
                 var projectPath = Path.GetDirectoryName(Application.dataPath);
-                var timestampedBuildName = $"WebGLBuild_{DateTime.Now:yyyyMMdd_HHmmss}";
-                var buildPath = Path.Combine(projectPath, "U3D_Builds", timestampedBuildName);
 
-                // FIXED: Use buildPath instead of tempBuildPath
+                // TEST: Much simpler path structure to avoid Unity 6 WebGL post-processor issues
+                var buildPath = Path.Combine(projectPath, "WebGL");
+
+                // ALTERNATIVE: If you need unique builds, use simpler naming
+                // var buildPath = Path.Combine(projectPath, $"WebGL-{DateTime.Now:MMdd-HHmm}");
+
+                currentStatus = $"Building to: {buildPath}";
+                Debug.Log($"🎯 Testing simplified build path: {buildPath}");
+
                 var buildResult = await UnityBuildHelper.BuildWebGL(buildPath, (status) =>
                 {
                     currentStatus = status;
