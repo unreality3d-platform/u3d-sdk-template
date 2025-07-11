@@ -8,8 +8,9 @@ public class ProjectStartupConfiguration
     private const string STARTUP_SCENE_PATH = "Assets/Scenes/_My Scene.unity";
     private const string BUILD_TARGET_KEY = "HasSetWebGLTarget";
 
-    // Project-specific key to avoid cross-template conflicts
+    // Project-specific keys to avoid cross-template conflicts
     private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
+    private static string SCENE_LOADED_KEY => $"HasLoadedStartupScene_{Application.dataPath.GetHashCode()}";
 
     static ProjectStartupConfiguration()
     {
@@ -40,7 +41,7 @@ public class ProjectStartupConfiguration
         try
         {
             // Set build target to WebGL if not already set
-            if (!hasSetBuildTarget && EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
                 Debug.Log("🔄 U3D SDK: Switching build target to WebGL...");
 
@@ -84,42 +85,35 @@ public class ProjectStartupConfiguration
                 }
             }
 
-            // ALWAYS check and ensure correct scene is loaded
-            if (System.IO.File.Exists(STARTUP_SCENE_PATH))
+            // ONLY load startup scene on first Unity startup, not every editor event
+            bool hasLoadedStartupScene = EditorPrefs.GetBool(SCENE_LOADED_KEY, false);
+
+            if (!hasLoadedStartupScene && System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
                 var currentScene = EditorSceneManager.GetActiveScene();
-
-                // More robust scene path comparison
                 string currentScenePath = currentScene.path;
-                bool isCorrectScene = string.Equals(currentScenePath, STARTUP_SCENE_PATH, System.StringComparison.OrdinalIgnoreCase);
 
-                Debug.Log($"🔍 U3D SDK: Current scene: '{currentScenePath}' | Target: '{STARTUP_SCENE_PATH}' | Match: {isCorrectScene}");
+                // Only switch if we're on a truly empty/default scene
+                bool isEmptyScene = string.IsNullOrEmpty(currentScenePath) ||
+                                   currentScenePath.Contains("Untitled") ||
+                                   currentScenePath.Contains("New Scene");
 
-                if (!isCorrectScene)
+                Debug.Log($"🔍 U3D SDK: First startup - Current scene: '{currentScenePath}' | Is empty: {isEmptyScene}");
+
+                if (isEmptyScene)
                 {
-                    try
-                    {
-                        // Additional delay to ensure Unity is fully ready
-                        EditorApplication.delayCall += () => {
-                            if (!EditorApplication.isPlayingOrWillChangePlaymode &&
-                                !EditorApplication.isCompiling)
-                            {
-                                EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
-                                Debug.Log($"✅ U3D SDK: Successfully opened startup scene: {STARTUP_SCENE_PATH}");
-                            }
-                        };
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogWarning($"⚠️ U3D SDK: Could not open startup scene: {e.Message}");
-                    }
+                    EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
+                    Debug.Log($"✅ U3D SDK: Opened startup scene on first launch: {STARTUP_SCENE_PATH}");
                 }
-                else
-                {
-                    Debug.Log($"✅ U3D SDK: Startup scene already active: {STARTUP_SCENE_PATH}");
-                }
+
+                // Mark as completed so we never do this again
+                EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
             }
-            else
+            else if (hasLoadedStartupScene)
+            {
+                Debug.Log("✅ U3D SDK: Startup scene already loaded previously, respecting user's current scene");
+            }
+            else if (!System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
                 Debug.LogWarning($"⚠️ U3D SDK: Startup scene not found: {STARTUP_SCENE_PATH}");
                 Debug.LogWarning("💡 U3D SDK: Please ensure your main scene is located at Assets/Scenes/_My Scene.unity");

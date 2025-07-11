@@ -943,17 +943,12 @@ namespace U3D.Editor
 
         private void SavePayPalEmailToPrefs(string email)
         {
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            EditorPrefs.SetString(key, email);
+            U3DCreatorPrefs.PayPalEmail = email;
         }
 
         private string GetSavedPayPalEmail()
         {
-            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
-                return null;
-
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            return EditorPrefs.GetString(key, "");
+            return U3DCreatorPrefs.PayPalEmail;
         }
 
         // GitHub token validation
@@ -1028,11 +1023,7 @@ namespace U3D.Editor
 
         public static string GetCreatorPayPalEmail()
         {
-            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
-                return null;
-
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            return EditorPrefs.GetString(key, "");
+            return U3DCreatorPrefs.PayPalEmail;
         }
 
         private void UpdateCompletion()

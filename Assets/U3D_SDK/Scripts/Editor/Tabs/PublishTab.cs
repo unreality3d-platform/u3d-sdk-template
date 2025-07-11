@@ -52,7 +52,7 @@ namespace U3D.Editor
             cachedProductName = Application.productName;
             lastCheckedProductName = cachedProductName; // Initialize tracking
 
-            publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
+            publishUrl = U3DCreatorPrefs.LastPublishURL;
 
             if (!string.IsNullOrEmpty(publishUrl))
             {
@@ -93,7 +93,7 @@ namespace U3D.Editor
 
         private void ResetPublishState()
         {
-            EditorPrefs.DeleteKey("U3D_PublishedURL");
+            U3DCreatorPrefs.LastPublishURL = "";
             publishUrl = "";
             githubConnected = false;
             projectBuilt = false;
@@ -663,7 +663,7 @@ namespace U3D.Editor
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
                 var projectName = deployResult.ProjectName ?? GitHubAPI.SanitizeRepositoryName(cachedProductName);
                 publishUrl = deployResult.ProfessionalUrl ?? $"https://{creatorUsername}.unreality3d.com/{projectName}/";
-                EditorPrefs.SetString("U3D_PublishedURL", publishUrl);
+                U3DCreatorPrefs.LastPublishURL = publishUrl;
 
                 currentStatus = "Publishing completed successfully!";
 
