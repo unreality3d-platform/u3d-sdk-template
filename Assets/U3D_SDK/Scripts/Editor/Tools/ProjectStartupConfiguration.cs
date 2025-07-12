@@ -12,8 +12,25 @@ public class ProjectStartupConfiguration
     private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
     private static string SCENE_LOADED_KEY => $"HasLoadedStartupScene_{Application.dataPath.GetHashCode()}";
 
+    /// <summary>
+    /// CRITICAL: Check if we should skip operations during builds
+    /// </summary>
+    private static bool ShouldSkipDuringBuild()
+    {
+        return BuildPipeline.isBuildingPlayer ||
+               EditorApplication.isCompiling ||
+               EditorApplication.isUpdating;
+    }
+
     static ProjectStartupConfiguration()
     {
+        // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+        if (ShouldSkipDuringBuild())
+        {
+            Debug.Log("🚫 ProjectStartupConfiguration: Skipping initialization during build process");
+            return;
+        }
+
         // Enhanced initialization with project-specific tracking
         EditorApplication.delayCall += () => {
             EditorApplication.delayCall += () => {
@@ -25,18 +42,19 @@ public class ProjectStartupConfiguration
     private static void ConfigureProjectStartup()
     {
         // Enhanced safety checks
-        if (EditorApplication.isPlayingOrWillChangePlaymode ||
-            EditorApplication.isCompiling ||
-            EditorApplication.isUpdating ||
-            BuildPipeline.isBuildingPlayer)
+        if (ShouldSkipDuringBuild())
         {
             // Retry later if editor is busy
             EditorApplication.delayCall += ConfigureProjectStartup;
             return;
         }
 
-        // Use project-specific keys to avoid conflicts between template downloads
-        bool hasSetBuildTarget = EditorPrefs.GetBool(BUILD_TARGET_SPECIFIC_KEY, false);
+        // FIXED: Use build guards for EditorPrefs access
+        bool hasSetBuildTarget = false;
+        if (!ShouldSkipDuringBuild())
+        {
+            hasSetBuildTarget = EditorPrefs.GetBool(BUILD_TARGET_SPECIFIC_KEY, false);
+        }
 
         try
         {
@@ -54,7 +72,11 @@ public class ProjectStartupConfiguration
                 if (success)
                 {
                     Debug.Log("✅ U3D SDK: Build target switched to WebGL successfully");
-                    EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    // FIXED: Use build guards for EditorPrefs access
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    }
                 }
                 else
                 {
@@ -82,12 +104,20 @@ public class ProjectStartupConfiguration
                 if (!hasSetBuildTarget)
                 {
                     Debug.Log("✅ U3D SDK: Build target is already set to WebGL");
-                    EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    // FIXED: Use build guards for EditorPrefs access
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    }
                 }
             }
 
             // ONLY load startup scene on first Unity startup, not every editor event
-            bool hasLoadedStartupScene = EditorPrefs.GetBool(SCENE_LOADED_KEY, false);
+            bool hasLoadedStartupScene = false;
+            if (!ShouldSkipDuringBuild())
+            {
+                hasLoadedStartupScene = EditorPrefs.GetBool(SCENE_LOADED_KEY, false);
+            }
 
             if (!hasLoadedStartupScene && System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
@@ -108,7 +138,11 @@ public class ProjectStartupConfiguration
                 }
 
                 // Mark as completed so we never do this again
-                EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
+                // FIXED: Use build guards for EditorPrefs access
+                if (!ShouldSkipDuringBuild())
+                {
+                    EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
+                }
             }
             else if (hasLoadedStartupScene)
             {

@@ -46,12 +46,20 @@ namespace U3D.Editor
             Complete
         }
 
+        /// <summary>
+        /// CRITICAL: Check if we should skip operations during builds
+        /// </summary>
+        private static bool ShouldSkipDuringBuild()
+        {
+            return BuildPipeline.isBuildingPlayer ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
         public void Initialize()
         {
             // CRITICAL: Skip initialization during builds
-            if (BuildPipeline.isBuildingPlayer ||
-                EditorApplication.isCompiling ||
-                EditorApplication.isUpdating)
+            if (ShouldSkipDuringBuild())
             {
                 Debug.Log("🚫 PublishTab: Skipping initialization during build process");
                 return;
@@ -79,9 +87,7 @@ namespace U3D.Editor
         private void CheckForProductNameChanges()
         {
             // CRITICAL: Skip during builds
-            if (BuildPipeline.isBuildingPlayer ||
-                EditorApplication.isCompiling ||
-                EditorApplication.isUpdating)
+            if (ShouldSkipDuringBuild())
             {
                 return;
             }
@@ -785,8 +791,11 @@ namespace U3D.Editor
                     // Use the actual project name returned from Firebase
                     var actualProjectName = result.ActualProjectName ?? sanitizedBaseName;
 
-                    // Store for future updates
-                    EditorPrefs.SetString("U3D_LastProjectName", actualProjectName);
+                    // FIXED: Use build guards for EditorPrefs access
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetString("U3D_LastProjectName", actualProjectName);
+                    }
                     shouldCreateNewRepository = false; // Reset flag
 
                     return new FirebaseDeployResult

@@ -16,6 +16,16 @@ namespace U3D.Editor
         private bool stylesInitialized = false;
         private Texture2D logoTexture;
 
+        /// <summary>
+        /// CRITICAL: Check if we should skip operations during builds
+        /// </summary>
+        private static bool ShouldSkipDuringBuild()
+        {
+            return BuildPipeline.isBuildingPlayer ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
         [MenuItem("U3D/Creator Dashboard")]
         public static void ShowWindow()
         {
@@ -27,19 +37,36 @@ namespace U3D.Editor
         [InitializeOnLoadMethod]
         static void OpenOnStartup()
         {
+            // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.Log("🚫 U3DCreatorWindow: Skipping startup during build process");
+                return;
+            }
+
             EditorApplication.delayCall += () => {
                 // NEVER open during Play mode changes
                 if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
-                // Check if this is the very first time
-                bool hasOpenedBefore = EditorPrefs.GetBool("U3D_HasOpenedBefore", false);
-                bool showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+                // FIXED: Use build guards for EditorPrefs access
+                bool hasOpenedBefore = false;
+                bool showOnStartup = true;
+
+                if (!ShouldSkipDuringBuild())
+                {
+                    hasOpenedBefore = EditorPrefs.GetBool("U3D_HasOpenedBefore", false);
+                    showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+                }
 
                 // Always show the first time, then respect user preference
                 if (!hasOpenedBefore || showOnStartup)
                 {
                     ShowWindow();
-                    EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
+                    // FIXED: Use build guards for EditorPrefs access
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
+                    }
                 }
             };
         }
@@ -167,12 +194,22 @@ namespace U3D.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
 
-            bool showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+            // FIXED: Use build guards for EditorPrefs access
+            bool showOnStartup = true;
+            if (!ShouldSkipDuringBuild())
+            {
+                showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+            }
+
             bool newShowOnStartup = EditorGUILayout.ToggleLeft("Show dashboard when Unity starts", showOnStartup, GUILayout.Width(250));
 
             if (newShowOnStartup != showOnStartup)
             {
-                EditorPrefs.SetBool("U3D_ShowOnStartup", newShowOnStartup);
+                // FIXED: Use build guards for EditorPrefs access
+                if (!ShouldSkipDuringBuild())
+                {
+                    EditorPrefs.SetBool("U3D_ShowOnStartup", newShowOnStartup);
+                }
             }
 
             GUILayout.FlexibleSpace();

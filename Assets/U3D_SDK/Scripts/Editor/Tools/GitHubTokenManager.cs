@@ -23,8 +23,25 @@ namespace U3D.Editor
         public static string GitHubUsername => _githubUsername;
         public static string Token => _githubToken;
 
+        /// <summary>
+        /// CRITICAL: Check if we should skip operations during builds
+        /// </summary>
+        private static bool ShouldSkipDuringBuild()
+        {
+            return BuildPipeline.isBuildingPlayer ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
         static GitHubTokenManager()
         {
+            // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+            if (ShouldSkipDuringBuild())
+            {
+                Debug.Log("🚫 GitHubTokenManager: Skipping initialization during build process");
+                return;
+            }
+
             LoadCredentials();
         }
 
@@ -310,13 +327,23 @@ namespace U3D.Editor
             _githubUsername = "";
             _tokenValidated = false;
 
-            EditorPrefs.DeleteKey(TOKEN_KEY);
-            EditorPrefs.DeleteKey(USERNAME_KEY);
-            EditorPrefs.DeleteKey(VALIDATED_KEY);
+            // FIXED: Use build guards for EditorPrefs access
+            if (!ShouldSkipDuringBuild())
+            {
+                EditorPrefs.DeleteKey(TOKEN_KEY);
+                EditorPrefs.DeleteKey(USERNAME_KEY);
+                EditorPrefs.DeleteKey(VALIDATED_KEY);
+            }
         }
 
         private static void SaveCredentials()
         {
+            // FIXED: Use build guards for EditorPrefs access
+            if (ShouldSkipDuringBuild())
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(_githubToken))
             {
                 EditorPrefs.SetString(TOKEN_KEY, _githubToken);
@@ -332,6 +359,15 @@ namespace U3D.Editor
 
         private static void LoadCredentials()
         {
+            // FIXED: Use build guards for EditorPrefs access
+            if (ShouldSkipDuringBuild())
+            {
+                _githubToken = "";
+                _githubUsername = "";
+                _tokenValidated = false;
+                return;
+            }
+
             _githubToken = EditorPrefs.GetString(TOKEN_KEY, "");
             _githubUsername = EditorPrefs.GetString(USERNAME_KEY, "");
             _tokenValidated = EditorPrefs.GetBool(VALIDATED_KEY, false);
