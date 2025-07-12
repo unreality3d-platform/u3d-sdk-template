@@ -99,7 +99,7 @@ namespace U3D.Editor
                 var buildPlayerOptions = new BuildPlayerOptions
                 {
                     scenes = new string[] { "Assets/Scenes/_My Scene.unity" }, // Hardcoded single scene
-                    locationPathName = "C:\\Build",     // Simple path
+                    locationPathName = outputPath,     
                     target = BuildTarget.WebGL,
                     options = BuildOptions.None,
                     targetGroup = BuildTargetGroup.WebGL

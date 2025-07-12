@@ -2,7 +2,6 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 
-[InitializeOnLoad]
 public class ProjectStartupConfiguration
 {
     private const string STARTUP_SCENE_PATH = "Assets/Scenes/_My Scene.unity";
@@ -24,19 +23,19 @@ public class ProjectStartupConfiguration
 
     static ProjectStartupConfiguration()
     {
-        // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
-        if (ShouldSkipDuringBuild())
-        {
-            Debug.Log("🚫 ProjectStartupConfiguration: Skipping initialization during build process");
-            return;
-        }
+        //// CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+        //if (ShouldSkipDuringBuild())
+        //{
+        //    Debug.Log("🚫 ProjectStartupConfiguration: Skipping initialization during build process");
+        //    return;
+        //}
 
-        // Enhanced initialization with project-specific tracking
-        EditorApplication.delayCall += () => {
-            EditorApplication.delayCall += () => {
-                EditorApplication.delayCall += ConfigureProjectStartup;
-            };
-        };
+        //// Enhanced initialization with project-specific tracking
+        //EditorApplication.delayCall += () => {
+        //    EditorApplication.delayCall += () => {
+        //        EditorApplication.delayCall += ConfigureProjectStartup;
+        //    };
+        //};
     }
 
     private static void ConfigureProjectStartup()

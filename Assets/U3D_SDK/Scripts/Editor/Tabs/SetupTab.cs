@@ -943,12 +943,17 @@ namespace U3D.Editor
 
         private void SavePayPalEmailToPrefs(string email)
         {
-            U3DCreatorPrefs.PayPalEmail = email;
+            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
+            EditorPrefs.SetString(key, email);
         }
 
         private string GetSavedPayPalEmail()
         {
-            return U3DCreatorPrefs.PayPalEmail;
+            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
+                return null;
+
+            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
+            return EditorPrefs.GetString(key, "");
         }
 
         // GitHub token validation
@@ -1023,7 +1028,11 @@ namespace U3D.Editor
 
         public static string GetCreatorPayPalEmail()
         {
-            return U3DCreatorPrefs.PayPalEmail;
+            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
+                return null;
+
+            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
+            return EditorPrefs.GetString(key, "");
         }
 
         private void UpdateCompletion()
@@ -1041,35 +1050,17 @@ namespace U3D.Editor
 
         public void OnEnable()
         {
-            // CRITICAL: Skip during builds
-            if (BuildPipeline.isBuildingPlayer ||
-                EditorApplication.isCompiling ||
-                EditorApplication.isUpdating)
-            {
-                UnityDebug.Log("🚫 SetupTab: Skipping OnEnable during build process");
-                return;
-            }
-
             Initialize();
             EditorApplication.update += OnEditorUpdate;
         }
 
         public void OnDisable()
         {
-            // Safe to always remove the event handler
             EditorApplication.update -= OnEditorUpdate;
         }
 
         private void OnEditorUpdate()
         {
-            // CRITICAL: Skip during builds
-            if (BuildPipeline.isBuildingPlayer ||
-                EditorApplication.isCompiling ||
-                EditorApplication.isUpdating)
-            {
-                return;
-            }
-
             // Remove PayPal polling since we're not using OAuth anymore
         }
     }

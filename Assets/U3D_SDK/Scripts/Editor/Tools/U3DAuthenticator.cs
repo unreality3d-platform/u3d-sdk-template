@@ -23,6 +23,9 @@ public static class U3DAuthenticator
     private static bool _networkConfigured = false;
     private static bool _credentialsLoaded = false; // Track if we've loaded credentials
 
+    // Project-specific key prefix to avoid conflicts between projects
+    private static string ProjectPrefix => $"U3D_{UnityEditor.PlayerSettings.companyName}.{UnityEditor.PlayerSettings.productName}_";
+
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
     public static string DisplayName => _displayName;
@@ -47,8 +50,7 @@ public static class U3DAuthenticator
         set
         {
             _stayLoggedIn = value;
-            // FIXED: Use direct method call instead of convenience property
-            U3DCreatorPrefs.SetBool("StayLoggedIn", value);
+            EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", value);
 
             // If user unchecks "stay logged in", clear stored credentials
             if (!value)
@@ -61,15 +63,6 @@ public static class U3DAuthenticator
     // Static constructor to configure networking ONCE when class is first used
     static U3DAuthenticator()
     {
-        // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
-        if (BuildPipeline.isBuildingPlayer ||
-            EditorApplication.isCompiling ||
-            EditorApplication.isUpdating)
-        {
-            Debug.Log("🚫 U3DAuthenticator: Skipping initialization during build process");
-            return;
-        }
-
         ConfigureNetworking();
         // Load credentials immediately when class is first accessed
         LoadCredentials();
@@ -147,9 +140,6 @@ public static class U3DAuthenticator
 
     public static async Task<bool> TryAutoLogin()
     {
-        // Migrate old preferences to new system
-        U3DCreatorPrefs.MigrateFromEmailBasedKeys();
-
         // Ensure credentials are loaded
         if (!_credentialsLoaded)
         {
@@ -988,40 +978,40 @@ public static class U3DAuthenticator
         {
             if (!string.IsNullOrEmpty(_idToken))
             {
-                U3DCreatorPrefs.SetString("AuthToken", _idToken);
+                EditorPrefs.SetString(ProjectPrefix + "idToken", _idToken);
             }
             if (!string.IsNullOrEmpty(_refreshToken))
             {
-                U3DCreatorPrefs.SetString("RefreshToken", _refreshToken);
+                EditorPrefs.SetString(ProjectPrefix + "refreshToken", _refreshToken);
             }
             if (!string.IsNullOrEmpty(_userEmail))
             {
-                U3DCreatorPrefs.SetString("UserEmail", _userEmail);
+                EditorPrefs.SetString(ProjectPrefix + "userEmail", _userEmail);
             }
             if (!string.IsNullOrEmpty(_displayName))
             {
-                U3DCreatorPrefs.SetString("DisplayName", _displayName);
+                EditorPrefs.SetString(ProjectPrefix + "displayName", _displayName);
             }
             if (!string.IsNullOrEmpty(_creatorUsername))
             {
-                U3DCreatorPrefs.SetString("CreatorUsername", _creatorUsername);
+                EditorPrefs.SetString(ProjectPrefix + "creatorUsername", _creatorUsername);
             }
-            U3DCreatorPrefs.SetBool("PayPalConnected", _paypalConnected);
+            EditorPrefs.SetBool(ProjectPrefix + "paypalConnected", _paypalConnected);
         }
 
-        // FIXED: Use direct method call instead of convenience property
-        U3DCreatorPrefs.SetBool("StayLoggedIn", _stayLoggedIn);
+        // Always save the preference itself
+        EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", _stayLoggedIn);
     }
 
     private static void LoadCredentials()
     {
-        _idToken = U3DCreatorPrefs.GetString("AuthToken", "");
-        _refreshToken = U3DCreatorPrefs.GetString("RefreshToken", "");
-        _userEmail = U3DCreatorPrefs.GetString("UserEmail", "");
-        _displayName = U3DCreatorPrefs.GetString("DisplayName", "");
-        _creatorUsername = U3DCreatorPrefs.GetString("CreatorUsername", "");
-        _paypalConnected = U3DCreatorPrefs.GetBool("PayPalConnected", false);
-        _stayLoggedIn = U3DCreatorPrefs.GetBool("StayLoggedIn", true); // Uses default of true
+        _idToken = EditorPrefs.GetString(ProjectPrefix + "idToken", "");
+        _refreshToken = EditorPrefs.GetString(ProjectPrefix + "refreshToken", "");
+        _userEmail = EditorPrefs.GetString(ProjectPrefix + "userEmail", "");
+        _displayName = EditorPrefs.GetString(ProjectPrefix + "displayName", "");
+        _creatorUsername = EditorPrefs.GetString(ProjectPrefix + "creatorUsername", "");
+        _paypalConnected = EditorPrefs.GetBool(ProjectPrefix + "paypalConnected", false);
+        _stayLoggedIn = EditorPrefs.GetBool(ProjectPrefix + "stayLoggedIn", true); // Default to true
         _credentialsLoaded = true;
 
         Debug.Log($"🔑 Credentials loaded: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, StayLoggedIn={_stayLoggedIn}");
@@ -1029,7 +1019,13 @@ public static class U3DAuthenticator
 
     private static void ClearCredentials()
     {
-        U3DCreatorPrefs.ClearUserPreferences();
+        EditorPrefs.DeleteKey(ProjectPrefix + "idToken");
+        EditorPrefs.DeleteKey(ProjectPrefix + "refreshToken");
+        EditorPrefs.DeleteKey(ProjectPrefix + "userEmail");
+        EditorPrefs.DeleteKey(ProjectPrefix + "displayName");
+        EditorPrefs.DeleteKey(ProjectPrefix + "creatorUsername");
+        EditorPrefs.DeleteKey(ProjectPrefix + "paypalConnected");
+        // Note: Don't clear stayLoggedIn - preserve user's preference
 
         _idToken = "";
         _refreshToken = "";
@@ -1038,7 +1034,7 @@ public static class U3DAuthenticator
         _creatorUsername = "";
         _paypalConnected = false;
 
-        Debug.Log("🗑️ Credentials cleared from U3DCreatorPrefs");
+        Debug.Log("🗑️ Credentials cleared from EditorPrefs");
     }
 }
 
