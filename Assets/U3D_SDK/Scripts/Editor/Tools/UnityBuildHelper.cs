@@ -356,14 +356,10 @@ namespace U3D.Editor
             // PRESERVE YOUR PROVEN WORKING CONFIGURATION
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled; // CRITICAL: GitHub Pages compatibility
 
-            // 🚨 CRITICAL: Disable Unity 6+ features that trigger Node.js dependencies
-            EditorUserBuildSettings.development = false;
-            PlayerSettings.WebGL.template = "Default";
-            PlayerSettings.WebGL.analyzeBuildSize = false;
-            PlayerSettings.WebGL.showDiagnostics = false;
-
-            // Unity 6+ automatic WebAssembly memory management
-            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management");
+            // RESTORE: Unity 6+ automatic WebAssembly memory management (your working approach)
+            // REMOVED: CalculateOptimalMemorySize() - this was accessing mesh.triangles arrays during build
+            // Note: Unity 6+ has both memorySize (legacy) and maximumMemorySize (new) - using automatic management
+            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management (no manual sizing needed)");
 
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
@@ -373,14 +369,20 @@ namespace U3D.Editor
             PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
             PlayerSettings.WebGL.threadsSupport = false;
 
-            // CRITICAL FIX: DO NOT MODIFY PlayerSettings.productName OR PlayerSettings.companyName
-            // These modifications during build can trigger Unity 6 WebGL IndexOutOfRangeException
-            // Let Unity use whatever values are already set in Project Settings
+            // Unity 6+ specific optimizations (non-conflicting)
+            PlayerSettings.WebGL.showDiagnostics = false;
+            PlayerSettings.WebGL.analyzeBuildSize = false;
 
-            // REMOVED (CAUSING BUG): PlayerSettings.productName = Application.productName;
-            // REMOVED (UNNECESSARY): PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ? PlayerSettings.companyName : "Unity Creator";
+            // UNITY 6 INDEXOUTOFRANGEEXCEPTION WORKAROUNDS
+            PlayerSettings.WebGL.webAssemblyTable = false;
+            // Note: wasmArithmeticExceptions enum values vary by Unity version - check Player Settings UI for correct value
 
-            Debug.Log("Unity 6+ WebGL build settings applied (no PlayerSettings modifications)");
+            // Ensure proper build settings (preserve existing values when appropriate)
+            PlayerSettings.productName = Application.productName;
+            PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ?
+                PlayerSettings.companyName : "Unity Creator";
+
+            Debug.Log("✅ Unity 6+ WebGL build settings applied with IndexOutOfRangeException workarounds");
         }
 
         private static async Task<string> ValidateGitHubPagesCompatibility(string buildPath)
