@@ -38,26 +38,22 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetString({settingName}) during build");
                 return;
             }
 
             string key = GetKey(settingName);
             EditorPrefs.SetString(key, value);
-            Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
         }
 
         public static string GetString(string settingName, string defaultValue = "")
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetString({settingName}) during build, returning default");
                 return defaultValue;
             }
 
             string key = GetKey(settingName);
             string value = EditorPrefs.GetString(key, defaultValue);
-            Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
             return value;
         }
 
@@ -69,26 +65,22 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetBool({settingName}) during build");
                 return;
             }
 
             string key = GetKey(settingName);
             EditorPrefs.SetBool(key, value);
-            Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
         }
 
         public static bool GetBool(string settingName, bool defaultValue = false)
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetBool({settingName}) during build, returning default");
                 return defaultValue;
             }
 
             string key = GetKey(settingName);
             bool value = EditorPrefs.GetBool(key, defaultValue);
-            Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
             return value;
         }
 
@@ -100,26 +92,22 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetInt({settingName}) during build");
                 return;
             }
 
             string key = GetKey(settingName);
             EditorPrefs.SetInt(key, value);
-            Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
         }
 
         public static int GetInt(string settingName, int defaultValue = 0)
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetInt({settingName}) during build, returning default");
                 return defaultValue;
             }
 
             string key = GetKey(settingName);
             int value = EditorPrefs.GetInt(key, defaultValue);
-            Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
             return value;
         }
 
@@ -131,26 +119,22 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping SetFloat({settingName}) during build");
                 return;
             }
 
             string key = GetKey(settingName);
             EditorPrefs.SetFloat(key, value);
-            Debug.Log($"🔑 Saved creator pref: {settingName} = {value}");
         }
 
         public static float GetFloat(string settingName, float defaultValue = 0f)
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping GetFloat({settingName}) during build, returning default");
                 return defaultValue;
             }
 
             string key = GetKey(settingName);
             float value = EditorPrefs.GetFloat(key, defaultValue);
-            Debug.Log($"🔑 Loaded creator pref: {settingName} = {value}");
             return value;
         }
 
@@ -215,7 +199,6 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping migration during build");
                 return;
             }
 
@@ -267,8 +250,6 @@ namespace U3D.Editor
                         // Clean up old key
                         EditorPrefs.DeleteKey(oldKey);
                         migrated = true;
-
-                        Debug.Log($"🔄 Migrated {oldKey} → {setting}");
                     }
                 }
             }
@@ -307,8 +288,6 @@ namespace U3D.Editor
                     // Clean up old key
                     EditorPrefs.DeleteKey(oldKey);
                     migrated = true;
-
-                    Debug.Log($"🔄 Migrated {oldKey} → {newName}");
                 }
             }
 
@@ -319,7 +298,6 @@ namespace U3D.Editor
                 LastPublishURL = url;
                 EditorPrefs.DeleteKey("U3D_PublishedURL");
                 migrated = true;
-                Debug.Log($"🔄 Migrated publish URL: {url}");
             }
 
             if (EditorPrefs.HasKey("U3D_LastProjectName"))
@@ -328,16 +306,13 @@ namespace U3D.Editor
                 LastProjectName = projectName;
                 EditorPrefs.DeleteKey("U3D_LastProjectName");
                 migrated = true;
-                Debug.Log($"🔄 Migrated project name: {projectName}");
             }
 
             if (migrated)
             {
-                Debug.Log("✅ Creator preferences migration completed - now using simple static keys");
             }
             else
             {
-                Debug.Log("ℹ️ No old email-based preferences found to migrate");
             }
         }
 
@@ -348,7 +323,6 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping ClearUserPreferences during build");
                 return;
             }
 
@@ -367,11 +341,8 @@ namespace U3D.Editor
                 if (EditorPrefs.HasKey(key))
                 {
                     EditorPrefs.DeleteKey(key);
-                    Debug.Log($"🗑️ Cleared creator pref: {setting}");
                 }
             }
-
-            Debug.Log("🗑️ User preferences cleared");
         }
 
         /// <summary>
@@ -381,7 +352,6 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping HasKey({settingName}) during build, returning false");
                 return false;
             }
 
@@ -396,7 +366,6 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning($"🚫 U3DCreatorPrefs: Skipping DeleteKey({settingName}) during build");
                 return;
             }
 
@@ -404,7 +373,6 @@ namespace U3D.Editor
             if (EditorPrefs.HasKey(key))
             {
                 EditorPrefs.DeleteKey(key);
-                Debug.Log($"🗑️ Deleted creator pref: {settingName}");
             }
         }
 
@@ -415,7 +383,6 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping EnsureWebGLBuildTarget during build");
                 return;
             }
 
@@ -423,7 +390,6 @@ namespace U3D.Editor
 
             if (currentTarget != BuildTarget.WebGL)
             {
-                Debug.Log($"🎯 Switching build target from {currentTarget} to WebGL");
                 EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL);
             }
 
@@ -451,16 +417,8 @@ namespace U3D.Editor
         {
             if (ShouldSkipDuringBuild())
             {
-                Debug.LogWarning("🚫 U3DCreatorPrefs: Skipping LogAllPreferences during build");
                 return;
             }
-
-            Debug.Log($"🔍 Creator Preferences (Simple Static Keys):");
-            Debug.Log($"  PayPal Email: {PayPalEmail}");
-            Debug.Log($"  Last Publish URL: {LastPublishURL}");
-            Debug.Log($"  Last Project Name: {LastProjectName}");
-            Debug.Log($"  Stay Logged In: {StayLoggedIn}");
-            Debug.Log($"  Default Build Target: {(BuildTarget)DefaultBuildTarget}");
         }
 
         #endregion

@@ -94,13 +94,12 @@ namespace U3D.Editor
 
                 // Apply Unity 6+ optimal WebGL settings
                 onProgress?.Invoke("⚙️ Applying Unity 6+ WebGL optimizations...");
-                SetOptimalWebGLSettingsUnity6();
+                //SetOptimalWebGLSettingsUnity6();
 
-                // Configure build options with Unity 6+ best practices
                 var buildPlayerOptions = new BuildPlayerOptions
                 {
-                    scenes = scenes,
-                    locationPathName = outputPath,
+                    scenes = new string[] { "Assets/Scenes/_My Scene.unity" }, // Hardcoded single scene
+                    locationPathName = "C:\\Build",     // Simple path
                     target = BuildTarget.WebGL,
                     options = BuildOptions.None,
                     targetGroup = BuildTargetGroup.WebGL

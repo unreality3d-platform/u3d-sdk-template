@@ -47,7 +47,8 @@ public static class U3DAuthenticator
         set
         {
             _stayLoggedIn = value;
-            U3DCreatorPrefs.StayLoggedIn = value;
+            // FIXED: Use direct method call instead of convenience property
+            U3DCreatorPrefs.SetBool("StayLoggedIn", value);
 
             // If user unchecks "stay logged in", clear stored credentials
             if (!value)
@@ -1008,8 +1009,8 @@ public static class U3DAuthenticator
             U3DCreatorPrefs.SetBool("PayPalConnected", _paypalConnected);
         }
 
-        // Always save the preference itself
-        U3DCreatorPrefs.StayLoggedIn = _stayLoggedIn;
+        // FIXED: Use direct method call instead of convenience property
+        U3DCreatorPrefs.SetBool("StayLoggedIn", _stayLoggedIn);
     }
 
     private static void LoadCredentials()
@@ -1020,7 +1021,7 @@ public static class U3DAuthenticator
         _displayName = U3DCreatorPrefs.GetString("DisplayName", "");
         _creatorUsername = U3DCreatorPrefs.GetString("CreatorUsername", "");
         _paypalConnected = U3DCreatorPrefs.GetBool("PayPalConnected", false);
-        _stayLoggedIn = U3DCreatorPrefs.StayLoggedIn; // Uses default of true
+        _stayLoggedIn = U3DCreatorPrefs.GetBool("StayLoggedIn", true); // Uses default of true
         _credentialsLoaded = true;
 
         Debug.Log($"🔑 Credentials loaded: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, StayLoggedIn={_stayLoggedIn}");
